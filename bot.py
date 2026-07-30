@@ -4,17 +4,41 @@ import hashlib
 import base64
 import threading
 import urllib.parse
-import asyncio
-import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
+
+# ---------------------------------------------------------
+# 1. Instant Port Binding for Render Web Service
+# ---------------------------------------------------------
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/html')
+        self.end_headers()
+        self.wfile.write(b"J.A.R.V.I.S. systems operational 24/7.")
+    def log_message(self, format, *args):
+        return  # Silence HTTP logs
+
+def run_health_server():
+    port = int(os.environ.get("PORT", 10000))
+    try:
+        server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
+        print(f"Health check server listening on 0.0.0.0:{port}")
+        server.serve_forever()
+    except Exception as e:
+        print(f"Health server error: {e}")
+
+# Start health server immediately in background so Render port check passes instantly!
+threading.Thread(target=run_health_server, daemon=True).start()
+
+# ---------------------------------------------------------
+# 2. Heavy Imports & Configuration
+# ---------------------------------------------------------
+import requests
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from google import genai
 import edge_tts
 
-# ---------------------------------------------------------
-# 1. Configuration & Setup
-# ---------------------------------------------------------
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 MODEL_NAME = "gemini-1.5-flash"
@@ -40,23 +64,6 @@ SYSTEM_INSTRUCTION = (
 )
 
 # ---------------------------------------------------------
-# 2. Keep-Alive Server for 24/7 Hosting
-# ---------------------------------------------------------
-class HealthCheckHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header('Content-type', 'text/html')
-        self.end_headers()
-        self.wfile.write(b"J.A.R.V.I.S. systems fully operational 24/7, sir.")
-    def log_message(self, format, *args):
-        return  # Silence health check logs
-
-def run_health_server():
-    port = int(os.getenv("PORT", 8080))
-    server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
-    server.serve_forever()
-
-# ---------------------------------------------------------
 # 3. Helpers
 # ---------------------------------------------------------
 def get_user_identifier(update: Update) -> str:
@@ -74,7 +81,6 @@ def get_user_chat(chat_id: int):
         user_sessions[chat_id] = ai_client.chats.create(
             model=MODEL_NAME
         )
-        # Seed system instruction cleanly
         user_sessions[chat_id].send_message(
             f"System Instruction: {SYSTEM_INSTRUCTION}. Please acknowledge and follow this persona."
         )
@@ -85,14 +91,14 @@ async def send_voice_reply(update: Update, text: str):
     chat_id = update.effective_chat.id
     audio_path = f"jarvis_{chat_id}.mp3"
     try:
-        tts_text = text[:500]  # Limit text length for fast TTS delivery
+        tts_text = text[:500]  # Limit text length for fast delivery
         communicate = edge_tts.Communicate(tts_text, voice=JARVIS_VOICE)
         await communicate.save(audio_path)
         if os.path.exists(audio_path):
             with open(audio_path, "rb") as voice_file:
                 await update.message.reply_audio(audio=voice_file, title="J.A.R.V.I.S. Voice", performer="J.A.R.V.I.S.")
     except Exception as e:
-        print(f"TTS Error (Ignored to keep text chat running): {e}")
+        print(f"TTS Error: {e}")
     finally:
         if os.path.exists(audio_path):
             try:
@@ -421,9 +427,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
     try:
         reply_text = await ask_gemini(chat_id, formatted_prompt)
-        # Always send text reply FIRST so user gets answer immediately
         await update.message.reply_text(reply_text, parse_mode="Markdown")
-        # Then safely attempt voice output
         await send_voice_reply(update, reply_text)
     except Exception as e:
         print(f"Error handling message: {e}")
@@ -433,8 +437,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # 5. Application Launch
 # ---------------------------------------------------------
 def main():
-    threading.Thread(target=run_health_server, daemon=True).start()
-
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
     # System & General
@@ -498,7 +500,6 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("J.A.R.V.I.S. online and listening...")
-    # drop_pending_updates clears all old stuck messages on Telegram servers to break polling deadlocks
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
