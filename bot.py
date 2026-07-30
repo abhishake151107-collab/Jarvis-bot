@@ -4,12 +4,12 @@ import hashlib
 import base64
 import threading
 import urllib.parse
+import asyncio
 import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from google import genai
-from google.genai import types
 import edge_tts
 
 # ---------------------------------------------------------
@@ -47,7 +47,9 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/html')
         self.end_headers()
-        self.wfile.write(b"J.A.R.V.I.S. group systems operational 24/7, sir.")
+        self.wfile.write(b"J.A.R.V.I.S. systems fully operational 24/7, sir.")
+    def log_message(self, format, *args):
+        return  # Silence health check logs
 
 def run_health_server():
     port = int(os.getenv("PORT", 8080))
@@ -67,32 +69,36 @@ def get_user_identifier(update: Update) -> str:
     return user.first_name or "sir"
 
 def get_user_chat(chat_id: int):
-    """Retrieves or creates a continuous conversation memory with Google Search."""
+    """Retrieves or creates a continuous conversation memory."""
     if chat_id not in user_sessions:
         user_sessions[chat_id] = ai_client.chats.create(
-            model=MODEL_NAME,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_INSTRUCTION,
-                temperature=0.7,
-                tools=[{"google_search": {}}]  # Live Google Search enabled
-            )
+            model=MODEL_NAME
+        )
+        # Seed system instruction cleanly
+        user_sessions[chat_id].send_message(
+            f"System Instruction: {SYSTEM_INSTRUCTION}. Please acknowledge and follow this persona."
         )
     return user_sessions[chat_id]
 
 async def send_voice_reply(update: Update, text: str):
-    """Generates and sends a British voice response."""
+    """Generates and sends a British voice response safely."""
     chat_id = update.effective_chat.id
     audio_path = f"jarvis_{chat_id}.mp3"
     try:
-        communicate = edge_tts.Communicate(text, voice=JARVIS_VOICE)
+        tts_text = text[:500]  # Limit text length for fast TTS delivery
+        communicate = edge_tts.Communicate(tts_text, voice=JARVIS_VOICE)
         await communicate.save(audio_path)
-        with open(audio_path, "rb") as voice_file:
-            await update.message.reply_voice(voice=voice_file)
+        if os.path.exists(audio_path):
+            with open(audio_path, "rb") as voice_file:
+                await update.message.reply_audio(audio=voice_file, title="J.A.R.V.I.S. Voice", performer="J.A.R.V.I.S.")
     except Exception as e:
-        print(f"TTS Error: {e}")
+        print(f"TTS Error (Ignored to keep text chat running): {e}")
     finally:
         if os.path.exists(audio_path):
-            os.remove(audio_path)
+            try:
+                os.remove(audio_path)
+            except Exception:
+                pass
 
 async def ask_gemini(chat_id: int, prompt: str) -> str:
     """Helper to query Gemini with user context."""
@@ -124,7 +130,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• `/github [user/repo]` — GitHub details\n"
         "• `/wiki [topic]` — Wikipedia summary\n"
         "• `/define [word]` — Dictionary definition\n"
-        "• `/search [query]` — Live web search\n"
+        "• `/search [query]` — Web search\n"
         "• `/lyrics [song]` — Song lyrics\n"
         "• `/movie [genre]` — Movie recommendations\n"
         "• `/recipe [dish]` — Cooking recipe\n\n"
@@ -202,8 +208,12 @@ async def ai_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, p
     
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     full_prompt = f"[User {user_str} asks]: {prompt_prefix} {query}".strip()
-    reply = await ask_gemini(update.effective_chat.id, full_prompt)
-    await update.message.reply_text(reply, parse_mode="Markdown")
+    try:
+        reply = await ask_gemini(update.effective_chat.id, full_prompt)
+        await update.message.reply_text(reply, parse_mode="Markdown")
+    except Exception as e:
+        print(f"Error in query handler: {e}")
+        await update.message.reply_text(f"Apologies {user_str}, I encountered a glitch processing that.")
 
 # --- Lookup & Utility Commands ---
 async def ip_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -406,19 +416,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_str = get_user_identifier(update)
     user_text = update.message.text
 
-    # Prepend User Username to Prompt so Gemini knows WHO in the group is talking!
     formatted_prompt = f"[Message from User {user_str}]: {user_text}"
 
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
     try:
         reply_text = await ask_gemini(chat_id, formatted_prompt)
+        # Always send text reply FIRST so user gets answer immediately
         await update.message.reply_text(reply_text, parse_mode="Markdown")
-        
-        # Send voice message alongside text
+        # Then safely attempt voice output
         await send_voice_reply(update, reply_text)
     except Exception as e:
-        print(f"Error handling group chat: {e}")
-        await update.message.reply_text(f"Apologies, {user_str}. I encountered a system glitch processing that request.")
+        print(f"Error handling message: {e}")
+        await update.message.reply_text(f"Apologies, {user_str}. System glitch: {str(e)[:100]}")
 
 # ---------------------------------------------------------
 # 5. Application Launch
@@ -426,4 +435,71 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     threading.Thread(target=run_health_server, daemon=True).start()
 
-    app = Appl
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+
+    # System & General
+    app.add_handler(CommandHandler(["start", "help"], help_command))
+    app.add_handler(CommandHandler("myid", myid_command))
+    app.add_handler(CommandHandler("reset", reset_command))
+
+    # Gemini AI Queries
+    app.add_handler(CommandHandler("weather", lambda u, c: ai_query_handler(u, c, "Provide current weather forecast for:")))
+    app.add_handler(CommandHandler("time", lambda u, c: ai_query_handler(u, c, "What is current local time in:")))
+    app.add_handler(CommandHandler("news", lambda u, c: ai_query_handler(u, c, "Give live news headlines for:")))
+    app.add_handler(CommandHandler("crypto", lambda u, c: ai_query_handler(u, c, "Provide current prices for top 10 cryptocurrencies")))
+    app.add_handler(CommandHandler("stock", lambda u, c: ai_query_handler(u, c, "What is current stock price for:")))
+    app.add_handler(CommandHandler("currency", lambda u, c: ai_query_handler(u, c, "Convert currency:")))
+    app.add_handler(CommandHandler("wiki", lambda u, c: ai_query_handler(u, c, "Provide concise Wikipedia summary for:")))
+    app.add_handler(CommandHandler("define", lambda u, c: ai_query_handler(u, c, "Define word:")))
+    app.add_handler(CommandHandler("word", lambda u, c: ai_query_handler(u, c, "Give Word of the Day")))
+    app.add_handler(CommandHandler("search", lambda u, c: ai_query_handler(u, c, "Search web for:")))
+    app.add_handler(CommandHandler("lyrics", lambda u, c: ai_query_handler(u, c, "Provide lyrics for:")))
+    app.add_handler(CommandHandler("movie", lambda u, c: ai_query_handler(u, c, "Recommend 3 movies for:")))
+    app.add_handler(CommandHandler("recipe", lambda u, c: ai_query_handler(u, c, "Provide step-by-step recipe for:")))
+    app.add_handler(CommandHandler("translate", lambda u, c: ai_query_handler(u, c, "Translate into requested language:")))
+    app.add_handler(CommandHandler("summarize", lambda u, c: ai_query_handler(u, c, "Summarize text:")))
+
+    # AI Creative Tools
+    app.add_handler(CommandHandler("image", image_command))
+    app.add_handler(CommandHandler("story", lambda u, c: ai_query_handler(u, c, "Write a short story about:")))
+    app.add_handler(CommandHandler("debate", lambda u, c: ai_query_handler(u, c, "Present both sides of debate on:")))
+    app.add_handler(CommandHandler("explain", lambda u, c: ai_query_handler(u, c, "Explain this code:")))
+    app.add_handler(CommandHandler("code", lambda u, c: ai_query_handler(u, c, "Generate clean Python code for:")))
+    app.add_handler(CommandHandler("name", lambda u, c: ai_query_handler(u, c, "Generate 5 name ideas for:")))
+
+    # Utilities
+    app.add_handler(CommandHandler("ip", ip_command))
+    app.add_handler(CommandHandler("github", github_command))
+    app.add_handler(CommandHandler("calc", calc_command))
+    app.add_handler(CommandHandler("qr", qr_command))
+    app.add_handler(CommandHandler("password", password_command))
+    app.add_handler(CommandHandler("hash", hash_command))
+    app.add_handler(CommandHandler("b64", b64_command))
+
+    # Productivity
+    app.add_handler(CommandHandler("note", note_command))
+    app.add_handler(CommandHandler("notes", notes_command))
+    app.add_handler(CommandHandler("delnote", delnote_command))
+    app.add_handler(CommandHandler("habit", habit_command))
+    app.add_handler(CommandHandler("habits", habits_command))
+
+    # Games & Fun
+    app.add_handler(CommandHandler("rps", rps_command))
+    app.add_handler(CommandHandler("flip", flip_command))
+    app.add_handler(CommandHandler("dice", dice_command))
+    app.add_handler(CommandHandler("random", random_command))
+    app.add_handler(CommandHandler("joke", lambda u, c: ai_query_handler(u, c, "Tell a witty joke")))
+    app.add_handler(CommandHandler("quote", lambda u, c: ai_query_handler(u, c, "Give an inspiring quote")))
+    app.add_handler(CommandHandler("fact", lambda u, c: ai_query_handler(u, c, "Tell a fun fact")))
+    app.add_handler(CommandHandler("motivation", lambda u, c: ai_query_handler(u, c, "Give motivational boost")))
+    app.add_handler(CommandHandler("horoscope", lambda u, c: ai_query_handler(u, c, "Give daily horoscope for:")))
+
+    # General Conversational Chat
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    print("J.A.R.V.I.S. online and listening...")
+    # drop_pending_updates clears all old stuck messages on Telegram servers to break polling deadlocks
+    app.run_polling(drop_pending_updates=True)
+
+if __name__ == "__main__":
+    main()
