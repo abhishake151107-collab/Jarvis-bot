@@ -49,7 +49,6 @@ JARVIS_VOICE = "en-GB-RyanNeural"  # British J.A.R.V.I.S. Voice
 if not TELEGRAM_TOKEN:
     raise ValueError("Missing TELEGRAM_BOT_TOKEN environment variable!")
 
-# Global Memory Stores
 user_notes = {}     # {chat_id: [notes]}
 user_habits = {}    # {chat_id: {habit_name: count}}
 
@@ -62,11 +61,20 @@ SYSTEM_INSTRUCTION = (
 )
 
 # ---------------------------------------------------------
-# 3. Smart Multi-Provider AI Routing (Groq -> Gemini -> OpenRouter)
+# 3. Smart Delivery Helper (Prevents Markdown Syntax Errors)
+# ---------------------------------------------------------
+async def reply_smart(update: Update, text: str):
+    """Tries Markdown formatting first; falls back to raw plain text if Markdown fails."""
+    try:
+        await update.message.reply_text(text, parse_mode="Markdown")
+    except Exception as e:
+        print(f"Markdown parse warning ({e}). Falling back to plain text delivery...")
+        await update.message.reply_text(text)
+
+# ---------------------------------------------------------
+# 4. Multi-Provider AI Routing (Groq -> Gemini -> OpenRouter)
 # ---------------------------------------------------------
 def ask_ai_multi_provider(prompt: str) -> str:
-    """Tries multiple free AI APIs in order until one succeeds."""
-    
     # 1. Primary: Groq (Llama 3.3 70B)
     if GROQ_API_KEY:
         try:
@@ -117,10 +125,9 @@ def ask_ai_multi_provider(prompt: str) -> str:
     return "Apologies, sir. All available AI sub-systems are currently at capacity. Please try again in a few moments."
 
 # ---------------------------------------------------------
-# 4. Helpers & Handlers
+# 5. Helpers & Handlers
 # ---------------------------------------------------------
 def get_chat_context(update: Update) -> str:
-    """Detects whether this is a Private Chat (DM) or a Group Chat."""
     chat = update.effective_chat
     user = update.effective_user
     user_str = f"@{user.username}" if user and user.username else (user.first_name if user else "sir")
@@ -213,49 +220,49 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• `/help` — Show this menu\n\n"
         "💬 *Or simply type any message to talk to J.A.R.V.I.S. directly!*"
     )
-    await update.message.reply_text(menu, parse_mode="Markdown")
+    await reply_smart(update, menu)
 
 async def myid_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    username_str = f"@{user.username}" if user.username else "No username set"
-    await update.message.reply_text(
+    username_str = f"@{user.username}" if user and user.username else "No username set"
+    msg = (
         f"👤 **User:** {username_str}\n"
         f"🆔 **User ID:** `{user.id}`\n"
         f"💬 **Chat ID:** `{update.effective_chat.id}`\n"
-        f"📍 **Type:** `{update.effective_chat.type.title()}`",
-        parse_mode="Markdown"
+        f"📍 **Type:** `{update.effective_chat.type.title()}`"
     )
+    await reply_smart(update, msg)
 
 async def image_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_str = get_user_identifier(update)
     prompt = " ".join(context.args)
     if not prompt:
-        await update.message.reply_text(f"Please specify an image prompt, {user_str}. Example: `/image metallic superhero visor`", parse_mode="Markdown")
+        await reply_smart(update, f"Please specify an image prompt, {user_str}. Example: `/image metallic superhero visor`")
         return
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="upload_photo")
     image_url = f"https://image.pollinations.ai/prompt/{urllib.parse.quote(prompt)}"
     try:
-        await update.message.reply_photo(photo=image_url, caption=f"🎨 **Generated for {user_str}:** {prompt}", parse_mode="Markdown")
+        await update.message.reply_photo(photo=image_url, caption=f"🎨 **Generated for {user_str}:** {prompt}")
     except Exception:
-        await update.message.reply_text(f"Apologies, {user_str}. I had trouble generating that image.")
+        await reply_smart(update, f"Apologies, {user_str}. I had trouble generating that image.")
 
 async def ai_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, prompt_prefix: str = ""):
     chat_ctx = get_chat_context(update)
     query = " ".join(context.args) if context.args else update.message.text
     if not query and prompt_prefix:
-        await update.message.reply_text("Please provide details.", parse_mode="Markdown")
+        await reply_smart(update, "Please provide details.")
         return
     
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     full_prompt = f"{chat_ctx}: {prompt_prefix} {query}".strip()
     reply = ask_ai_multi_provider(full_prompt)
-    await update.message.reply_text(reply, parse_mode="Markdown")
+    await reply_smart(update, reply)
 
 async def calc_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_str = get_user_identifier(update)
     expr = " ".join(context.args)
     if not expr:
-        await update.message.reply_text("Example: `/calc (25 * 4) + 150`", parse_mode="Markdown")
+        await reply_smart(update, "Example: `/calc (25 * 4) + 150`")
         return
     try:
         allowed_names = {"abs": abs, "round": round}
@@ -267,39 +274,39 @@ async def calc_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = f"🧮 **Result:** `{result}`"
     except Exception:
         text = f"Apologies {user_str}, I could not compute that mathematical expression."
-    await update.message.reply_text(text, parse_mode="Markdown")
+    await reply_smart(update, text)
 
 async def qr_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = " ".join(context.args)
     if not data:
-        await update.message.reply_text("Example: `/qr https://google.com`", parse_mode="Markdown")
+        await reply_smart(update, "Example: `/qr https://google.com`")
         return
     qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={urllib.parse.quote(data)}"
-    await update.message.reply_photo(photo=qr_url, caption=f"📱 **QR Code generated for:** `{data}`", parse_mode="Markdown")
+    await update.message.reply_photo(photo=qr_url, caption=f"📱 **QR Code generated for:** `{data}`")
 
 async def password_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
     pwd = "".join(random.choice(chars) for _ in range(16))
-    await update.message.reply_text(f"🔐 **Generated Secure Password:**\n`{pwd}`", parse_mode="Markdown")
+    await reply_smart(update, f"🔐 **Generated Secure Password:**\n`{pwd}`")
 
 async def note_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user_str = get_user_identifier(update)
     note = " ".join(context.args)
     if not note:
-        await update.message.reply_text("Example: `/note Buy rocket fuel`", parse_mode="Markdown")
+        await reply_smart(update, "Example: `/note Buy rocket fuel`")
         return
     user_notes.setdefault(chat_id, []).append(f"[{user_str}] {note}")
-    await update.message.reply_text(f"📝 Note saved for {user_str}: *\"{note}\"*", parse_mode="Markdown")
+    await reply_smart(update, f"📝 Note saved for {user_str}: *\"{note}\"*")
 
 async def notes_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_str = get_user_identifier(update)
     notes = user_notes.get(update.effective_chat.id, [])
     if not notes:
-        await update.message.reply_text(f"No saved notes found, {user_str}.")
+        await reply_smart(update, f"No saved notes found, {user_str}.")
         return
     text = "📝 **Saved Notes:**\n" + "\n".join(f"{i+1}. {n}" for i, n in enumerate(notes))
-    await update.message.reply_text(text, parse_mode="Markdown")
+    await reply_smart(update, text)
 
 async def delnote_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -307,36 +314,36 @@ async def delnote_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         idx = int(context.args[0]) - 1
         notes = user_notes.get(chat_id, [])
         removed = notes.pop(idx)
-        await update.message.reply_text(f"🗑 Deleted note: *\"{removed}\"*", parse_mode="Markdown")
+        await reply_smart(update, f"🗑 Deleted note: *\"{removed}\"*")
     except Exception:
-        await update.message.reply_text("Invalid note number.", parse_mode="Markdown")
+        await reply_smart(update, "Invalid note number.")
 
 async def habit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user_str = get_user_identifier(update)
     habit = " ".join(context.args)
     if not habit:
-        await update.message.reply_text("Example: `/habit Read 20 pages`", parse_mode="Markdown")
+        await reply_smart(update, "Example: `/habit Read 20 pages`")
         return
     habits = user_habits.setdefault(chat_id, {})
     key = f"{user_str} - {habit}"
     habits[key] = habits.get(key, 0) + 1
-    await update.message.reply_text(f"⚡ Logged *\"{habit}\"* for {user_str}. Streak count: **{habits[key]}**", parse_mode="Markdown")
+    await reply_smart(update, f"⚡ Logged *\"{habit}\"* for {user_str}. Streak count: **{habits[key]}**")
 
 async def habits_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     habits = user_habits.get(update.effective_chat.id, {})
     if not habits:
-        await update.message.reply_text("No habit streaks recorded yet in this chat.")
+        await reply_smart(update, "No habit streaks recorded yet in this chat.")
         return
     text = "⚡ **Active Habit Streaks:**\n" + "\n".join(f"• **{k}:** {v} days" for k, v in habits.items())
-    await update.message.reply_text(text, parse_mode="Markdown")
+    await reply_smart(update, text)
 
 async def rps_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_str = get_user_identifier(update)
     user_choice = context.args[0].lower() if context.args else ""
     choices = ["rock", "paper", "scissors"]
     if user_choice not in choices:
-        await update.message.reply_text("Usage: `/rps rock`, `/rps paper`, or `/rps scissors`", parse_mode="Markdown")
+        await reply_smart(update, "Usage: `/rps rock`, `/rps paper`, or `/rps scissors`")
         return
     bot_choice = random.choice(choices)
     if user_choice == bot_choice:
@@ -347,12 +354,12 @@ async def rps_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         res = f"You win, {user_str}! Excellent strategy."
     else:
         res = f"I win this round, {user_str}. Better luck next time."
-    await update.message.reply_text(f"🎮 {user_str} chose **{user_choice}**, I chose **{bot_choice}**.\n\n{res}", parse_mode="Markdown")
+    await reply_smart(update, f"🎮 {user_str} chose **{user_choice}**, I chose **{bot_choice}**.\n\n{res}")
 
 async def flip_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_str = get_user_identifier(update)
     res = random.choice(["Heads", "Tails"])
-    await update.message.reply_text(f"🪙 Coin landed on: **{res}**, {user_str}.", parse_mode="Markdown")
+    await reply_smart(update, f"🪙 Coin landed on: **{res}**, {user_str}.")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_ctx = get_chat_context(update)
@@ -361,11 +368,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     reply_text = ask_ai_multi_provider(formatted_prompt)
-    await update.message.reply_text(reply_text, parse_mode="Markdown")
+    await reply_smart(update, reply_text)
     await send_voice_reply(update, reply_text)
 
 # ---------------------------------------------------------
-# 5. Application Launch
+# 6. Application Launch
 # ---------------------------------------------------------
 def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
@@ -373,7 +380,6 @@ def main():
     app.add_handler(CommandHandler(["start", "help"], help_command))
     app.add_handler(CommandHandler("myid", myid_command))
 
-    # Multi-AI Query Handlers
     app.add_handler(CommandHandler("weather", lambda u, c: ai_query_handler(u, c, "Provide current weather forecast for:")))
     app.add_handler(CommandHandler("time", lambda u, c: ai_query_handler(u, c, "What is current local time in:")))
     app.add_handler(CommandHandler("news", lambda u, c: ai_query_handler(u, c, "Give live news headlines for:")))
@@ -405,7 +411,6 @@ def main():
     app.add_handler(CommandHandler("joke", lambda u, c: ai_query_handler(u, c, "Tell a witty joke")))
     app.add_handler(CommandHandler("quote", lambda u, c: ai_query_handler(u, c, "Give an inspiring quote")))
 
-    # Listens in both Private DMs and Groups!
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("J.A.R.V.I.S. multi-AI core listening...")
