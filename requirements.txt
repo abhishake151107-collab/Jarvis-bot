@@ -1,2 +1,5 @@
 python-telegram-bot>=20.0
 google-genai
+edge-tts
+requests
+
