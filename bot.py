@@ -41,7 +41,7 @@ import edge_tts
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-MODEL_NAME = "gemini-1.5-flash"
+MODEL_NAME = "gemini-2.0-flash"
 
 JARVIS_VOICE = "en-GB-RyanNeural"  # British J.A.R.V.I.S. Voice
 
