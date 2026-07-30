@@ -14,9 +14,9 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/html')
         self.end_headers()
-        self.wfile.write(b"J.A.R.V.I.S. systems operational 24/7.")
+        self.wfile.write(b"J.A.R.V.I.S. multi-AI core operational 24/7.")
     def log_message(self, format, *args):
-        return  # Silence HTTP logs
+        return
 
 def run_health_server():
     port = int(os.environ.get("PORT", 10000))
@@ -27,31 +27,29 @@ def run_health_server():
     except Exception as e:
         print(f"Health server error: {e}")
 
-# Start health server immediately in background so Render port check passes instantly!
 threading.Thread(target=run_health_server, daemon=True).start()
 
 # ---------------------------------------------------------
-# 2. Heavy Imports & Configuration
+# 2. Imports & Configuration
 # ---------------------------------------------------------
 import requests
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 from google import genai
+from groq import Groq
 import edge_tts
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-MODEL_NAME = "gemini-2.0-flash"
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 JARVIS_VOICE = "en-GB-RyanNeural"  # British J.A.R.V.I.S. Voice
 
-if not TELEGRAM_TOKEN or not GEMINI_API_KEY:
-    raise ValueError("Missing TELEGRAM_BOT_TOKEN or GEMINI_API_KEY environment variables!")
-
-ai_client = genai.Client(api_key=GEMINI_API_KEY)
+if not TELEGRAM_TOKEN:
+    raise ValueError("Missing TELEGRAM_BOT_TOKEN environment variable!")
 
 # Global Memory Stores
-user_sessions = {}  # {chat_id: gemini_chat_session}
 user_notes = {}     # {chat_id: [notes]}
 user_habits = {}    # {chat_id: {habit_name: count}}
 
@@ -64,10 +62,76 @@ SYSTEM_INSTRUCTION = (
 )
 
 # ---------------------------------------------------------
-# 3. Helpers
+# 3. Smart Multi-Provider AI Routing (Groq -> Gemini -> OpenRouter)
 # ---------------------------------------------------------
+def ask_ai_multi_provider(prompt: str) -> str:
+    """Tries multiple free AI APIs in order until one succeeds."""
+    
+    # 1. Primary: Groq (Llama 3.3 70B)
+    if GROQ_API_KEY:
+        try:
+            client = Groq(api_key=GROQ_API_KEY)
+            response = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {"role": "system", "content": SYSTEM_INSTRUCTION},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=1000
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            print(f"Groq API primary failed, trying Gemini fallback... Error: {e}")
+
+    # 2. Secondary: Google Gemini (gemini-2.0-flash)
+    if GEMINI_API_KEY:
+        try:
+            ai_client = genai.Client(api_key=GEMINI_API_KEY)
+            response = ai_client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=f"{SYSTEM_INSTRUCTION}\n\n{prompt}"
+            )
+            return response.text
+        except Exception as e:
+            print(f"Gemini API fallback failed, trying OpenRouter... Error: {e}")
+
+    # 3. Tertiary: OpenRouter Free Tier
+    if OPENROUTER_API_KEY:
+        try:
+            res = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
+                json={
+                    "model": "meta-llama/llama-3.3-70b-instruct:free",
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_INSTRUCTION},
+                        {"role": "user", "content": prompt}
+                    ]
+                },
+                timeout=15
+            ).json()
+            return res["choices"][0]["message"]["content"]
+        except Exception as e:
+            print(f"OpenRouter API failed... Error: {e}")
+
+    return "Apologies, sir. All available AI sub-systems are currently at capacity. Please try again in a few moments."
+
+# ---------------------------------------------------------
+# 4. Helpers & Handlers
+# ---------------------------------------------------------
+def get_chat_context(update: Update) -> str:
+    """Detects whether this is a Private Chat (DM) or a Group Chat."""
+    chat = update.effective_chat
+    user = update.effective_user
+    user_str = f"@{user.username}" if user and user.username else (user.first_name if user else "sir")
+    
+    if chat.type == "private":
+        return f"[Private 1-on-1 Chat with {user_str}]"
+    else:
+        group_title = chat.title or "Group Chat"
+        return f"[Group Chat '{group_title}' - Message from {user_str}]"
+
 def get_user_identifier(update: Update) -> str:
-    """Returns @username if available, otherwise First Name."""
     user = update.effective_user
     if not user:
         return "sir"
@@ -75,23 +139,11 @@ def get_user_identifier(update: Update) -> str:
         return f"@{user.username}"
     return user.first_name or "sir"
 
-def get_user_chat(chat_id: int):
-    """Retrieves or creates a continuous conversation memory."""
-    if chat_id not in user_sessions:
-        user_sessions[chat_id] = ai_client.chats.create(
-            model=MODEL_NAME
-        )
-        user_sessions[chat_id].send_message(
-            f"System Instruction: {SYSTEM_INSTRUCTION}. Please acknowledge and follow this persona."
-        )
-    return user_sessions[chat_id]
-
 async def send_voice_reply(update: Update, text: str):
-    """Generates and sends a British voice response safely."""
     chat_id = update.effective_chat.id
     audio_path = f"jarvis_{chat_id}.mp3"
     try:
-        tts_text = text[:500]  # Limit text length for fast delivery
+        tts_text = text[:400]
         communicate = edge_tts.Communicate(tts_text, voice=JARVIS_VOICE)
         await communicate.save(audio_path)
         if os.path.exists(audio_path):
@@ -105,16 +157,6 @@ async def send_voice_reply(update: Update, text: str):
                 os.remove(audio_path)
             except Exception:
                 pass
-
-async def ask_gemini(chat_id: int, prompt: str) -> str:
-    """Helper to query Gemini with user context."""
-    chat = get_user_chat(chat_id)
-    response = chat.send_message(prompt)
-    return response.text
-
-# ---------------------------------------------------------
-# 4. Command Handlers
-# ---------------------------------------------------------
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id_str = get_user_identifier(update)
@@ -132,13 +174,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• `/currency [amt] [from] [to]` — Currency converter\n\n"
         "🌍 **LOOKUP & SEARCH**\n"
         "• `/ip [address]` — IP info lookup\n"
-        "• `/country [name]` — Country facts\n"
         "• `/github [user/repo]` — GitHub details\n"
         "• `/wiki [topic]` — Wikipedia summary\n"
         "• `/define [word]` — Dictionary definition\n"
         "• `/search [query]` — Web search\n"
         "• `/lyrics [song]` — Song lyrics\n"
-        "• `/movie [genre]` — Movie recommendations\n"
         "• `/recipe [dish]` — Cooking recipe\n\n"
         "🎯 **TOOLS & CONVERTERS**\n"
         "• `/calc [math]` — Mathematical calculator\n"
@@ -170,7 +210,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• `/name [type]` — Creative name generator\n\n"
         "ℹ️ **OTHER**\n"
         "• `/myid` — Your Telegram ID & Username\n"
-        "• `/reset` — Clear conversation memory\n"
         "• `/help` — Show this menu\n\n"
         "💬 *Or simply type any message to talk to J.A.R.V.I.S. directly!*"
     )
@@ -182,16 +221,11 @@ async def myid_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"👤 **User:** {username_str}\n"
         f"🆔 **User ID:** `{user.id}`\n"
-        f"💬 **Chat ID:** `{update.effective_chat.id}`",
+        f"💬 **Chat ID:** `{update.effective_chat.id}`\n"
+        f"📍 **Type:** `{update.effective_chat.type.title()}`",
         parse_mode="Markdown"
     )
 
-async def reset_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    user_sessions.pop(chat_id, None)
-    await update.message.reply_text("Group conversation memory cleared, sir. Ready for new instructions.")
-
-# --- AI Handlers with Username Context ---
 async def image_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_str = get_user_identifier(update)
     prompt = " ".join(context.args)
@@ -206,69 +240,16 @@ async def image_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Apologies, {user_str}. I had trouble generating that image.")
 
 async def ai_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, prompt_prefix: str = ""):
-    user_str = get_user_identifier(update)
+    chat_ctx = get_chat_context(update)
     query = " ".join(context.args) if context.args else update.message.text
     if not query and prompt_prefix:
-        await update.message.reply_text(f"Please provide details, {user_str}.", parse_mode="Markdown")
+        await update.message.reply_text("Please provide details.", parse_mode="Markdown")
         return
     
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    full_prompt = f"[User {user_str} asks]: {prompt_prefix} {query}".strip()
-    try:
-        reply = await ask_gemini(update.effective_chat.id, full_prompt)
-        await update.message.reply_text(reply, parse_mode="Markdown")
-    except Exception as e:
-        print(f"Error in query handler: {e}")
-        await update.message.reply_text(f"Apologies {user_str}, I encountered a glitch processing that.")
-
-# --- Lookup & Utility Commands ---
-async def ip_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_str = get_user_identifier(update)
-    ip = context.args[0] if context.args else ""
-    if not ip:
-        await update.message.reply_text(f"Please specify an IP address, {user_str}. Example: `/ip 8.8.8.8`", parse_mode="Markdown")
-        return
-    try:
-        res = requests.get(f"http://ip-api.com/json/{ip}").json()
-        if res.get("status") == "success":
-            text = (
-                f"🌐 **IP Info for {ip}:**\n"
-                f"• **Country:** {res.get('country')}\n"
-                f"• **City:** {res.get('city')}\n"
-                f"• **ISP:** {res.get('isp')}\n"
-                f"• **Org:** {res.get('org')}"
-            )
-        else:
-            text = f"Invalid IP address provided, {user_str}."
-    except Exception:
-        text = f"Failed to retrieve IP details, {user_str}."
-    await update.message.reply_text(text, parse_mode="Markdown")
-
-async def github_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = context.args[0] if context.args else ""
-    if not query:
-        await update.message.reply_text("Example: `/github torvalds` or `/github python/cpython`", parse_mode="Markdown")
-        return
-    try:
-        if "/" in query:
-            res = requests.get(f"https://api.github.com/repos/{query}").json()
-            text = (
-                f"📦 **Repo:** [{res.get('full_name')}]({res.get('html_url')})\n"
-                f"• **Stars:** {res.get('stargazers_count')}\n"
-                f"• **Forks:** {res.get('forks_count')}\n"
-                f"• **Description:** {res.get('description')}"
-            )
-        else:
-            res = requests.get(f"https://api.github.com/users/{query}").json()
-            text = (
-                f"👤 **User:** [{res.get('login')}]({res.get('html_url')})\n"
-                f"• **Repos:** {res.get('public_repos')}\n"
-                f"• **Followers:** {res.get('followers')}\n"
-                f"• **Bio:** {res.get('bio')}"
-            )
-    except Exception:
-        text = "Could not find GitHub information."
-    await update.message.reply_text(text, parse_mode="Markdown")
+    full_prompt = f"{chat_ctx}: {prompt_prefix} {query}".strip()
+    reply = ask_ai_multi_provider(full_prompt)
+    await update.message.reply_text(reply, parse_mode="Markdown")
 
 async def calc_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_str = get_user_identifier(update)
@@ -301,32 +282,6 @@ async def password_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pwd = "".join(random.choice(chars) for _ in range(16))
     await update.message.reply_text(f"🔐 **Generated Secure Password:**\n`{pwd}`", parse_mode="Markdown")
 
-async def hash_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = " ".join(context.args)
-    if not text:
-        await update.message.reply_text("Example: `/hash secret123`", parse_mode="Markdown")
-        return
-    md5 = hashlib.md5(text.encode()).hexdigest()
-    sha256 = hashlib.sha256(text.encode()).hexdigest()
-    msg = f"🔑 **Hashes for:** `{text}`\n\n• **MD5:** `{md5}`\n• **SHA256:** `{sha256}`"
-    await update.message.reply_text(msg, parse_mode="Markdown")
-
-async def b64_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 2:
-        await update.message.reply_text("Usage: `/b64 encode [text]` or `/b64 decode [text]`", parse_mode="Markdown")
-        return
-    mode, content = context.args[0].lower(), " ".join(context.args[1:])
-    try:
-        if mode == "encode":
-            res = base64.b64encode(content.encode()).decode()
-            await update.message.reply_text(f"🔤 **Base64 Encoded:**\n`{res}`", parse_mode="Markdown")
-        elif mode == "decode":
-            res = base64.b64decode(content.encode()).decode()
-            await update.message.reply_text(f"🔤 **Base64 Decoded:**\n`{res}`", parse_mode="Markdown")
-    except Exception:
-        await update.message.reply_text("Error processing Base64 conversion.")
-
-# --- Productivity Handlers ---
 async def note_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user_str = get_user_identifier(update)
@@ -341,9 +296,9 @@ async def notes_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_str = get_user_identifier(update)
     notes = user_notes.get(update.effective_chat.id, [])
     if not notes:
-        await update.message.reply_text(f"No saved notes found for this chat, {user_str}.")
+        await update.message.reply_text(f"No saved notes found, {user_str}.")
         return
-    text = "📝 **Saved Chat Notes:**\n" + "\n".join(f"{i+1}. {n}" for i, n in enumerate(notes))
+    text = "📝 **Saved Notes:**\n" + "\n".join(f"{i+1}. {n}" for i, n in enumerate(notes))
     await update.message.reply_text(text, parse_mode="Markdown")
 
 async def delnote_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -366,17 +321,16 @@ async def habit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     habits = user_habits.setdefault(chat_id, {})
     key = f"{user_str} - {habit}"
     habits[key] = habits.get(key, 0) + 1
-    await update.message.reply_text(f"⚡ Logged *\"{habit}\"* for {user_str}. Total streak count: **{habits[key]}**", parse_mode="Markdown")
+    await update.message.reply_text(f"⚡ Logged *\"{habit}\"* for {user_str}. Streak count: **{habits[key]}**", parse_mode="Markdown")
 
 async def habits_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     habits = user_habits.get(update.effective_chat.id, {})
     if not habits:
         await update.message.reply_text("No habit streaks recorded yet in this chat.")
         return
-    text = "⚡ **Group Habit Streaks:**\n" + "\n".join(f"• **{k}:** {v} days" for k, v in habits.items())
+    text = "⚡ **Active Habit Streaks:**\n" + "\n".join(f"• **{k}:** {v} days" for k, v in habits.items())
     await update.message.reply_text(text, parse_mode="Markdown")
 
-# --- Games & Fun ---
 async def rps_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_str = get_user_identifier(update)
     user_choice = context.args[0].lower() if context.args else ""
@@ -400,38 +354,15 @@ async def flip_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     res = random.choice(["Heads", "Tails"])
     await update.message.reply_text(f"🪙 Coin landed on: **{res}**, {user_str}.", parse_mode="Markdown")
 
-async def dice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        sides = int(context.args[0]) if context.args else 6
-        res = random.randint(1, sides)
-        await update.message.reply_text(f"🎲 Rolled a D{sides}: **{res}**", parse_mode="Markdown")
-    except Exception:
-        await update.message.reply_text("Please specify a valid number of sides.")
-
-async def random_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        low, high = int(context.args[0]), int(context.args[1])
-        res = random.randint(low, high)
-        await update.message.reply_text(f"🔢 Random number between {low} and {high}: **{res}**", parse_mode="Markdown")
-    except Exception:
-        await update.message.reply_text("Usage: `/random [min] [max]`", parse_mode="Markdown")
-
-# --- Main Message Routing ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    user_str = get_user_identifier(update)
+    chat_ctx = get_chat_context(update)
     user_text = update.message.text
+    formatted_prompt = f"{chat_ctx}: {user_text}"
 
-    formatted_prompt = f"[Message from User {user_str}]: {user_text}"
-
-    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-    try:
-        reply_text = await ask_gemini(chat_id, formatted_prompt)
-        await update.message.reply_text(reply_text, parse_mode="Markdown")
-        await send_voice_reply(update, reply_text)
-    except Exception as e:
-        print(f"Error handling message: {e}")
-        await update.message.reply_text(f"Apologies, {user_str}. System glitch: {str(e)[:100]}")
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    reply_text = ask_ai_multi_provider(formatted_prompt)
+    await update.message.reply_text(reply_text, parse_mode="Markdown")
+    await send_voice_reply(update, reply_text)
 
 # ---------------------------------------------------------
 # 5. Application Launch
@@ -439,67 +370,45 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
-    # System & General
     app.add_handler(CommandHandler(["start", "help"], help_command))
     app.add_handler(CommandHandler("myid", myid_command))
-    app.add_handler(CommandHandler("reset", reset_command))
 
-    # Gemini AI Queries
+    # Multi-AI Query Handlers
     app.add_handler(CommandHandler("weather", lambda u, c: ai_query_handler(u, c, "Provide current weather forecast for:")))
     app.add_handler(CommandHandler("time", lambda u, c: ai_query_handler(u, c, "What is current local time in:")))
     app.add_handler(CommandHandler("news", lambda u, c: ai_query_handler(u, c, "Give live news headlines for:")))
     app.add_handler(CommandHandler("crypto", lambda u, c: ai_query_handler(u, c, "Provide current prices for top 10 cryptocurrencies")))
     app.add_handler(CommandHandler("stock", lambda u, c: ai_query_handler(u, c, "What is current stock price for:")))
-    app.add_handler(CommandHandler("currency", lambda u, c: ai_query_handler(u, c, "Convert currency:")))
     app.add_handler(CommandHandler("wiki", lambda u, c: ai_query_handler(u, c, "Provide concise Wikipedia summary for:")))
     app.add_handler(CommandHandler("define", lambda u, c: ai_query_handler(u, c, "Define word:")))
-    app.add_handler(CommandHandler("word", lambda u, c: ai_query_handler(u, c, "Give Word of the Day")))
     app.add_handler(CommandHandler("search", lambda u, c: ai_query_handler(u, c, "Search web for:")))
-    app.add_handler(CommandHandler("lyrics", lambda u, c: ai_query_handler(u, c, "Provide lyrics for:")))
-    app.add_handler(CommandHandler("movie", lambda u, c: ai_query_handler(u, c, "Recommend 3 movies for:")))
     app.add_handler(CommandHandler("recipe", lambda u, c: ai_query_handler(u, c, "Provide step-by-step recipe for:")))
     app.add_handler(CommandHandler("translate", lambda u, c: ai_query_handler(u, c, "Translate into requested language:")))
-    app.add_handler(CommandHandler("summarize", lambda u, c: ai_query_handler(u, c, "Summarize text:")))
 
-    # AI Creative Tools
     app.add_handler(CommandHandler("image", image_command))
     app.add_handler(CommandHandler("story", lambda u, c: ai_query_handler(u, c, "Write a short story about:")))
-    app.add_handler(CommandHandler("debate", lambda u, c: ai_query_handler(u, c, "Present both sides of debate on:")))
     app.add_handler(CommandHandler("explain", lambda u, c: ai_query_handler(u, c, "Explain this code:")))
     app.add_handler(CommandHandler("code", lambda u, c: ai_query_handler(u, c, "Generate clean Python code for:")))
-    app.add_handler(CommandHandler("name", lambda u, c: ai_query_handler(u, c, "Generate 5 name ideas for:")))
 
-    # Utilities
-    app.add_handler(CommandHandler("ip", ip_command))
-    app.add_handler(CommandHandler("github", github_command))
     app.add_handler(CommandHandler("calc", calc_command))
     app.add_handler(CommandHandler("qr", qr_command))
     app.add_handler(CommandHandler("password", password_command))
-    app.add_handler(CommandHandler("hash", hash_command))
-    app.add_handler(CommandHandler("b64", b64_command))
 
-    # Productivity
     app.add_handler(CommandHandler("note", note_command))
     app.add_handler(CommandHandler("notes", notes_command))
     app.add_handler(CommandHandler("delnote", delnote_command))
     app.add_handler(CommandHandler("habit", habit_command))
     app.add_handler(CommandHandler("habits", habits_command))
 
-    # Games & Fun
     app.add_handler(CommandHandler("rps", rps_command))
     app.add_handler(CommandHandler("flip", flip_command))
-    app.add_handler(CommandHandler("dice", dice_command))
-    app.add_handler(CommandHandler("random", random_command))
     app.add_handler(CommandHandler("joke", lambda u, c: ai_query_handler(u, c, "Tell a witty joke")))
     app.add_handler(CommandHandler("quote", lambda u, c: ai_query_handler(u, c, "Give an inspiring quote")))
-    app.add_handler(CommandHandler("fact", lambda u, c: ai_query_handler(u, c, "Tell a fun fact")))
-    app.add_handler(CommandHandler("motivation", lambda u, c: ai_query_handler(u, c, "Give motivational boost")))
-    app.add_handler(CommandHandler("horoscope", lambda u, c: ai_query_handler(u, c, "Give daily horoscope for:")))
 
-    # General Conversational Chat
+    # Listens in both Private DMs and Groups!
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("J.A.R.V.I.S. online and listening...")
+    print("J.A.R.V.I.S. multi-AI core listening...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
