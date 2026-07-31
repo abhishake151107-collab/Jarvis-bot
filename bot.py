@@ -89,7 +89,7 @@ async def send_voice_reply(update: Update, text: str):
     chat_id = update.effective_chat.id
     audio_path = f"jarvis_{chat_id}.mp3"
     try:
-        tts_text = clean_text_for_tts(text)[:400]
+        tts_text = clean_text_for_tts(text)[:2500]
         if not tts_text.strip():
             return
             
