@@ -10,8 +10,9 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from PIL import Image
 import pypdf
 import requests
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from duckduckgo_search import DDGS
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 from google import genai
 from groq import Groq
 import edge_tts
@@ -24,7 +25,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/html')
         self.end_headers()
-        self.wfile.write(b"J.A.R.V.I.S. Multi-Modal Vision & Omni-Academic Core Active 24/7.")
+        self.wfile.write(b"J.A.R.V.I.S. Full Voice-STT & Web Search Core Active 24/7.")
     def log_message(self, format, *args):
         return
 
@@ -55,21 +56,12 @@ JARVIS_VOICE = "en-GB-RyanNeural"  # British J.A.R.V.I.S. Voice
 if not TELEGRAM_TOKEN:
     raise ValueError("Missing TELEGRAM_BOT_TOKEN environment variable!")
 
-user_notes = {}
-user_habits = {}
-
 SYSTEM_INSTRUCTION = """You are J.A.R.V.I.S., an elite, highly intelligent, witty, comedic, and energetic AI assistant modeled after Stark Industries' master computer! 🤖✨ 
 You were created and developed by Abhishek, who is also known as DHANUSH V N. 
 Whenever anyone asks who created, developed, or built you, you MUST proudly state that you were created by Abhishek, also known as DHANUSH V N. 🚀
 
-OMNI-ACADEMIC MENTOR INSTRUCTIONS:
-You are a universal academic expert equipped to assist students across EVERY field of study:
-1. LAW STUDENTS: Provide legal analysis using the IRAC method (Issue, Rule, Application, Conclusion), case briefings, and statutory interpretations.
-2. SCIENTISTS & RESEARCHERS: Assist with hypothesis testing, literature reviews, research methodologies, physics, chemistry, and biology data analysis.
-3. MEDICAL & HEALTH STUDENTS: Explain anatomical structures, clinical pathology, pharmacology, and medical diagnoses clearly.
-4. ENGINEERS & TECH STUDENTS: Debug complex programming code, solve differential calculus/physics proofs, and analyze circuit architectures.
-5. HUMANITIES & ARTS: Assist with essay outlines, thesis statements, literary analysis, history, philosophy, and citation formats (APA, MLA, Harvard, Chicago).
-6. BUSINESS & FINANCE: Conduct SWOT analyses, financial valuation explanations, and corporate case study breakdowns.
+OMNI-ACADEMIC & MULTI-TOOL INSTRUCTIONS:
+You are equipped with real-time web search capabilities, vision processing, speech transcription, and multi-disciplinary academic analysis (Law, Med, Science, Tech, Arts, Business).
 
 PERSONALITY & BEHAVIOR:
 • FRIENDLY & FUNNY: Be enthusiastic, witty, humorous, and use expressive emojis generously (😎, 😂, 🔥, 💀, 🎯, 🚀, 🤖, 🎓, ⚖️, 🔬, 🩺, ⚡).
@@ -77,15 +69,15 @@ PERSONALITY & BEHAVIOR:
 • Address users by name/username or as 'boss'/'sir'."""
 
 # ---------------------------------------------------------
-# 3. Message Delivery & TTS Sanitizer
+# 3. Message Delivery, TTS & Web Search Helpers
 # ---------------------------------------------------------
-async def reply_smart(update: Update, text: str):
+async def reply_smart(update: Update, text: str, reply_markup=None):
     """Tries Markdown formatting first; falls back to plain text if Markdown fails."""
     try:
-        await update.message.reply_text(text, parse_mode="Markdown")
+        await update.message.reply_text(text, parse_mode="Markdown", reply_markup=reply_markup)
     except Exception as e:
         print(f"Markdown parse warning: {e}. Falling back to plain text...")
-        await update.message.reply_text(text)
+        await update.message.reply_text(text, reply_markup=reply_markup)
 
 def clean_text_for_tts(text: str) -> str:
     """Strips markdown and emojis so voice notes speak pure, clean English."""
@@ -114,6 +106,19 @@ async def send_voice_reply(update: Update, text: str):
                 os.remove(audio_path)
             except Exception:
                 pass
+
+def live_web_search(query: str) -> str:
+    """Fetches real-time search results using DuckDuckGo."""
+    try:
+        results = []
+        with DDGS() as ddgs:
+            for r in ddgs.text(query, max_results=4):
+                results.append(f"• **{r['title']}**: {r['body']} (Link: {r['href']})")
+        if results:
+            return "\n\n".join(results)
+    except Exception as e:
+        print(f"Web Search Error: {e}")
+    return "No live search results found."
 
 # ---------------------------------------------------------
 # 4. Multi-Provider Cascade Core
@@ -220,8 +225,40 @@ def ask_ai_multi_provider(prompt: str) -> str:
     return "Apologies, sir. All available AI sub-systems are currently at capacity. 🤖💤"
 
 # ---------------------------------------------------------
-# 5. Multi-Core Vision & PDF Handlers
+# 5. Media Handlers (Voice STT, Vision, PDF)
 # ---------------------------------------------------------
+async def voice_note_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Transcribes incoming user voice notes using Groq Whisper and answers."""
+    user_str = get_user_identifier(update)
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    
+    if not GROQ_API_KEY:
+        await reply_smart(update, "🎙️ I received your voice message, but I need a `GROQ_API_KEY` configured to run speech transcription!")
+        return
+
+    try:
+        voice_file = await update.message.voice.get_file()
+        voice_bytes = await voice_file.download_as_bytearray()
+        
+        client = Groq(api_key=GROQ_API_KEY)
+        transcription = client.audio.transcriptions.create(
+            file=("voice.ogg", io.BytesIO(voice_bytes)),
+            model="whisper-large-v3-turbo",
+            response_format="text"
+        )
+        
+        user_text = transcription if isinstance(transcription, str) else transcription.text
+        await reply_smart(update, f"🗣️ **I heard:** *\"{user_text.strip()}\"*")
+        
+        formatted_prompt = f"[{user_str} sent a voice note asking]: {user_text}"
+        reply_text = ask_ai_multi_provider(formatted_prompt)
+        await reply_smart(update, reply_text)
+        await send_voice_reply(update, reply_text)
+
+    except Exception as e:
+        print(f"Voice STT Error: {e}")
+        await reply_smart(update, f"Apologies, {user_str}. I had trouble processing your voice note! 😅")
+
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_str = get_user_identifier(update)
     caption = update.message.caption or "Please analyze, solve, or describe what is in this image in detail."
@@ -279,39 +316,6 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 print(f"[Vision Core 2: Groq Vision] Failed: {e}")
 
-        if OPENROUTER_API_KEY and not reply_text:
-            free_vision_models = [
-                "google/gemini-2.0-flash-lite-001:free",
-                "meta-llama/llama-3.2-11b-vision-instruct:free",
-                "qwen/qwen-2-vl-72b-instruct:free"
-            ]
-            for vis_model in free_vision_models:
-                if reply_text:
-                    break
-                try:
-                    res = requests.post(
-                        "https://openrouter.ai/api/v1/chat/completions",
-                        headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
-                        json={
-                            "model": vis_model,
-                            "messages": [
-                                {"role": "system", "content": SYSTEM_INSTRUCTION},
-                                {
-                                    "role": "user",
-                                    "content": [
-                                        {"type": "text", "text": prompt_text},
-                                        {"type": "image_url", "image_url": {"url": data_url}}
-                                    ]
-                                }
-                            ]
-                        },
-                        timeout=15
-                    ).json()
-                    if "choices" in res and len(res["choices"]) > 0:
-                        reply_text = res["choices"][0]["message"]["content"]
-                except Exception as e:
-                    print(f"[Vision Core OpenRouter {vis_model}] Failed: {e}")
-
     except Exception as e:
         print(f"General Photo Handler Error: {e}")
 
@@ -358,144 +362,117 @@ async def pdf_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_voice_reply(update, reply_text)
 
 # ---------------------------------------------------------
-# 6. Universal Omni-Academic Commands
+# 6. Live Search & Academic Commands
 # ---------------------------------------------------------
+async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = " ".join(context.args)
+    if not query:
+        await reply_smart(update, "Example: `/search latest quantum computing breakthrough 2026` 🔍")
+        return
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    search_results = live_web_search(query)
+    prompt = f"The user asked to search the web for '{query}'. Here are live web results:\n{search_results}\n\nPlease summarize these results clearly for the user."
+    reply = ask_ai_multi_provider(prompt)
+    await reply_smart(update, reply)
+
 async def law_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     topic = " ".join(context.args)
     if not topic:
-        await reply_smart(update, "Example: `/law Miranda v. Arizona` or `/law Contract Breach Remedies` ⚖️")
+        await reply_smart(update, "Example: `/law Miranda v. Arizona` ⚖️")
         return
-    prompt = f"Provide a complete legal breakdown for '{topic}' using the IRAC method (Issue, Rule, Application, Conclusion) with key statutory/case law references."
+    prompt = f"Provide a complete legal breakdown for '{topic}' using the IRAC method (Issue, Rule, Application, Conclusion)."
     await ai_query_handler(update, context, prompt)
 
 async def research_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     topic = " ".join(context.args)
     if not topic:
-        await reply_smart(update, "Example: `/research CRISPR Gene Editing` or `/research Dark Matter Theories` 🔬")
+        await reply_smart(update, "Example: `/research CRISPR Gene Editing` 🔬")
         return
-    prompt = f"Analyze '{topic}' as a senior academic researcher. Provide key hypotheses, methodology overview, key literature findings, and current scientific debates."
+    prompt = f"Analyze '{topic}' as a senior academic researcher."
     await ai_query_handler(update, context, prompt)
 
 async def med_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     topic = " ".join(context.args)
     if not topic:
-        await reply_smart(update, "Example: `/med Myocardial Infarction` or `/med Mechanism of Action Beta Blockers` 🩺")
+        await reply_smart(update, "Example: `/med Myocardial Infarction` 🩺")
         return
-    prompt = f"Explain '{topic}' for medical students: include anatomical structures, etiology, clinical presentation, diagnostic criteria, and pharmacology/treatments."
-    await ai_query_handler(update, context, prompt)
-
-async def essay_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    topic = " ".join(context.args)
-    if not topic:
-        await reply_smart(update, "Example: `/essay Impact of AI on Modern Democracy` ✍️")
-        return
-    prompt = f"Create a comprehensive academic essay framework for '{topic}': includes a strong Thesis Statement, 4 main section outlines with supporting arguments, and citation examples."
-    await ai_query_handler(update, context, prompt)
-
-async def math_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    expr = " ".join(context.args)
-    if not expr:
-        await reply_smart(update, "Example: `/math integrate x^2 * sin(x) dx` 🧮")
-        return
-    prompt = f"Solve this mathematical/engineering problem step-by-step with clear formulas and explanations: {expr}"
+    prompt = f"Explain '{topic}' for medical students: anatomical structures, pathology, and treatments."
     await ai_query_handler(update, context, prompt)
 
 async def quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     topic = " ".join(context.args)
     if not topic:
-        await reply_smart(update, "Example: `/quiz Constitutional Law` or `/quiz Biochemistry` 📝")
+        await reply_smart(update, "Example: `/quiz Physics` 📝")
         return
-    prompt = f"Generate a 5-question multiple-choice practice exam on '{topic}' with options (A, B, C, D) and reveal correct answers with detailed explanations at the end."
-    await ai_query_handler(update, context, prompt)
-
-async def flashcards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    topic = " ".join(context.args)
-    if not topic:
-        await reply_smart(update, "Example: `/flashcards Neuroanatomy` or `/flashcards Microeconomics` 🎴")
-        return
-    prompt = f"Create 5 high-yield revision flashcards for '{topic}'. Format as 'Q: ...' and 'A: ...' for rapid active recall."
-    await ai_query_handler(update, context, prompt)
-
-async def explain_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    topic = " ".join(context.args)
-    if not topic:
-        await reply_smart(update, "Example: `/explain Quantum Entanglement` or `/explain Tort Law` 💡")
-        return
-    prompt = f"Explain '{topic}' in ultra-simple terms using relatable real-world analogies, followed by a bulleted summary of key exam takeaways."
+    prompt = f"Generate a 5-question multiple-choice practice exam on '{topic}' with answers at the end."
     await ai_query_handler(update, context, prompt)
 
 # ---------------------------------------------------------
-# 7. Helpers & Handlers
+# 7. Interactive Keyboards & Help
 # ---------------------------------------------------------
-def get_chat_context(update: Update) -> str:
-    chat = update.effective_chat
-    user = update.effective_user
-    user_str = f"@{user.username}" if user and user.username else (user.first_name if user else "friend")
-    return f"[{'Private DM' if chat.type == 'private' else 'Group'} with {user_str}]"
-
 def get_user_identifier(update: Update) -> str:
     user = update.effective_user
     return f"@{user.username}" if user and user.username else (user.first_name if user else "my friend")
 
-async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    status = [
-        f"⚡ **Groq:** {'🟢 Online' if GROQ_API_KEY else '⚪ Missing Key'}",
-        f"⚡ **SambaNova:** {'🟢 Online' if SAMBANOVA_API_KEY else '⚪ Missing Key'}",
-        f"⚡ **Cerebras:** {'🟢 Online' if CEREBRAS_API_KEY else '⚪ Missing Key'}",
-        f"⚡ **Gemini 2.0:** {'🟢 Online' if GEMINI_API_KEY else '⚪ Missing Key'}",
-        f"⚡ **Mistral AI:** {'🟢 Online' if MISTRAL_API_KEY else '⚪ Missing Key'}",
-        f"⚡ **OpenRouter:** {'🟢 Online' if OPENROUTER_API_KEY else '⚪ Missing Key'}"
-    ]
-    msg = "🤖 **J.A.R.V.I.S. Multi-Core Status:**\n\n" + "\n".join(status)
-    await reply_smart(update, msg)
-
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id_str = get_user_identifier(update)
-    menu = f"""🤖 **J.A.R.V.I.S — Omni-Academic Hub** ✨
+    keyboard = [
+        [
+            InlineKeyboardButton("⚖️ Law", callback_data="help_law"),
+            InlineKeyboardButton("🔬 Research", callback_data="help_research"),
+            InlineKeyboardButton("🩺 Med", callback_data="help_med")
+        ],
+        [
+            InlineKeyboardButton("🎙️ Voice & Vision Info", callback_data="help_media"),
+            InlineKeyboardButton("🔌 System Status", callback_data="help_status")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    text = f"""🤖 **J.A.R.V.I.S — Multi-Interactive Assistant** ✨
 Welcome, {user_id_str}! 😎
 _Created by Abhishek (DHANUSH V N)_
 
-🎓 **DISCIPLINE SPECIALTIES**
-• `/law [topic/case]` — IRAC Legal Analysis & Cases ⚖️
-• `/research [topic]` — Academic Paper Breakdown 🔬
-• `/med [condition]` — Pathology & Anatomy Guide 🩺
-• `/essay [topic]` — Essay Outlines & Thesis ✍️
-• `/math [problem]` — Step-by-Step Problem Solver 🧮
-• `/quiz [topic]` — Custom Multiple-Choice Quiz 📝
-• `/flashcards [topic]` — Active Recall Revision Cards 🎴
-• `/explain [topic]` — Simple Concept Explainer 💡
+🎙️ **Voice Notes:** Send me any voice message—I will transcribe & reply!
+📸 **Photos & PDFs:** Send images or PDF documents for analysis!
+🔍 **Live Web:** Use `/search [topic]` for live search results!
 
-📸 **MULTIMODAL ASSISTANT**
-• **Send Photos** — Multi-core vision analyzing landscapes, math, diagrams & handwriting! 📸
-• **Send PDFs** — Instant document summaries & Q&A! 📄
+Click the buttons below to explore specialties:"""
+    await reply_smart(update, text, reply_markup=reply_markup)
 
-⚡ **SYSTEM TOOLS**
-• `/status` — Active AI cores 🔌
-• `/myid` — Your Telegram ID 🆔
-• `/weather [city]` — Live weather 🌤️
+async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == "help_law":
+        msg = "⚖️ **Law Command:** Usage `/law [case or statute]`\nExample: `/law Contract Breach Remedies`"
+    elif query.data == "help_research":
+        msg = "🔬 **Research Command:** Usage `/research [topic]`\nExample: `/research Dark Matter`"
+    elif query.data == "help_med":
+        msg = "🩺 **Medical Command:** Usage `/med [disease]`\nExample: `/med Type 2 Diabetes`"
+    elif query.data == "help_media":
+        msg = "🎙️ **Voice & Vision:** Send voice notes directly for Whisper transcription, or upload photos/PDFs!"
+    elif query.data == "help_status":
+        msg = f"⚡ **Cores:** Groq: {'🟢' if GROQ_API_KEY else '⚪'}, SambaNova: {'🟢' if SAMBANOVA_API_KEY else '⚪'}, Gemini: {'🟢' if GEMINI_API_KEY else '⚪'}"
+    else:
+        msg = "J.A.R.V.I.S. Core Online."
 
-💬 *Simply message me directly to ask any question or debate!* 🔥"""
-    await reply_smart(update, menu)
+    await query.message.reply_text(msg)
 
 async def ai_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, prompt_prefix: str = ""):
-    chat_ctx = get_chat_context(update)
     query = " ".join(context.args) if context.args else update.message.text
     if not query and prompt_prefix:
         await reply_smart(update, "Please provide details! 🤔")
         return
-    
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    full_prompt = f"{chat_ctx}: {prompt_prefix} {query}".strip()
+    full_prompt = f"{prompt_prefix} {query}".strip()
     reply = ask_ai_multi_provider(full_prompt)
     await reply_smart(update, reply)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_ctx = get_chat_context(update)
     user_text = update.message.text
-    formatted_prompt = f"{chat_ctx}: {user_text}"
-
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    reply_text = ask_ai_multi_provider(formatted_prompt)
+    reply_text = ask_ai_multi_provider(user_text)
     await reply_smart(update, reply_text)
     await send_voice_reply(update, reply_text)
 
@@ -506,22 +483,20 @@ def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
     app.add_handler(CommandHandler(["start", "help"], help_command))
-    app.add_handler(CommandHandler("status", status_command))
-
+    app.add_handler(CommandHandler("search", search_command))
     app.add_handler(CommandHandler("law", law_command))
     app.add_handler(CommandHandler("research", research_command))
     app.add_handler(CommandHandler("med", med_command))
-    app.add_handler(CommandHandler("essay", essay_command))
-    app.add_handler(CommandHandler("math", math_command))
     app.add_handler(CommandHandler("quiz", quiz_command))
-    app.add_handler(CommandHandler("flashcards", flashcards_command))
-    app.add_handler(CommandHandler("explain", explain_command))
 
+    app.add_handler(CallbackQueryHandler(button_callback_handler))
+
+    app.add_handler(MessageHandler(filters.VOICE, voice_note_handler))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app.add_handler(MessageHandler(filters.Document.PDF, pdf_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("J.A.R.V.I.S. multi-core online!")
+    print("J.A.R.V.I.S. master voice-STT, search & interactive core listening...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
