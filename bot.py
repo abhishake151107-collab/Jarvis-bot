@@ -27,7 +27,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/html')
         self.end_headers()
-        self.wfile.write(b"J.A.R.V.I.S. Loyal Protector Core Active 24/7.")
+        self.wfile.write(b"J.A.R.V.I.S. Expanded Master Core Active 24/7.")
     def log_message(self, format, *args):
         return
 
@@ -518,7 +518,106 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await reply_smart(update, msg)
 
 # ---------------------------------------------------------
-# 7. Menu & Interactive Callback Handlers
+# 7. NEW MODULAR TOOLS
+# ---------------------------------------------------------
+async def read_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    url = context.args[0] if context.args else ""
+    if not url or not (url.startswith("http://") or url.startswith("https://")):
+        await reply_smart(update, "Example: `/read https://example.com/article` 📖")
+        return
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        html_res = requests.get(url, headers=headers, timeout=10).text
+        clean_text = re.sub(r'<[^>]+>', ' ', html_res)
+        clean_text = " ".join(clean_text.split())[:5000]
+        prompt = f"Summarize the key takeaways from this web article in clear bullet points:\n\n{clean_text}"
+        summary = ask_ai_multi_provider(prompt)
+        await reply_smart(update, f"📖 **Article Summary ({url}):**\n\n{summary}")
+    except Exception as e:
+        await reply_smart(update, f"Apologies, boss. Unable to read that link. Error: `{e}`")
+
+async def dict_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    word = context.args[0] if context.args else ""
+    if not word:
+        await reply_smart(update, "Example: `/dict quantum` 📚")
+        return
+    try:
+        res = requests.get(f"https://api.dictionaryapi.dev/api/v2/entries/en/{urllib.parse.quote(word)}", timeout=5).json()
+        if isinstance(res, list) and len(res) > 0:
+            entry = res[0]
+            phonetic = entry.get("phonetic", "N/A")
+            meanings = entry.get("meanings", [])
+            msg = f"📚 **Dictionary: {word.capitalize()}** `[{phonetic}]`\n\n"
+            for m in meanings[:3]:
+                part = m.get("partOfSpeech", "")
+                defs = m.get("definitions", [])
+                if defs:
+                    msg += f"• *({part})* {defs[0].get('definition')}\n"
+            await reply_smart(update, msg)
+        else:
+            await reply_smart(update, f"Word '{word}' not found in dictionary, sir.")
+    except Exception as e:
+        print(f"Dictionary Error: {e}")
+        await reply_smart(update, "Dictionary search currently unavailable.")
+
+async def convert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) < 3:
+        await reply_smart(update, "Example: `/convert 100 USD INR` 🔀")
+        return
+    try:
+        amount = float(context.args[0])
+        from_curr = context.args[1].upper()
+        to_curr = context.args[2].upper()
+        res = requests.get(f"https://open.er-api.com/v6/latest/{from_curr}", timeout=5).json()
+        if res.get("result") == "success" and to_curr in res.get("rates", {}):
+            rate = res["rates"][to_curr]
+            converted = amount * rate
+            await reply_smart(update, f"🔀 **Currency Conversion:**\n• `{amount:,.2f} {from_curr}` = **`{converted:,.2f} {to_curr}`**\n• Exchange Rate: `1 {from_curr} = {rate:.4f} {to_curr}`")
+        else:
+            await reply_smart(update, f"Unable to convert from {from_curr} to {to_curr}. Please verify currency codes.")
+    except Exception as e:
+        print(f"Convert Error: {e}")
+        await reply_smart(update, "Currency conversion service error.")
+
+async def github_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    repo_arg = context.args[0] if context.args else ""
+    if "/" not in repo_arg:
+        await reply_smart(update, "Example: `/github torvalds/linux` 🐙")
+        return
+    try:
+        res = requests.get(f"https://api.github.com/repos/{repo_arg}", timeout=5).json()
+        if "name" in res:
+            stars = res.get("stargazers_count", 0)
+            forks = res.get("forks_count", 0)
+            issues = res.get("open_issues_count", 0)
+            desc = res.get("description", "No description provided.")
+            lang = res.get("language", "Unknown")
+            await reply_smart(update, f"🐙 **GitHub Repository:** `{res['full_name']}`\n\n📝 _{desc}_\n\n• 🌟 **Stars:** {stars:,}\n• 🍴 **Forks:** {forks:,}\n• 🐛 **Open Issues:** {issues:,}\n• 💻 **Language:** {lang}")
+        else:
+            await reply_smart(update, f"Repository `{repo_arg}` not found.")
+    except Exception as e:
+        print(f"GitHub Error: {e}")
+        await reply_smart(update, "GitHub API lookup failed.")
+
+async def poll_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    raw_text = " ".join(context.args)
+    if "|" not in raw_text:
+        await reply_smart(update, "Example: `/poll What should we build? | Option A | Option B` 📊")
+        return
+    parts = [p.strip() for p in raw_text.split("|") if p.strip()]
+    if len(parts) < 3:
+        await reply_smart(update, "Please provide a question and at least 2 options separated by `|`!")
+        return
+    question = parts[0]
+    options = parts[1:]
+    try:
+        await context.bot.send_poll(chat_id=update.effective_chat.id, question=question, options=options, is_anonymous=False)
+    except Exception as e:
+        await reply_smart(update, f"Failed to create poll: `{e}`")
+
+# ---------------------------------------------------------
+# 8. Menu & Interactive Callback Handlers
 # ---------------------------------------------------------
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     meta = get_chat_metadata(update)
@@ -550,7 +649,7 @@ Active location: {chat_info}
 
 🎙️ **Voice Notes:** Send me any voice message—I will transcribe & reply!
 📸 **Photos & PDFs:** Send images or PDF documents for analysis!
-🔍 **Live Web:** Use `/search [topic]` for live search results!
+🔍 **Live Web:** Use `/search [topic]` or `/read [url]` for live web access!
 
 Click the interactive buttons below to explore sub-systems:"""
     await reply_smart(update, text, reply_markup=reply_markup)
@@ -576,14 +675,14 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
     elif query.data == "help_status":
         msg = f"⚡ **Cores:** Groq: {'🟢' if GROQ_API_KEY else '⚪'}, SambaNova: {'🟢' if SAMBANOVA_API_KEY else '⚪'}, Gemini: {'🟢' if GEMINI_API_KEY else '⚪'}, OpenRouter: {'🟢' if OPENROUTER_API_KEY else '⚪'}"
     elif query.data == "help_tools":
-        msg = "🛠️ **Stark Utilities:**\n• `/image [prompt]` — Concept Generator 🎨\n• `/qr [link]` — QR Encoder 📱\n• `/remind [mins] [task]` — Timer ⏰\n• `/note [text]` / `/notes` — Encrypted Storage 💾\n• `/weather [city]` — Satellite Forecast 🌤️\n• `/crypto [coin]` — Market Valuation 🪙\n• `/translate [lang] [text]` — Translator 🌐\n• `/calc [expr]` — Math Engine 🧮\n• `/search [topic]` — Satellite Search 🔍\n• `/clear` — Reset Chat Memory 🧹"
+        msg = "🛠️ **Stark Utilities:**\n• `/image [prompt]` — Concept Generator 🎨\n• `/qr [link]` — QR Encoder 📱\n• `/remind [mins] [task]` — Timer ⏰\n• `/note [text]` / `/notes` — Encrypted Storage 💾\n• `/weather [city]` — Satellite Forecast 🌤️\n• `/crypto [coin]` — Market Valuation 🪙\n• `/convert [amt] [from] [to]` — Currency Convert 🔀\n• `/read [url]` — Article Summarizer 📖\n• `/dict [word]` — Dictionary Lookup 📚\n• `/github [repo]` — GitHub Inspector 🐙\n• `/poll [q] | [opt1] | [opt2]` — Poll Creator 📊\n• `/translate [lang] [text]` — Translator 🌐\n• `/calc [expr]` — Math Engine 🧮\n• `/search [topic]` — Satellite Search 🔍\n• `/clear` — Reset Chat Memory 🧹"
     else:
         msg = "J.A.R.V.I.S. Sub-System Active."
 
     await query.message.reply_text(msg)
 
 # ---------------------------------------------------------
-# 8. Media & General Message Handlers
+# 9. Media & General Message Handlers
 # ---------------------------------------------------------
 async def voice_note_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     meta = get_chat_metadata(update)
@@ -694,7 +793,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_voice_reply(update, reply_text)
 
 # ---------------------------------------------------------
-# 9. Application Launch
+# 10. Application Launch
 # ---------------------------------------------------------
 def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
@@ -733,13 +832,20 @@ def main():
     app.add_handler(CommandHandler("clear", clear_command))
     app.add_handler(CommandHandler("search", search_command))
 
+    # New Modular Tools
+    app.add_handler(CommandHandler("read", read_command))
+    app.add_handler(CommandHandler("dict", dict_command))
+    app.add_handler(CommandHandler("convert", convert_command))
+    app.add_handler(CommandHandler("github", github_command))
+    app.add_handler(CommandHandler("poll", poll_command))
+
     # Handlers
     app.add_handler(MessageHandler(filters.VOICE, voice_note_handler))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app.add_handler(MessageHandler(filters.Document.PDF, pdf_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("J.A.R.V.I.S. protector core listening...")
+    print("J.A.R.V.I.S. expanded master core listening...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
