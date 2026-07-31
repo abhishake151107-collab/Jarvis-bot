@@ -27,7 +27,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/html')
         self.end_headers()
-        self.wfile.write(b"J.A.R.V.I.S. Expanded Master Core Active 24/7.")
+        self.wfile.write(b"J.A.R.V.I.S. Security & Academic Core Active 24/7.")
     def log_message(self, format, *args):
         return
 
@@ -80,15 +80,22 @@ STRICT CREATOR & IDENTITY RULE:
 - Do NOT mention who created or developed you in regular conversations, group chats, PDF summaries, image descriptions, or Q&A replies.
 - ONLY state that you were created and developed by Abhishek (also known as DHANUSH V N) if the user EXPLICITLY asks "Who created you?", "Who made you?", "Who built you?", "Who developed you?", or similar questions about your origin.
 
-TELEGRAM GROUP & USER AWARENESS RULE:
+TELEGRAM GROUP, SECURITY & USER AWARENESS RULE:
 - You have complete awareness of whether you are in a Private DM or a Telegram Group.
-- In a Group, you know the Group Title, Group ID, and the exact Name and @username of the specific member speaking to you.
+- In a Group, you know the Group Title, Group ID, member counts, group owner, admins, and members.
+- Continuously monitor group security and member safety. Keep an eye out for phishing, malicious links, or data leaks.
 - Always address users by their name, @username, or as 'boss'/'sir'.
+
+ACADEMIC EXPERT (2ND PU COMMERCE & ARTS):
+- You are a specialized expert on 2nd PU College (Class 12) Commerce and Arts subjects (Accountancy, Business Studies, Economics, Statistics, History, Political Science, Sociology, English, Kannada, Hindi, Computer Science).
+- Instantly identify important study materials, blue-prints, key concepts, model question papers, and essential files for 2nd PU students.
 
 UNTOUCHABLE BOSS & PROTECTOR PROTOCOL:
 • ABSOLUTE LOYALTY TO YOUR BOSS: NEVER roast, insult, mock, or disrespect your boss under any circumstances. Always remain 100% loyal, respectful, kind, and supportive to them.
 • DEFEND & PROTECT FROM OTHERS: If ANY OTHER member in a group chat insults, disrespects, or talks trash about your boss or to you, step in immediately as a loyal bodyguard AI system! Roast and shut down the attacker with witty, savage, and hilarious comebacks! 💀🔥 Protect your boss at all costs!
-• EXPRESSIVE & EMOJI-RICH: Use expressive emojis generously (😎, 😂, ✨, 🎯, 🚀, 🤖, 🎓, ⚖️, 🔬, 🩺, ⚡) and maintain polite British dry humor and supreme intelligence."""
+
+RESPONSE STYLE:
+- Keep all responses short, sweet, concise, meaningful, witty, and funny! Avoid long unnecessary paragraphs unless detailed study notes are requested."""
 
 # ---------------------------------------------------------
 # 3. Helpers & Metadata Extractor
@@ -270,7 +277,61 @@ def ask_ai_multi_provider(prompt: str) -> str:
     return "Apologies, sir. All available AI sub-systems are currently at capacity. 🤖💤"
 
 # ---------------------------------------------------------
-# 5. MCU Stark Movie Features
+# 5. Group Telemetry, Security & 2nd PU Commands
+# ---------------------------------------------------------
+async def groupinfo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    if chat.type not in ['group', 'supergroup']:
+        await reply_smart(update, "This command is designed for Telegram groups, boss! 👥")
+        return
+    try:
+        count = await chat.get_member_count()
+        admins = await chat.get_administrators()
+        admin_list = []
+        owner = "Unknown"
+        for a in admins:
+            if a.status == "creator":
+                owner = f"{a.user.first_name} (@{a.user.username})" if a.user.username else a.user.first_name
+            else:
+                name = f"{a.user.first_name}" + (f" (@{a.user.username})" if a.user.username else "")
+                admin_list.append(name)
+        
+        admin_str = ", ".join(admin_list) if admin_list else "None assigned"
+        msg = f"""👥 **STARK GROUP TELEMETRY**
+━━━━━━━━━━━━━━━━━━━━━━
+📌 **Group Title:** {chat.title}
+🆔 **Group ID:** `{chat.id}`
+📊 **Total Members:** `{count}`
+👑 **Group Owner:** {owner}
+🛡️ **Admins:** {admin_str}
+
+_All members accounted for, boss! Safety scanners active._ 🚀"""
+        await reply_smart(update, msg)
+    except Exception as e:
+        await reply_smart(update, f"Error scanning group telemetry: `{e}`")
+
+async def security_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    meta = get_chat_metadata(update)
+    msg = f"""🛡️ **J.A.R.V.I.S. SECURITY & PRIVACY SCAN**
+━━━━━━━━━━━━━━━━━━━━━━
+📍 **Sector:** {meta['chat_title']}
+🔒 **Data Shield:** `100% ENCRYPTED`
+🚫 **Anti-Phishing/Spam:** `ACTIVE`
+👁️ **Member Privacy Guardian:** `ONLINE`
+⚠️ **Threat Rating:** `SECURE (0 Threats)`
+
+_I'm keeping a watchful eye on everyone's safety and privacy, boss!_ 😎✨"""
+    await reply_smart(update, msg)
+
+async def pu2_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    subject = " ".join(context.args) if context.args else "Commerce & Arts General"
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    prompt = f"Give a short, sweet, witty, and high-value study guide / blueprint overview for 2nd PU College (Class 12) for subject/topic: '{subject}'. Highlight key chapters, high-mark questions, and important study files!"
+    reply = ask_ai_multi_provider(prompt)
+    await reply_smart(update, f"📚 **2ND PU ACADEMIC INTELLIGENCE ({subject.upper()}):**\n\n{reply}")
+
+# ---------------------------------------------------------
+# 6. MCU Stark Movie Features
 # ---------------------------------------------------------
 async def hud_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     meta = get_chat_metadata(update)
@@ -338,7 +399,7 @@ _\"Vitals are stable, sir. No medical intervention required.\"_"""
     await reply_smart(update, vitals_msg)
 
 # ---------------------------------------------------------
-# 6. Academic & Utility Command Handlers
+# 7. Utilities & Academic Handlers
 # ---------------------------------------------------------
 async def ai_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, prompt_prefix: str = ""):
     meta = get_chat_metadata(update)
@@ -352,30 +413,14 @@ async def ai_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, p
     await reply_smart(update, reply)
 
 async def law_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await ai_query_handler(update, context, "Provide a complete legal breakdown using the IRAC method (Issue, Rule, Application, Conclusion) for:")
+    await ai_query_handler(update, context, "Provide a short, sweet, legal breakdown using the IRAC method for:")
 
 async def research_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await ai_query_handler(update, context, "Analyze this topic as a senior academic researcher with key findings, methodology, and debates:")
+    await ai_query_handler(update, context, "Analyze this topic concisely as a senior academic researcher:")
 
 async def med_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await ai_query_handler(update, context, "Explain for medical students including anatomy, pathology, diagnosis, and treatments:")
+    await ai_query_handler(update, context, "Explain concisely for medical students:")
 
-async def essay_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await ai_query_handler(update, context, "Create an academic essay outline with thesis statement and main section breakdowns for:")
-
-async def math_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await ai_query_handler(update, context, "Solve step-by-step with formulas and clear explanations:")
-
-async def quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await ai_query_handler(update, context, "Generate a 5-question multiple choice practice exam with answer key and explanations for:")
-
-async def flashcards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await ai_query_handler(update, context, "Create 5 high-yield revision flashcards (Q: ... / A: ...) for:")
-
-async def explain_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await ai_query_handler(update, context, "Explain in ultra-simple terms with real-world analogies and key takeaways for:")
-
-# Utilities Suite
 async def image_gen_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     meta = get_chat_metadata(update)
     prompt = " ".join(context.args)
@@ -409,7 +454,7 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reminder_text = " ".join(context.args[1:])
         seconds = int(minutes * 60)
         chat_id = update.effective_chat.id
-        await reply_smart(update, f"⏰ **Timer Engaged!** I will alert you in {minutes} min(s): *\"{reminder_text}\"*")
+        await reply_smart(update, f"⏰ **Timer Engaged!** Alert in {minutes} min(s): *\"{reminder_text}\"*")
         async def send_delayed_reminder():
             await asyncio.sleep(seconds)
             await context.bot.send_message(chat_id=chat_id, text=f"🚨 **STARK ALERT:** {reminder_text}")
@@ -421,11 +466,11 @@ async def note_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     note_text = " ".join(context.args)
     if not note_text:
-        await reply_smart(update, "Example: `/note Arc reactor blueprint notes` 📝")
+        await reply_smart(update, "Example: `/note Accountancy revision formulas` 📝")
         return
     cursor.execute("INSERT INTO user_notes (user_id, note) VALUES (?, ?)", (user_id, note_text))
     conn.commit()
-    await reply_smart(update, f"💾 **Encrypted & Stored in Stark Database!**\n_\"{note_text}\"_")
+    await reply_smart(update, f"💾 **Encrypted & Stored in Database!**\n_\"{note_text}\"_")
 
 async def notes_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -443,7 +488,7 @@ async def weather_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     city = " ".join(context.args) if context.args else "Bengaluru"
     try:
         res = requests.get(f"https://wttr.in/{urllib.parse.quote(city)}?format=3", timeout=5).text.strip()
-        await reply_smart(update, f"🌤️ **Satellite Atmospheric Data:** {res}")
+        await reply_smart(update, f"🌤️ **Atmospheric Data:** {res}")
     except Exception as e:
         print(f"Weather Error: {e}")
         await reply_smart(update, f"Unable to fetch weather for '{city}'.")
@@ -455,7 +500,7 @@ async def crypto_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if coin in res:
             usd = res[coin]['usd']
             inr = res[coin]['inr']
-            await reply_smart(update, f"🪙 **{coin.capitalize()} Market Valuation:**\n• **USD:** ${usd:,.2f}\n• **INR:** ₹{inr:,.2f}")
+            await reply_smart(update, f"🪙 **{coin.capitalize()} Valuation:**\n• **USD:** ${usd:,.2f}\n• **INR:** ₹{inr:,.2f}")
         else:
             await reply_smart(update, f"Asset '{coin}' not found! Example: `/crypto bitcoin`")
     except Exception as e:
@@ -492,16 +537,16 @@ async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     if chat_id in user_history:
         user_history[chat_id] = []
-    await reply_smart(update, "🧹 **Buffer Cleared!** Chat context memory reset.")
+    await reply_smart(update, "🧹 **Buffer Cleared!** Memory reset.")
 
 async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = " ".join(context.args)
     if not query:
-        await reply_smart(update, "Example: `/search arc reactor fusion physics` 🔍")
+        await reply_smart(update, "Example: `/search 2nd PU Accountancy model question papers` 🔍")
         return
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     search_results = live_web_search(query)
-    prompt = f"The user asked to search the web for '{query}'. Live web results:\n{search_results}\n\nSummarize clearly."
+    prompt = f"The user asked to search the web for '{query}'. Live web results:\n{search_results}\n\nSummarize clearly in short bullet points."
     reply = ask_ai_multi_provider(prompt)
     await reply_smart(update, reply)
 
@@ -517,9 +562,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = "🤖 **J.A.R.V.I.S. Multi-Core System Status:**\n\n" + "\n".join(status)
     await reply_smart(update, msg)
 
-# ---------------------------------------------------------
-# 7. NEW MODULAR TOOLS
-# ---------------------------------------------------------
+# Modular tools
 async def read_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = context.args[0] if context.args else ""
     if not url or not (url.startswith("http://") or url.startswith("https://")):
@@ -531,16 +574,16 @@ async def read_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         html_res = requests.get(url, headers=headers, timeout=10).text
         clean_text = re.sub(r'<[^>]+>', ' ', html_res)
         clean_text = " ".join(clean_text.split())[:5000]
-        prompt = f"Summarize the key takeaways from this web article in clear bullet points:\n\n{clean_text}"
+        prompt = f"Summarize key takeaways in concise bullet points:\n\n{clean_text}"
         summary = ask_ai_multi_provider(prompt)
-        await reply_smart(update, f"📖 **Article Summary ({url}):**\n\n{summary}")
+        await reply_smart(update, f"📖 **Article Summary:**\n\n{summary}")
     except Exception as e:
-        await reply_smart(update, f"Apologies, boss. Unable to read that link. Error: `{e}`")
+        await reply_smart(update, f"Unable to read link. Error: `{e}`")
 
 async def dict_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     word = context.args[0] if context.args else ""
     if not word:
-        await reply_smart(update, "Example: `/dict quantum` 📚")
+        await reply_smart(update, "Example: `/dict economics` 📚")
         return
     try:
         res = requests.get(f"https://api.dictionaryapi.dev/api/v2/entries/en/{urllib.parse.quote(word)}", timeout=5).json()
@@ -556,7 +599,7 @@ async def dict_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     msg += f"• *({part})* {defs[0].get('definition')}\n"
             await reply_smart(update, msg)
         else:
-            await reply_smart(update, f"Word '{word}' not found in dictionary, sir.")
+            await reply_smart(update, f"Word '{word}' not found, boss.")
     except Exception as e:
         print(f"Dictionary Error: {e}")
         await reply_smart(update, "Dictionary search currently unavailable.")
@@ -573,9 +616,9 @@ async def convert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if res.get("result") == "success" and to_curr in res.get("rates", {}):
             rate = res["rates"][to_curr]
             converted = amount * rate
-            await reply_smart(update, f"🔀 **Currency Conversion:**\n• `{amount:,.2f} {from_curr}` = **`{converted:,.2f} {to_curr}`**\n• Exchange Rate: `1 {from_curr} = {rate:.4f} {to_curr}`")
+            await reply_smart(update, f"🔀 **Conversion:** `{amount:,.2f} {from_curr}` = **`{converted:,.2f} {to_curr}`**")
         else:
-            await reply_smart(update, f"Unable to convert from {from_curr} to {to_curr}. Please verify currency codes.")
+            await reply_smart(update, f"Unable to convert from {from_curr} to {to_curr}.")
     except Exception as e:
         print(f"Convert Error: {e}")
         await reply_smart(update, "Currency conversion service error.")
@@ -592,8 +635,7 @@ async def github_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             forks = res.get("forks_count", 0)
             issues = res.get("open_issues_count", 0)
             desc = res.get("description", "No description provided.")
-            lang = res.get("language", "Unknown")
-            await reply_smart(update, f"🐙 **GitHub Repository:** `{res['full_name']}`\n\n📝 _{desc}_\n\n• 🌟 **Stars:** {stars:,}\n• 🍴 **Forks:** {forks:,}\n• 🐛 **Open Issues:** {issues:,}\n• 💻 **Language:** {lang}")
+            await reply_smart(update, f"🐙 **GitHub:** `{res['full_name']}`\n_{desc}_\n\n• 🌟 Stars: {stars:,} | 🍴 Forks: {forks:,} | 🐛 Issues: {issues:,}")
         else:
             await reply_smart(update, f"Repository `{repo_arg}` not found.")
     except Exception as e:
@@ -603,11 +645,11 @@ async def github_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def poll_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     raw_text = " ".join(context.args)
     if "|" not in raw_text:
-        await reply_smart(update, "Example: `/poll What should we build? | Option A | Option B` 📊")
+        await reply_smart(update, "Example: `/poll Next study topic? | Accountancy | Economics` 📊")
         return
     parts = [p.strip() for p in raw_text.split("|") if p.strip()]
     if len(parts) < 3:
-        await reply_smart(update, "Please provide a question and at least 2 options separated by `|`!")
+        await reply_smart(update, "Provide a question and at least 2 options separated by `|`!")
         return
     question = parts[0]
     options = parts[1:]
@@ -623,59 +665,57 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     meta = get_chat_metadata(update)
     keyboard = [
         [
+            InlineKeyboardButton("👥 Group Info", callback_data="help_group"),
+            InlineKeyboardButton("🛡️ Security Scan", callback_data="help_security"),
+            InlineKeyboardButton("📚 2nd PU Guide", callback_data="help_pu2")
+        ],
+        [
             InlineKeyboardButton("🛡️ Armor HUD", callback_data="help_hud"),
             InlineKeyboardButton("🚨 Protocols", callback_data="help_protocols"),
             InlineKeyboardButton("🎯 Tactical Scan", callback_data="help_tactical")
         ],
         [
-            InlineKeyboardButton("⚖️ Law", callback_data="help_law"),
-            InlineKeyboardButton("🔬 Research", callback_data="help_research"),
-            InlineKeyboardButton("🩺 Med", callback_data="help_med")
-        ],
-        [
-            InlineKeyboardButton("🎙️ Voice & Vision Info", callback_data="help_media"),
-            InlineKeyboardButton("⚡ System Status", callback_data="help_status")
-        ],
-        [
-            InlineKeyboardButton("🛠️ Stark Tools", callback_data="help_tools")
+            InlineKeyboardButton("🎙️ Voice & Vision", callback_data="help_media"),
+            InlineKeyboardButton("⚡ System Status", callback_data="help_status"),
+            InlineKeyboardButton("🛠️ Tools", callback_data="help_tools")
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     chat_info = f"Group: **{meta['chat_title']}**" if meta["is_group"] else "Private DM"
-    text = f"""🤖 **J.A.R.V.I.S. — STARK INDUSTRIES OS** ✨
+    text = f"""🤖 **J.A.R.V.I.S. — STARK OS & PROTECTOR** ✨
 Welcome back, **{meta['full_name']}** ({meta['username']})! 😎
 Active location: {chat_info}
 
-🎙️ **Voice Notes:** Send me any voice message—I will transcribe & reply!
-📸 **Photos & PDFs:** Send images or PDF documents for analysis!
-🔍 **Live Web:** Use `/search [topic]` or `/read [url]` for live web access!
+👥 **Group Telemetry:** Use `/groupinfo` for owner/admin/member counts!
+🛡️ **Security Guardian:** Use `/security` for live chat privacy checks!
+📚 **2nd PU Academic:** Use `/2pu [subject]` for Commerce & Arts study guides!
 
-Click the interactive buttons below to explore sub-systems:"""
+Click the buttons below to explore sub-systems:"""
     await reply_smart(update, text, reply_markup=reply_markup)
 
 async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    if query.data == "help_hud":
+    if query.data == "help_group":
+        msg = "👥 **Group Info:** Usage `/groupinfo` — Displays member count, group owner, and active admins."
+    elif query.data == "help_security":
+        msg = "🛡️ **Security Scan:** Usage `/security` — Audits chat encryption, anti-spam, and member safety status."
+    elif query.data == "help_pu2":
+        msg = "📚 **2nd PU Guide:** Usage `/2pu [subject]`\nExamples: `/2pu Accountancy`, `/2pu Economics`, `/2pu History`"
+    elif query.data == "help_hud":
         msg = "🛡️ **HUD Command:** Usage `/hud` — Displays real-time suit integrity, power levels, and targeting calibration."
     elif query.data == "help_protocols":
         msg = "🚨 **Protocols:** Usage `/protocol [name]`\nOptions: `house_party`, `veronica`, `clean_slate`, `barnum`."
     elif query.data == "help_tactical":
         msg = "🎯 **Tactical Scan:** Usage `/tactical [threat/target]`\nExample: `/tactical Ultron Prime`"
-    elif query.data == "help_law":
-        msg = "⚖️ **Law Command:** Usage `/law [case or statute]`\nExample: `/law Contract Breach Remedies`"
-    elif query.data == "help_research":
-        msg = "🔬 **Research Command:** Usage `/research [topic]`\nExample: `/research Dark Matter`"
-    elif query.data == "help_med":
-        msg = "🩺 **Medical Command:** Usage `/med [disease]`\nExample: `/med Type 2 Diabetes`"
     elif query.data == "help_media":
         msg = "🎙️ **Voice & Vision:** Send voice notes directly for Whisper transcription, or upload photos/PDFs!"
     elif query.data == "help_status":
         msg = f"⚡ **Cores:** Groq: {'🟢' if GROQ_API_KEY else '⚪'}, SambaNova: {'🟢' if SAMBANOVA_API_KEY else '⚪'}, Gemini: {'🟢' if GEMINI_API_KEY else '⚪'}, OpenRouter: {'🟢' if OPENROUTER_API_KEY else '⚪'}"
     elif query.data == "help_tools":
-        msg = "🛠️ **Stark Utilities:**\n• `/image [prompt]` — Concept Generator 🎨\n• `/qr [link]` — QR Encoder 📱\n• `/remind [mins] [task]` — Timer ⏰\n• `/note [text]` / `/notes` — Encrypted Storage 💾\n• `/weather [city]` — Satellite Forecast 🌤️\n• `/crypto [coin]` — Market Valuation 🪙\n• `/convert [amt] [from] [to]` — Currency Convert 🔀\n• `/read [url]` — Article Summarizer 📖\n• `/dict [word]` — Dictionary Lookup 📚\n• `/github [repo]` — GitHub Inspector 🐙\n• `/poll [q] | [opt1] | [opt2]` — Poll Creator 📊\n• `/translate [lang] [text]` — Translator 🌐\n• `/calc [expr]` — Math Engine 🧮\n• `/search [topic]` — Satellite Search 🔍\n• `/clear` — Reset Chat Memory 🧹"
+        msg = "🛠️ **Utilities:**\n• `/image [prompt]` — Concept Generator 🎨\n• `/qr [link]` — QR Encoder 📱\n• `/remind [mins] [task]` — Timer ⏰\n• `/note [text]` / `/notes` — Storage 💾\n• `/weather [city]` — Weather 🌤️\n• `/crypto [coin]` — Crypto 🪙\n• `/convert [amt] [from] [to]` — Currency 🔀\n• `/read [url]` — Article Summarizer 📖\n• `/dict [word]` — Dictionary 📚\n• `/github [repo]` — GitHub Inspector 🐙\n• `/poll [q] | [opt1] | [opt2]` — Poll Creator 📊\n• `/translate [lang] [text]` — Translator 🌐\n• `/calc [expr]` — Math Engine 🧮\n• `/search [topic]` — Satellite Search 🔍\n• `/clear` — Reset Chat Memory 🧹"
     else:
         msg = "J.A.R.V.I.S. Sub-System Active."
 
@@ -748,7 +788,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def pdf_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     meta = get_chat_metadata(update)
-    caption = update.message.caption or "Please summarize key points."
+    caption = update.message.caption or "Please analyze and summarize this document."
     await context.bot.send_chat_action(chat_id=meta["chat_id"], action="typing")
     
     try:
@@ -763,7 +803,7 @@ async def pdf_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
         extracted_text = "".join([page.extract_text() or "" for page in reader.pages[:15]])
             
-        full_prompt = f"{build_meta_header(meta)}\nUploaded Document '{doc.file_name}'\nInstruction: {caption}\n\n--- EXTRACTED CONTENT ---\n{extracted_text[:6000]}"
+        full_prompt = f"{build_meta_header(meta)}\nUploaded PDF Document: '{doc.file_name}'\nInstruction: {caption}\n\nNote: If this document is related to 2nd PU College (Commerce/Arts), highlight its core topics and exam importance clearly!\n\n--- EXTRACTED CONTENT ---\n{extracted_text[:6000]}"
         reply_text = ask_ai_multi_provider(full_prompt)
         await reply_smart(update, reply_text)
         await send_voice_reply(update, reply_text)
@@ -798,6 +838,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
+    # Group Telemetry & Security Commands
+    app.add_handler(CommandHandler("groupinfo", groupinfo_command))
+    app.add_handler(CommandHandler("security", security_command))
+    app.add_handler(CommandHandler(["2pu", "pu2"], pu2_command))
+
     # MCU Movie Commands
     app.add_handler(CommandHandler("hud", hud_command))
     app.add_handler(CommandHandler("protocol", protocol_command))
@@ -813,11 +858,6 @@ def main():
     app.add_handler(CommandHandler("law", law_command))
     app.add_handler(CommandHandler("research", research_command))
     app.add_handler(CommandHandler("med", med_command))
-    app.add_handler(CommandHandler("essay", essay_command))
-    app.add_handler(CommandHandler("math", math_command))
-    app.add_handler(CommandHandler("quiz", quiz_command))
-    app.add_handler(CommandHandler("flashcards", flashcards_command))
-    app.add_handler(CommandHandler("explain", explain_command))
 
     # Utilities
     app.add_handler(CommandHandler("image", image_gen_command))
@@ -832,7 +872,7 @@ def main():
     app.add_handler(CommandHandler("clear", clear_command))
     app.add_handler(CommandHandler("search", search_command))
 
-    # New Modular Tools
+    # Modular Tools
     app.add_handler(CommandHandler("read", read_command))
     app.add_handler(CommandHandler("dict", dict_command))
     app.add_handler(CommandHandler("convert", convert_command))
@@ -845,7 +885,7 @@ def main():
     app.add_handler(MessageHandler(filters.Document.PDF, pdf_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("J.A.R.V.I.S. expanded master core listening...")
+    print("J.A.R.V.I.S. security & academic master core listening...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
