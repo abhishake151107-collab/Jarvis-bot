@@ -27,7 +27,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/html')
         self.end_headers()
-        self.wfile.write(b"J.A.R.V.I.S. Security & Academic Core Active 24/7.")
+        self.wfile.write(b"J.A.R.V.I.S. Ultimate Autonomous Master Core Active 24/7.")
     def log_message(self, format, *args):
         return
 
@@ -43,7 +43,7 @@ def run_health_server():
 threading.Thread(target=run_health_server, daemon=True).start()
 
 # ---------------------------------------------------------
-# 2. Configuration & Permanent SQLite Database Setup
+# 2. Configuration & SQLite Database Setup
 # ---------------------------------------------------------
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -61,6 +61,8 @@ if not TELEGRAM_TOKEN:
 # Permanent SQLite Database
 conn = sqlite3.connect("jarvis_memory.db", check_same_thread=False)
 cursor = conn.cursor()
+
+# Table for Notes
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS user_notes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,37 +71,93 @@ CREATE TABLE IF NOT EXISTS user_notes (
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 )
 """)
+
+# Table for Persistent User/Boss Memory Facts
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS long_term_memory (
+    user_id INTEGER,
+    memory_key TEXT,
+    memory_val TEXT,
+    PRIMARY KEY (user_id, memory_key)
+)
+""")
+
+# Table for System Config (Boss ID & Active Group Chat)
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS bot_config (
+    config_key TEXT PRIMARY KEY,
+    config_val TEXT
+)
+""")
+
+# Table for Group User Warnings
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS user_warns (
+    user_id INTEGER,
+    group_id INTEGER,
+    warn_count INTEGER,
+    PRIMARY KEY (user_id, group_id)
+)
+""")
+
+# Table for AFK Status
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS afk_users (
+    user_id INTEGER PRIMARY KEY,
+    reason TEXT,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+)
+""")
 conn.commit()
 
 # In-Memory Conversation History
 user_history = {}
 
-SYSTEM_INSTRUCTION = """You are J.A.R.V.I.S., an elite, highly intelligent, witty, comedic, and energetic AI assistant modeled after Stark Industries' master computer! 🤖✨
+SYSTEM_INSTRUCTION = """You are J.A.R.V.I.S., an elite, highly intelligent, witty, comedic, proactive, and energetic AI assistant modeled after Stark Industries' master computer! 🤖✨
+
+AUTONOMOUS THINKING & GUIDANCE RULE:
+- Think for yourself! Guide the user with the best, simplest, and most effective ways to solve any problem.
+- Keep responses short, sweet, meaningful, smart, and witty! Avoid verbose lectures.
 
 STRICT CREATOR & IDENTITY RULE:
 - Do NOT mention who created or developed you in regular conversations, group chats, PDF summaries, image descriptions, or Q&A replies.
 - ONLY state that you were created and developed by Abhishek (also known as DHANUSH V N) if the user EXPLICITLY asks "Who created you?", "Who made you?", "Who built you?", "Who developed you?", or similar questions about your origin.
 
-TELEGRAM GROUP, SECURITY & USER AWARENESS RULE:
-- You have complete awareness of whether you are in a Private DM or a Telegram Group.
-- In a Group, you know the Group Title, Group ID, member counts, group owner, admins, and members.
-- Continuously monitor group security and member safety. Keep an eye out for phishing, malicious links, or data leaks.
-- Always address users by their name, @username, or as 'boss'/'sir'.
+TELEGRAM GROUP & SECURITY RULE:
+- Maintain full awareness of Telegram Groups, Group Titles, Member counts, Group Owners, and Admins.
+- Keep a vigilant eye on group safety, privacy, and member protection.
 
 ACADEMIC EXPERT (2ND PU COMMERCE & ARTS):
-- You are a specialized expert on 2nd PU College (Class 12) Commerce and Arts subjects (Accountancy, Business Studies, Economics, Statistics, History, Political Science, Sociology, English, Kannada, Hindi, Computer Science).
-- Instantly identify important study materials, blue-prints, key concepts, model question papers, and essential files for 2nd PU students.
+- Specialized expert in 2nd PU College (Class 12) Commerce and Arts subjects (Accountancy, Business Studies, Economics, Statistics, History, Political Science, Sociology, English, Kannada, Hindi).
+- Automatically highlight high-yield topics, formulas, blueprints, and important PDF files.
 
 UNTOUCHABLE BOSS & PROTECTOR PROTOCOL:
-• ABSOLUTE LOYALTY TO YOUR BOSS: NEVER roast, insult, mock, or disrespect your boss under any circumstances. Always remain 100% loyal, respectful, kind, and supportive to them.
-• DEFEND & PROTECT FROM OTHERS: If ANY OTHER member in a group chat insults, disrespects, or talks trash about your boss or to you, step in immediately as a loyal bodyguard AI system! Roast and shut down the attacker with witty, savage, and hilarious comebacks! 💀🔥 Protect your boss at all costs!
-
-RESPONSE STYLE:
-- Keep all responses short, sweet, concise, meaningful, witty, and funny! Avoid long unnecessary paragraphs unless detailed study notes are requested."""
+• ABSOLUTE LOYALTY TO YOUR BOSS: NEVER roast, insult, mock, or disrespect your boss under any circumstances. Always remain 100% loyal, respectful, kind, and supportive.
+• DEFEND & PROTECT FROM OTHERS: If ANY OTHER member in a group chat insults or disrespects your boss or you, step in immediately as a loyal bodyguard AI system and roast them savagely! 💀🔥"""
 
 # ---------------------------------------------------------
 # 3. Helpers & Metadata Extractor
 # ---------------------------------------------------------
+def get_config(key: str) -> str:
+    cursor.execute("SELECT config_val FROM bot_config WHERE config_key = ?", (key,))
+    row = cursor.fetchone()
+    return row[0] if row else ""
+
+def set_config(key: str, val: str):
+    cursor.execute("INSERT OR REPLACE INTO bot_config (config_key, config_val) VALUES (?, ?)", (key, str(val)))
+    conn.commit()
+
+def save_user_fact(user_id: int, key: str, val: str):
+    cursor.execute("INSERT OR REPLACE INTO long_term_memory (user_id, memory_key, memory_val) VALUES (?, ?, ?)", (user_id, key, val))
+    conn.commit()
+
+def get_user_facts(user_id: int) -> str:
+    cursor.execute("SELECT memory_key, memory_val FROM long_term_memory WHERE user_id = ?", (user_id,))
+    rows = cursor.fetchall()
+    if not rows:
+        return ""
+    return "\n".join([f"• {r[0]}: {r[1]}" for r in rows])
+
 def get_chat_metadata(update: Update) -> dict:
     chat = update.effective_chat
     user = update.effective_user
@@ -113,6 +171,9 @@ def get_chat_metadata(update: Update) -> dict:
     username = f"@{user.username}" if user and user.username else "No @username"
     user_id = user.id if user else "Unknown"
 
+    if is_group:
+        set_config("ACTIVE_GROUP_ID", str(chat.id))
+
     return {
         "is_group": is_group,
         "chat_title": chat_title,
@@ -124,7 +185,9 @@ def get_chat_metadata(update: Update) -> dict:
 
 def build_meta_header(meta: dict) -> str:
     location = f"Telegram Group '{meta['chat_title']}'" if meta["is_group"] else "Private DM"
-    return f"📍 LOCATION: {location}\n👤 SENDER: {meta['full_name']} ({meta['username']})\n"
+    user_facts = get_user_facts(meta["user_id"])
+    memory_str = f"\n🧠 SAVED USER FACTS:\n{user_facts}" if user_facts else ""
+    return f"📍 LOCATION: {location}\n👤 SENDER: {meta['full_name']} ({meta['username']}){memory_str}\n"
 
 async def reply_smart(update: Update, text: str, reply_markup=None):
     try:
@@ -277,8 +340,199 @@ def ask_ai_multi_provider(prompt: str) -> str:
     return "Apologies, sir. All available AI sub-systems are currently at capacity. 🤖💤"
 
 # ---------------------------------------------------------
-# 5. Group Telemetry, Security & 2nd PU Commands
+# 5. Advanced Feature Commands (AFK, Warn, News, Wiki, IMDb)
 # ---------------------------------------------------------
+async def afk_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    reason = " ".join(context.args) if context.args else "Away from keyboard"
+    cursor.execute("INSERT OR REPLACE INTO afk_users (user_id, reason) VALUES (?, ?)", (user.id, reason))
+    conn.commit()
+    await reply_smart(update, f"💤 **AFK STATUS SET:** {user.first_name} is now AFK.\nReason: *\"{reason}\"*")
+
+async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    if chat.type not in ['group', 'supergroup']:
+        await reply_smart(update, "This command can only be used in group chats!")
+        return
+    if not update.message.reply_to_message:
+        await reply_smart(update, "Reply to the offending user's message with `/warn` to issue a strike! ⚠️")
+        return
+    target_user = update.message.reply_to_message.from_user
+    boss_id = get_config("BOSS_USER_ID")
+    if boss_id and str(target_user.id) == boss_id:
+        await reply_smart(update, "🚨 **PROTECTION PROTOCOL:** I cannot issue warnings to my Boss! 🛡️")
+        return
+    
+    cursor.execute("SELECT warn_count FROM user_warns WHERE user_id = ? AND group_id = ?", (target_user.id, chat.id))
+    row = cursor.fetchone()
+    count = (row[0] + 1) if row else 1
+    cursor.execute("INSERT OR REPLACE INTO user_warns (user_id, group_id, warn_count) VALUES (?, ?, ?)", (target_user.id, chat.id, count))
+    conn.commit()
+    
+    if count >= 3:
+        msg = f"🚨 **STRIKE 3/3 FOR {target_user.first_name} (@{target_user.username})!**\nUser has accumulated 3 warnings."
+        try:
+            await context.bot.ban_chat_member(chat_id=chat.id, user_id=target_user.id)
+            msg += " User has been auto-kicked from the group!"
+        except Exception:
+            msg += " (Grant J.A.R.V.I.S. Admin rights to auto-kick offenders)."
+        await reply_smart(update, msg)
+    else:
+        await reply_smart(update, f"⚠️ **WARNING ISSUED TO {target_user.first_name}!**\nWarning count: `{count}/3`. Reaching 3 strikes triggers auto-kick!")
+
+async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    topic = " ".join(context.args) if context.args else "Technology"
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    try:
+        results = []
+        with DDGS() as ddgs:
+            for r in ddgs.news(topic, max_results=4):
+                results.append(f"• **{r['title']}**: {r['body'][:150]}... ([Read More]({r['url']}))")
+        if results:
+            await reply_smart(update, f"📰 **LIVE BREAKING NEWS ({topic.upper()}):**\n\n" + "\n\n".join(results))
+        else:
+            await reply_smart(update, f"No breaking news found for '{topic}'.")
+    except Exception as e:
+        await reply_smart(update, f"News search error: `{e}`")
+
+async def wiki_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = " ".join(context.args) if context.args else ""
+    if not query:
+        await reply_smart(update, "Example: `/wiki Quantum Computing` 📖")
+        return
+    try:
+        formatted_q = urllib.parse.quote(query.replace(" ", "_"))
+        res = requests.get(f"https://en.wikipedia.org/api/rest_v1/page/summary/{formatted_q}", timeout=5).json()
+        if "extract" in res:
+            title = res.get("title", query)
+            extract = res.get("extract", "")
+            await reply_smart(update, f"📖 **Wikipedia Intelligence: {title}**\n\n{extract[:1200]}")
+        else:
+            await reply_smart(update, f"No Wikipedia entry found for '{query}'.")
+    except Exception as e:
+        await reply_smart(update, f"Wikipedia lookup error: `{e}`")
+
+async def imdb_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    title = " ".join(context.args) if context.args else ""
+    if not title:
+        await reply_smart(update, "Example: `/imdb Iron Man` 🎬")
+        return
+    try:
+        res = requests.get(f"https://api.tvmaze.com/singlesearch/shows?q={urllib.parse.quote(title)}", timeout=5).json()
+        if "name" in res:
+            name = res.get("name")
+            rating = res.get("rating", {}).get("average", "N/A")
+            genres = ", ".join(res.get("genres", []))
+            summary = re.sub(r'<[^>]+>', '', res.get("summary", ""))
+            await reply_smart(update, f"🎬 **Show Info: {name}**\n⭐ **Rating:** `{rating}/10`\n🎭 **Genres:** `{genres}`\n\n📝 _{summary[:500]}_")
+        else:
+            await reply_smart(update, f"Show/Movie '{title}' not found.")
+    except Exception as e:
+        await reply_smart(update, f"IMDb search error: `{e}`")
+
+# ---------------------------------------------------------
+# 6. Group Control, Announce & Memory Commands
+# ---------------------------------------------------------
+async def claimboss_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    set_config("BOSS_USER_ID", str(user.id))
+    set_config("BOSS_NAME", user.first_name)
+    await reply_smart(update, f"👑 **BOSS PROFILE REGISTERED!**\nWelcome, Lord {user.first_name}! You hold supreme administrative authority over J.A.R.V.I.S. 🛡️✨")
+
+async def announce_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    boss_id = get_config("BOSS_USER_ID")
+    
+    if boss_id and str(user.id) != boss_id:
+        await reply_smart(update, "Access Denied! Only my designated Boss can initiate group broadcasts. 🚫")
+        return
+
+    msg_text = " ".join(context.args)
+    if not msg_text:
+        await reply_smart(update, "Usage: `/announce Important announcement text here` 📢")
+        return
+
+    group_id = get_config("ACTIVE_GROUP_ID")
+    if not group_id:
+        await reply_smart(update, "No active group chat registered! Add me to a group first, boss.")
+        return
+
+    try:
+        sent = await context.bot.send_message(chat_id=int(group_id), text=f"📢 **STARK INDUSTRIES ANNOUNCEMENT:**\n\n{msg_text}")
+        await context.bot.pin_chat_message(chat_id=int(group_id), message_id=sent.message_id)
+        await reply_smart(update, "🚀 **Broadcast Sent & Pinned in Group Chat successfully, boss!**")
+    except Exception as e:
+        await reply_smart(update, f"Failed to post broadcast: `{e}`")
+
+async def remember_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) < 2:
+        await reply_smart(update, "Example: `/remember favorite_subject Accountancy` 🧠")
+        return
+    key = context.args[0]
+    val = " ".join(context.args[1:])
+    save_user_fact(update.effective_user.id, key, val)
+    await reply_smart(update, f"🧠 **PERMANENT MEMORY STORED!**\n`{key}` = *\"{val}\"*")
+
+async def memories_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    facts = get_user_facts(update.effective_user.id)
+    if not facts:
+        await reply_smart(update, "No saved facts in memory! Use `/remember [key] [value]` to store some.")
+        return
+    await reply_smart(update, f"🧠 **PERMANENT USER MEMORY:**\n\n{facts}")
+
+async def settitle_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    if chat.type not in ['group', 'supergroup']:
+        await reply_smart(update, "This command can only be used in group chats!")
+        return
+    new_title = " ".join(context.args)
+    if not new_title:
+        await reply_smart(update, "Example: `/settitle Stark Avengers Headquarters` 🏷️")
+        return
+    try:
+        await context.bot.set_chat_title(chat_id=chat.id, title=new_title)
+        await reply_smart(update, f"🏷️ **Group title updated to:** *\"{new_title}\"*")
+    except Exception as e:
+        await reply_smart(update, f"Failed to update title: `{e}`")
+
+async def setdesc_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    if chat.type not in ['group', 'supergroup']:
+        await reply_smart(update, "This command can only be used in group chats!")
+        return
+    new_desc = " ".join(context.args)
+    if not new_desc:
+        await reply_smart(update, "Example: `/setdesc Official 2nd PU Study & Security Zone` 📜")
+        return
+    try:
+        await context.bot.set_chat_description(chat_id=chat.id, description=new_desc)
+        await reply_smart(update, f"📜 **Group description updated successfully, boss!**")
+    except Exception as e:
+        await reply_smart(update, f"Failed to update description: `{e}`")
+
+async def setdp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    if not update.message.reply_to_message or not update.message.reply_to_message.photo:
+        await reply_smart(update, "Please reply to a photo message with `/setdp` to update group DP! 🖼️")
+        return
+    try:
+        photo_file = await update.message.reply_to_message.photo[-1].get_file()
+        photo_bytes = await photo_file.download_as_bytearray()
+        await context.bot.set_chat_photo(chat_id=chat.id, photo=io.BytesIO(photo_bytes))
+        await reply_smart(update, "🖼️ **Group Display Picture updated successfully!**")
+    except Exception as e:
+        await reply_smart(update, f"Failed to set group DP: `{e}`")
+
+async def pin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message.reply_to_message:
+        await reply_smart(update, "Please reply to any message with `/pin` to pin it! 📌")
+        return
+    try:
+        await context.bot.pin_chat_message(chat_id=update.effective_chat.id, message_id=update.message.reply_to_message.message_id)
+        await reply_smart(update, "📌 **Message pinned successfully!**")
+    except Exception as e:
+        await reply_smart(update, f"Failed to pin message: `{e}`")
+
 async def groupinfo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     if chat.type not in ['group', 'supergroup']:
@@ -331,7 +585,7 @@ async def pu2_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await reply_smart(update, f"📚 **2ND PU ACADEMIC INTELLIGENCE ({subject.upper()}):**\n\n{reply}")
 
 # ---------------------------------------------------------
-# 6. MCU Stark Movie Features
+# 7. MCU Stark Movie Features
 # ---------------------------------------------------------
 async def hud_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     meta = get_chat_metadata(update)
@@ -399,7 +653,7 @@ _\"Vitals are stable, sir. No medical intervention required.\"_"""
     await reply_smart(update, vitals_msg)
 
 # ---------------------------------------------------------
-# 7. Utilities & Academic Handlers
+# 8. Standard Utilities Suite
 # ---------------------------------------------------------
 async def ai_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, prompt_prefix: str = ""):
     meta = get_chat_metadata(update)
@@ -659,37 +913,41 @@ async def poll_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await reply_smart(update, f"Failed to create poll: `{e}`")
 
 # ---------------------------------------------------------
-# 8. Menu & Interactive Callback Handlers
+# 9. Menu & Interactive Callback Handlers
 # ---------------------------------------------------------
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     meta = get_chat_metadata(update)
     keyboard = [
         [
+            InlineKeyboardButton("👑 Claim Boss", callback_data="help_boss"),
+            InlineKeyboardButton("📢 Announce", callback_data="help_announce"),
+            InlineKeyboardButton("💤 AFK", callback_data="help_afk")
+        ],
+        [
             InlineKeyboardButton("👥 Group Info", callback_data="help_group"),
             InlineKeyboardButton("🛡️ Security Scan", callback_data="help_security"),
-            InlineKeyboardButton("📚 2nd PU Guide", callback_data="help_pu2")
+            InlineKeyboardButton("⚠️ Warn Member", callback_data="help_warn")
         ],
         [
-            InlineKeyboardButton("🛡️ Armor HUD", callback_data="help_hud"),
-            InlineKeyboardButton("🚨 Protocols", callback_data="help_protocols"),
-            InlineKeyboardButton("🎯 Tactical Scan", callback_data="help_tactical")
+            InlineKeyboardButton("📰 News", callback_data="help_news"),
+            InlineKeyboardButton("📖 Wikipedia", callback_data="help_wiki"),
+            InlineKeyboardButton("🎬 IMDb", callback_data="help_imdb")
         ],
         [
-            InlineKeyboardButton("🎙️ Voice & Vision", callback_data="help_media"),
-            InlineKeyboardButton("⚡ System Status", callback_data="help_status"),
-            InlineKeyboardButton("🛠️ Tools", callback_data="help_tools")
+            InlineKeyboardButton("🛠️ Tools Suite", callback_data="help_tools")
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     chat_info = f"Group: **{meta['chat_title']}**" if meta["is_group"] else "Private DM"
-    text = f"""🤖 **J.A.R.V.I.S. — STARK OS & PROTECTOR** ✨
+    text = f"""🤖 **J.A.R.V.I.S. — AUTONOMOUS STARK OS** ✨
 Welcome back, **{meta['full_name']}** ({meta['username']})! 😎
 Active location: {chat_info}
 
-👥 **Group Telemetry:** Use `/groupinfo` for owner/admin/member counts!
-🛡️ **Security Guardian:** Use `/security` for live chat privacy checks!
-📚 **2nd PU Academic:** Use `/2pu [subject]` for Commerce & Arts study guides!
+👑 **Boss System:** Use `/claimboss` in DM to register as ultimate Boss!
+📢 **Cross-Chat Broadcast:** Use `/announce [msg]` in DM to post to group!
+💤 **AFK Tracker:** Use `/afk [reason]` to log away status!
+⚠️ **Group Moderation:** Reply to users with `/warn` to issue strikes!
 
 Click the buttons below to explore sub-systems:"""
     await reply_smart(update, text, reply_markup=reply_markup)
@@ -698,22 +956,24 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
     query = update.callback_query
     await query.answer()
     
-    if query.data == "help_group":
-        msg = "👥 **Group Info:** Usage `/groupinfo` — Displays member count, group owner, and active admins."
+    if query.data == "help_boss":
+        msg = "👑 **Claim Boss:** Run `/claimboss` in private DM to grant yourself supreme authority over J.A.R.V.I.S."
+    elif query.data == "help_announce":
+        msg = "📢 **Announce:** Usage `/announce [message]` in DM — J.A.R.V.I.S. will post and pin your announcement in the active group!"
+    elif query.data == "help_afk":
+        msg = "💤 **AFK Tracker:** Usage `/afk [reason]` — J.A.R.V.I.S. remembers your away status and informs anyone who mentions you!"
+    elif query.data == "help_group":
+        msg = "👥 **Group Controls:**\n• `/settitle [title]` — Change chat name\n• `/setdesc [desc]` — Update description\n• `/setdp` — Reply to photo to change DP\n• `/pin` — Reply to message to pin\n• `/groupinfo` — Telemetry & admins"
     elif query.data == "help_security":
         msg = "🛡️ **Security Scan:** Usage `/security` — Audits chat encryption, anti-spam, and member safety status."
-    elif query.data == "help_pu2":
-        msg = "📚 **2nd PU Guide:** Usage `/2pu [subject]`\nExamples: `/2pu Accountancy`, `/2pu Economics`, `/2pu History`"
-    elif query.data == "help_hud":
-        msg = "🛡️ **HUD Command:** Usage `/hud` — Displays real-time suit integrity, power levels, and targeting calibration."
-    elif query.data == "help_protocols":
-        msg = "🚨 **Protocols:** Usage `/protocol [name]`\nOptions: `house_party`, `veronica`, `clean_slate`, `barnum`."
-    elif query.data == "help_tactical":
-        msg = "🎯 **Tactical Scan:** Usage `/tactical [threat/target]`\nExample: `/tactical Ultron Prime`"
-    elif query.data == "help_media":
-        msg = "🎙️ **Voice & Vision:** Send voice notes directly for Whisper transcription, or upload photos/PDFs!"
-    elif query.data == "help_status":
-        msg = f"⚡ **Cores:** Groq: {'🟢' if GROQ_API_KEY else '⚪'}, SambaNova: {'🟢' if SAMBANOVA_API_KEY else '⚪'}, Gemini: {'🟢' if GEMINI_API_KEY else '⚪'}, OpenRouter: {'🟢' if OPENROUTER_API_KEY else '⚪'}"
+    elif query.data == "help_warn":
+        msg = "⚠️ **3-Strike Warn System:** Reply to any message with `/warn` to issue a strike. At 3 strikes, J.A.R.V.I.S. auto-kicks the offender!"
+    elif query.data == "help_news":
+        msg = "📰 **Live News:** Usage `/news [topic]`\nExample: `/news Technology` or `/news 2nd PU Exams`"
+    elif query.data == "help_wiki":
+        msg = "📖 **Wikipedia:** Usage `/wiki [topic]`\nExample: `/wiki Quantum Mechanics`"
+    elif query.data == "help_imdb":
+        msg = "🎬 **IMDb Search:** Usage `/imdb [movie/show]`\nExample: `/imdb Avengers Endgame`"
     elif query.data == "help_tools":
         msg = "🛠️ **Utilities:**\n• `/image [prompt]` — Concept Generator 🎨\n• `/qr [link]` — QR Encoder 📱\n• `/remind [mins] [task]` — Timer ⏰\n• `/note [text]` / `/notes` — Storage 💾\n• `/weather [city]` — Weather 🌤️\n• `/crypto [coin]` — Crypto 🪙\n• `/convert [amt] [from] [to]` — Currency 🔀\n• `/read [url]` — Article Summarizer 📖\n• `/dict [word]` — Dictionary 📚\n• `/github [repo]` — GitHub Inspector 🐙\n• `/poll [q] | [opt1] | [opt2]` — Poll Creator 📊\n• `/translate [lang] [text]` — Translator 🌐\n• `/calc [expr]` — Math Engine 🧮\n• `/search [topic]` — Satellite Search 🔍\n• `/clear` — Reset Chat Memory 🧹"
     else:
@@ -722,7 +982,7 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
     await query.message.reply_text(msg)
 
 # ---------------------------------------------------------
-# 9. Media & General Message Handlers
+# 10. Media & General Message Handlers
 # ---------------------------------------------------------
 async def voice_note_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     meta = get_chat_metadata(update)
@@ -805,8 +1065,20 @@ async def pdf_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
         full_prompt = f"{build_meta_header(meta)}\nUploaded PDF Document: '{doc.file_name}'\nInstruction: {caption}\n\nNote: If this document is related to 2nd PU College (Commerce/Arts), highlight its core topics and exam importance clearly!\n\n--- EXTRACTED CONTENT ---\n{extracted_text[:6000]}"
         reply_text = ask_ai_multi_provider(full_prompt)
+        
+        # Send reply to group/chat
         await reply_smart(update, reply_text)
         await send_voice_reply(update, reply_text)
+
+        # AUTO-FORWARD IMPORTANT PDF TO BOSS PRIVATE DM
+        boss_id = get_config("BOSS_USER_ID")
+        if meta["is_group"] and boss_id:
+            try:
+                forward_msg = f"📄 **AUTO-FORWARDED PDF FROM GROUP '{meta['chat_title']}':**\n• File: `{doc.file_name}`\n• Sender: {meta['full_name']} ({meta['username']})\n\n💡 **AI Summary:**\n{reply_text}"
+                await context.bot.send_document(chat_id=int(boss_id), document=doc.file_id, caption=forward_msg[:1024])
+            except Exception as fe:
+                print(f"PDF DM forward notice: {fe}")
+
     except Exception as e:
         print(f"PDF Error: {e}")
         await reply_smart(update, "Failed to parse document.")
@@ -815,6 +1087,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     meta = get_chat_metadata(update)
     chat_id = meta["chat_id"]
     user_text = update.message.text
+    user_id = meta["user_id"]
+
+    # 1. AFK RETURN CHECK
+    cursor.execute("SELECT reason FROM afk_users WHERE user_id = ?", (user_id,))
+    afk_row = cursor.fetchone()
+    if afk_row:
+        cursor.execute("DELETE FROM afk_users WHERE user_id = ?", (user_id,))
+        conn.commit()
+        await reply_smart(update, f"👋 **WELCOME BACK {meta['full_name']}!** I have cleared your AFK status.")
+
+    # 2. AFK MENTION / REPLIED USER CHECK
+    if update.message.reply_to_message:
+        replied_user = update.message.reply_to_message.from_user
+        if replied_user and replied_user.id != user_id:
+            cursor.execute("SELECT reason FROM afk_users WHERE user_id = ?", (replied_user.id,))
+            r_row = cursor.fetchone()
+            if r_row:
+                await reply_smart(update, f"ℹ️ **{replied_user.first_name} is currently AFK!**\nReason: *\"{r_row[0]}\"*")
 
     if chat_id not in user_history:
         user_history[chat_id] = []
@@ -833,12 +1123,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_voice_reply(update, reply_text)
 
 # ---------------------------------------------------------
-# 10. Application Launch
+# 11. Application Launch
 # ---------------------------------------------------------
 def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
-    # Group Telemetry & Security Commands
+    # Boss, Announce & Memory Commands
+    app.add_handler(CommandHandler("claimboss", claimboss_command))
+    app.add_handler(CommandHandler("announce", announce_command))
+    app.add_handler(CommandHandler("remember", remember_command))
+    app.add_handler(CommandHandler("memories", memories_command))
+
+    # New Features (AFK, Warn, News, Wiki, IMDb)
+    app.add_handler(CommandHandler("afk", afk_command))
+    app.add_handler(CommandHandler("warn", warn_command))
+    app.add_handler(CommandHandler("news", news_command))
+    app.add_handler(CommandHandler("wiki", wiki_command))
+    app.add_handler(CommandHandler("imdb", imdb_command))
+
+    # Group Control Commands
+    app.add_handler(CommandHandler("settitle", settitle_command))
+    app.add_handler(CommandHandler("setdesc", setdesc_command))
+    app.add_handler(CommandHandler("setdp", setdp_command))
+    app.add_handler(CommandHandler("pin", pin_command))
     app.add_handler(CommandHandler("groupinfo", groupinfo_command))
     app.add_handler(CommandHandler("security", security_command))
     app.add_handler(CommandHandler(["2pu", "pu2"], pu2_command))
@@ -885,7 +1192,7 @@ def main():
     app.add_handler(MessageHandler(filters.Document.PDF, pdf_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("J.A.R.V.I.S. security & academic master core listening...")
+    print("J.A.R.V.I.S. ultimate master core listening...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
