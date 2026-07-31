@@ -1,5 +1,6 @@
 import os
 import io
+import re
 import random
 import hashlib
 import base64
@@ -80,7 +81,7 @@ SYSTEM_INSTRUCTION = (
 )
 
 # ---------------------------------------------------------
-# 3. Smart Message Delivery Handler
+# 3. Helpers for Text Formatting & Speech Sanitization
 # ---------------------------------------------------------
 async def reply_smart(update: Update, text: str):
     """Tries Markdown formatting first; falls back to raw plain text if Markdown fails."""
@@ -89,6 +90,52 @@ async def reply_smart(update: Update, text: str):
     except Exception as e:
         print(f"Markdown parse warning: {e}. Falling back to plain text...")
         await update.message.reply_text(text)
+
+def clean_text_for_tts(text: str) -> str:
+    """Strips emojis and Markdown symbols so voice audio sounds natural without reading out emojis."""
+    # Remove Markdown characters (*, _, `, #, [], (), etc.)
+    clean = re.sub(r'[*_`#\-\[\]\(\)]', '', text)
+    
+    # Remove Emojis using Unicode ranges
+    emoji_pattern = re.compile(
+        "["
+        "\U0001F600-\U0001F64F"  # emoticons
+        "\U0001F300-\U0001F5FF"  # symbols & pictographs
+        "\U0001F680-\U0001F6FF"  # transport & map symbols
+        "\U0001F1E0-\U0001F1FF"  # flags (iOS)
+        "\U0002600-\U00026FF"    # miscellaneous symbols
+        "\U0002700-\U00027BF"    # dingbats
+        "\U0001F900-\U0001F9FF"  # Supplemental Symbols and Pictographs
+        "\U0001FA70-\U0001FAFF"  # Symbols and Pictographs Extended-A
+        "]+", flags=re.UNICODE
+    )
+    clean = emoji_pattern.sub(r'', clean)
+    
+    # Normalize spaces
+    return " ".join(clean.split())
+
+async def send_voice_reply(update: Update, text: str):
+    chat_id = update.effective_chat.id
+    audio_path = f"jarvis_{chat_id}.mp3"
+    try:
+        # Sanitize text so TTS skips emojis and Markdown
+        tts_text = clean_text_for_tts(text)[:400]
+        if not tts_text.strip():
+            return
+            
+        communicate = edge_tts.Communicate(tts_text, voice=JARVIS_VOICE)
+        await communicate.save(audio_path)
+        if os.path.exists(audio_path):
+            with open(audio_path, "rb") as voice_file:
+                await update.message.reply_audio(audio=voice_file, title="J.A.R.V.I.S. Voice", performer="J.A.R.V.I.S.")
+    except Exception as e:
+        print(f"TTS Error: {e}")
+    finally:
+        if os.path.exists(audio_path):
+            try:
+                os.remove(audio_path)
+            except Exception:
+                pass
 
 # ---------------------------------------------------------
 # 4. 6-Core Multi-Provider Cascade Engine
@@ -204,19 +251,16 @@ def ask_ai_multi_provider(prompt: str) -> str:
 # 5. Optimized Multi-Core Vision & PDF Handlers
 # ---------------------------------------------------------
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Processes photos with image optimization and multi-provider vision fallback."""
     user_str = get_user_identifier(update)
     caption = update.message.caption or "Please analyze, solve, or describe what is in this image in detail."
     
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    
     reply_text = None
 
     try:
         photo_file = await update.message.photo[-1].get_file()
         image_bytes = await photo_file.download_as_bytearray()
         
-        # Optimize image for API processing
         pil_image = Image.open(io.BytesIO(image_bytes))
         if pil_image.mode != "RGB":
             pil_image = pil_image.convert("RGB")
@@ -265,7 +309,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 print(f"[Vision Core 2: Groq Vision] Failed: {e}. Trying OpenRouter Vision...")
 
-        # 3. Tertiary Vision Core: OpenRouter Free Vision Models
+        # 3. Tertiary Vision Core: OpenRouter Free Vision
         if OPENROUTER_API_KEY and not reply_text:
             free_vision_models = [
                 "google/gemini-2.0-flash-lite-001:free",
@@ -309,7 +353,6 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_voice_reply(update, reply_text)
 
 async def pdf_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Reads PDF files, extracts text, and provides AI summaries/answers."""
     user_str = get_user_identifier(update)
     caption = update.message.caption or "Please provide a comprehensive summary with key academic takeaways, terms, and study notes."
     
@@ -430,25 +473,6 @@ def get_user_identifier(update: Update) -> str:
     user = update.effective_user
     return f"@{user.username}" if user and user.username else (user.first_name if user else "my friend")
 
-async def send_voice_reply(update: Update, text: str):
-    chat_id = update.effective_chat.id
-    audio_path = f"jarvis_{chat_id}.mp3"
-    try:
-        tts_text = text[:400]
-        communicate = edge_tts.Communicate(tts_text, voice=JARVIS_VOICE)
-        await communicate.save(audio_path)
-        if os.path.exists(audio_path):
-            with open(audio_path, "rb") as voice_file:
-                await update.message.reply_audio(audio=voice_file, title="J.A.R.V.I.S. Voice", performer="J.A.R.V.I.S.")
-    except Exception as e:
-        print(f"TTS Error: {e}")
-    finally:
-        if os.path.exists(audio_path):
-            try:
-                os.remove(audio_path)
-            except Exception:
-                pass
-
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     status = [
         f"⚡ **Groq (Text & Vision):** {'🟢 Online' if GROQ_API_KEY else '⚪ Missing Key'}",
@@ -536,7 +560,7 @@ def main():
     # Text Handler
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("J.A.R.V.I.S. omni-academic & multi-core vision listening...")
+    print("J.A.R.V.I.S. omni-academic & sanitized voice core listening...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
