@@ -93,32 +93,27 @@ async def reply_smart(update: Update, text: str):
 
 def clean_text_for_tts(text: str) -> str:
     """Strips emojis and Markdown symbols so voice audio sounds natural without reading out emojis."""
-    # Remove Markdown characters (*, _, `, #, [], (), etc.)
     clean = re.sub(r'[*_`#\-\[\]\(\)]', '', text)
     
-    # Remove Emojis using Unicode ranges
     emoji_pattern = re.compile(
         "["
         "\U0001F600-\U0001F64F"  # emoticons
         "\U0001F300-\U0001F5FF"  # symbols & pictographs
         "\U0001F680-\U0001F6FF"  # transport & map symbols
         "\U0001F1E0-\U0001F1FF"  # flags (iOS)
-        "\U0002600-\U00026FF"    # miscellaneous symbols
-        "\U0002700-\U00027BF"    # dingbats
-        "\U0001F900-\U0001F9FF"  # Supplemental Symbols and Pictographs
-        "\U0001FA70-\U0001FAFF"  # Symbols and Pictographs Extended-A
+        "\u2600-\u26FF"          # miscellaneous symbols (Fixed)
+        "\u2700-\u27BF"          # dingbats (Fixed)
+        "\U0001F900-\U0001F9FF"  # Supplemental Symbols
+        "\U0001FA70-\U0001FAFF"  # Extended-A
         "]+", flags=re.UNICODE
     )
     clean = emoji_pattern.sub(r'', clean)
-    
-    # Normalize spaces
     return " ".join(clean.split())
 
 async def send_voice_reply(update: Update, text: str):
     chat_id = update.effective_chat.id
     audio_path = f"jarvis_{chat_id}.mp3"
     try:
-        # Sanitize text so TTS skips emojis and Markdown
         tts_text = clean_text_for_tts(text)[:400]
         if not tts_text.strip():
             return
@@ -447,121 +442,4 @@ async def quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def flashcards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     topic = " ".join(context.args)
     if not topic:
-        await reply_smart(update, "Example: `/flashcards Neuroanatomy` or `/flashcards Microeconomics` 🎴")
-        return
-    prompt = f"Create 5 high-yield revision flashcards for '{topic}'. Format as 'Q: ...' and 'A: ...' for rapid active recall."
-    await ai_query_handler(update, context, prompt)
-
-async def explain_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    topic = " ".join(context.args)
-    if not topic:
-        await reply_smart(update, "Example: `/explain Quantum Entanglement` or `/explain Tort Law` 💡")
-        return
-    prompt = f"Explain '{topic}' in ultra-simple terms using relatable real-world analogies, followed by a bulleted summary of key exam takeaways."
-    await ai_query_handler(update, context, prompt)
-
-# ---------------------------------------------------------
-# 7. System Helpers & Menu
-# ---------------------------------------------------------
-def get_chat_context(update: Update) -> str:
-    chat = update.effective_chat
-    user = update.effective_user
-    user_str = f"@{user.username}" if user and user.username else (user.first_name if user else "friend")
-    return f"[{'Private DM' if chat.type == 'private' else 'Group'} with {user_str}]"
-
-def get_user_identifier(update: Update) -> str:
-    user = update.effective_user
-    return f"@{user.username}" if user and user.username else (user.first_name if user else "my friend")
-
-async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    status = [
-        f"⚡ **Groq (Text & Vision):** {'🟢 Online' if GROQ_API_KEY else '⚪ Missing Key'}",
-        f"⚡ **SambaNova:** {'🟢 Online' if SAMBANOVA_API_KEY else '⚪ Missing Key'}",
-        f"⚡ **Cerebras:** {'🟢 Online' if CEREBRAS_API_KEY else '⚪ Missing Key'}",
-        f"⚡ **Gemini 2.0 (Text & Vision):** {'🟢 Online' if GEMINI_API_KEY else '⚪ Missing Key'}",
-        f"⚡ **Mistral AI:** {'🟢 Online' if MISTRAL_API_KEY else '⚪ Missing Key'}",
-        f"⚡ **OpenRouter (Text & Vision):** {'🟢 Online' if OPENROUTER_API_KEY else '⚪ Missing Key'}"
-    ]
-    msg = "🤖 **J.A.R.V.I.S. Multi-Core Status:**\n\n" + "\n".join(status)
-    await reply_smart(update, msg)
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id_str = get_user_identifier(update)
-    menu = (
-        f"🤖 **J.A.R.V.I.S — Omni-Academic Hub** ✨\n"
-        f"Welcome, {user_id_str}! 😎\n"
-        "_Created by Abhishek (DHANUSH V N)_\n\n"
-        "🎓 **DISCIPLINE SPECIALTIES**\n"
-        "• `/law [topic/case]` — IRAC Legal Analysis & Cases ⚖️\n"
-        "• `/research [topic]` — Academic Paper Breakdown 🔬\n"
-        "• `/med [condition]` — Pathology & Anatomy Guide 🩺\n"
-        "• `/essay [topic]` — Essay Outlines & Thesis ✍️\n"
-        "• `/math [problem]` — Step-by-Step Problem Solver 🧮\n"
-        "• `/quiz [topic]` — Custom Multiple-Choice Quiz 📝\n"
-        "• `/flashcards [topic]` — Active Recall Revision Cards 🎴\n"
-        "• `/explain [topic]` — Simple Concept Explainer 💡\n\n"
-        "📸 **MULTIMODAL ASSISTANT**\n"
-        "• **Send Photos** — Multi-core vision analyzing landscapes, math, diagrams & handwriting! 📸\n"
-        "• **Send PDFs** — Instant document summaries & Q&A! 📄\n\n"
-        "⚡ **SYSTEM TOOLS**\n"
-        "• `/status` — Active AI cores 🔌\n"
-        "• `/myid` — Your Telegram ID 🆔\n"
-        "• `/weather [city]` — Live weather 🌤️\n"
-        "• `/image [prompt]` — AI Image Generator 🎨\n\n"
-        "💬 *Simply message me directly to ask any question or debate!* 🔥"
-    )
-    await reply_smart(update, menu)
-
-async def ai_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, prompt_prefix: str = ""):
-    chat_ctx = get_chat_context(update)
-    query = " ".join(context.args) if context.args else update.message.text
-    if not query and prompt_prefix:
-        await reply_smart(update, "Please provide details! 🤔")
-        return
-    
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    full_prompt = f"{chat_ctx}: {prompt_prefix} {query}".strip()
-    reply = ask_ai_multi_provider(full_prompt)
-    await reply_smart(update, reply)
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_ctx = get_chat_context(update)
-    user_text = update.message.text
-    formatted_prompt = f"{chat_ctx}: {user_text}"
-
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    reply_text = ask_ai_multi_provider(formatted_prompt)
-    await reply_smart(update, reply_text)
-    await send_voice_reply(update, reply_text)
-
-# ---------------------------------------------------------
-# 8. Application Launch
-# ---------------------------------------------------------
-def main():
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-
-    app.add_handler(CommandHandler(["start", "help"], help_command))
-    app.add_handler(CommandHandler("status", status_command))
-
-    # Omni-Academic Handlers
-    app.add_handler(CommandHandler("law", law_command))
-    app.add_handler(CommandHandler("research", research_command))
-    app.add_handler(CommandHandler("med", med_command))
-    app.add_handler(CommandHandler("essay", essay_command))
-    app.add_handler(CommandHandler("math", math_command))
-    app.add_handler(CommandHandler("quiz", quiz_command))
-    app.add_handler(CommandHandler("flashcards", flashcards_command))
-    app.add_handler(CommandHandler("explain", explain_command))
-
-    # Media Handlers (Photos & PDFs)
-    app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
-    app.add_handler(MessageHandler(filters.Document.PDF, pdf_handler))
-
-    # Text Handler
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    print("J.A.R.V.I.S. omni-academic & sanitized voice core listening...")
-    app.run_polling(drop_pending_updates=True)
-
-if __name__ == "__main__":
-    main()
+        await reply_smart(update, "
