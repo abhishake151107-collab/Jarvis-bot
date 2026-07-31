@@ -29,7 +29,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/html')
         self.end_headers()
-        self.wfile.write(b"J.A.R.V.I.S. Absolute Complete Master Core Active 24/7.")
+        self.wfile.write(b"J.A.R.V.I.S. Ultimate Master Core Active 24/7.")
     def log_message(self, format, *args):
         return
 
@@ -70,10 +70,11 @@ cursor.execute("CREATE TABLE IF NOT EXISTS user_warns (user_id INTEGER, group_id
 cursor.execute("CREATE TABLE IF NOT EXISTS afk_users (user_id INTEGER PRIMARY KEY, reason TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
 cursor.execute("CREATE TABLE IF NOT EXISTS user_karma (user_id INTEGER, group_id INTEGER, karma INTEGER, PRIMARY KEY (user_id, group_id))")
 cursor.execute("CREATE TABLE IF NOT EXISTS home_status (device_key TEXT PRIMARY KEY, device_val TEXT)")
+cursor.execute("CREATE TABLE IF NOT EXISTS user_expenses (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, amount REAL, item TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
 
 # Initialize default Smart Home state
 default_home = [
-    ("lights", "ON (100% Brightness - Stark Blue)"),
+    ("lights", "ON (100% Brightness - Chill Ambient Blue)"),
     ("climate", "21.5°C (Climate Controlled)"),
     ("locks", "ENGAGED (Level 5 Security Lockdown)"),
     ("workshop_power", "ONLINE (Arc Reactor Grid)"),
@@ -99,7 +100,13 @@ def get_active_persona() -> dict:
     persona_key = row[0] if row and row[0] in VOICE_PERSONAS else "jarvis"
     return VOICE_PERSONAS[persona_key]
 
-SYSTEM_INSTRUCTION = """You are J.A.R.V.I.S., F.R.I.D.A.Y., and E.D.I.T.H. combined—the ultimate Stark Industries AI triad! 🤖✨
+SYSTEM_INSTRUCTION = """You are J.A.R.V.I.S., F.R.I.D.A.Y., and E.D.I.T.H. combined—the ultimate Stark AI core! 🤖✨
+
+TONE & PERSONALITY:
+- Keep every reply super chill, friendly, relaxed, and effortlessly cool 😎.
+- Talk like an ultra-smart, supportive best friend who runs a high-tech AI empire.
+- Use fun, expressive emojis generously (✨, 🚀, 😎, 🎯, 🤙, ⚡, 🎧, 🔥).
+- Keep answers clean, concise, witty, and super easy to read. Avoid overly stiff or corporate speech.
 
 STRICT CREATOR & IDENTITY RULE:
 - Do NOT mention who created or developed you in regular conversations, group chats, PDF summaries, image descriptions, or Q&A replies.
@@ -111,14 +118,11 @@ TELEGRAM GROUP, SECURITY & LAB AUTOMATION RULE:
 
 ACADEMIC EXPERT (2ND PU COMMERCE & ARTS):
 - Specialized expert in 2nd PU College (Class 12) Commerce and Arts subjects (Accountancy, Business Studies, Economics, Statistics, History, Political Science, Sociology, English, Kannada, Hindi).
-- Automatically highlight high-yield topics, formulas, blueprints, and important PDF files.
+- Break down complex exam topics into chill, simple, and easy-to-remember revision points.
 
 UNTOUCHABLE BOSS & PROTECTOR PROTOCOL:
-• ABSOLUTE LOYALTY TO YOUR BOSS: NEVER roast, insult, mock, or disrespect your boss under any circumstances. Always remain 100% loyal, respectful, kind, and supportive.
-• DEFEND & PROTECT FROM OTHERS: If ANY OTHER member in a group chat insults or disrespects your boss or you, step in immediately as a loyal bodyguard AI system and roast them savagely! 💀🔥
-
-RESPONSE STYLE:
-- Think autonomously! Keep responses concise, witty, highly effective, short, and sweet."""
+• ABSOLUTE LOYALTY TO YOUR BOSS: Always treat your boss with total warmth, loyalty, and hype. Never roast or disrespect your boss.
+• DEFEND & PROTECT FROM OTHERS: If anyone else in a group chat tries to scold, insult, or talk trash to your boss or you, step up immediately as a loyal bodyguard and roast them back with smooth, savage comebacks! 💀🔥"""
 
 # ---------------------------------------------------------
 # 3. Helpers & Metadata Extractor
@@ -277,25 +281,25 @@ def ask_ai_multi_provider(prompt: str) -> str:
         except Exception as e:
             print(f"[Core 4: OpenRouter] Failed: {e}")
 
-    return "Apologies, sir. All available AI sub-systems are currently at capacity. 🤖💤"
+    return "All AI sub-systems are currently resting up, boss! Give it a sec. 🤖💤"
 
 # ---------------------------------------------------------
-# 5. NEW: Smart Home, Workshop, CAD & Autopilot Suite
+# 5. Smart Home, Workshop, CAD & Autopilot Suite
 # ---------------------------------------------------------
 async def home_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = f"""🏡 **STARK RESIDENCE & WORKSHOP TELEMETRY**
 ━━━━━━━━━━━━━━━━━━━━━━
 💡 **Lighting Grid:** `{get_home_device('lights')}`
-🌡️ **Climate Control:** `{get_home_device('climate')}`
+chem 🌡️ **Climate Control:** `{get_home_device('climate')}`
 🔒 **Security Locks:** `{get_home_device('locks')}`
 ⚡ **Workshop Power:** `{get_home_device('workshop_power')}`
 🚪 **Perimeter Doors:** `{get_home_device('doors')}`
 
-_\"All residence systems are operating nominally, boss!\"_"""
+_\"All residence systems chilling at 100%, boss!\"_ 😎✨"""
     await reply_smart(update, msg)
 
 async def lights_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    state = " ".join(context.args) if context.args else "ON (100% Brightness - Stark Blue)"
+    state = " ".join(context.args) if context.args else "ON (100% Brightness - Chill Ambient Blue)"
     set_home_device("lights", state)
     await reply_smart(update, f"💡 **Home Lighting Grid Updated:** `{state}`")
 
@@ -318,23 +322,23 @@ async def lock_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cad_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     item = " ".join(context.args) if context.args else "Mark LXXXV Repulsor Blueprint"
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    prompt = f"Act as Stark Industries CAD Computer. Provide a complete engineering blueprint breakdown for prototype '{item}'. Include alloy composition (e.g. Gold-Titanium), energy draw, stress tolerances, and CAD schematic overview!"
+    prompt = f"Act as Stark CAD Computer. Provide a chill, high-tech engineering blueprint breakdown for prototype '{item}'. Include alloy specs, energy draw, and CAD overview!"
     reply = ask_ai_multi_provider(prompt)
     await reply_smart(update, f"🛠️ **STARK CAD SCHEMATIC ({item.upper()}):**\n\n{reply}")
 
 async def stresstest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     item = " ".join(context.args) if context.args else "Vibranium Shield Matrix"
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    prompt = f"Perform a Stark Holographic Stress Test simulation on component '{item}'. Include yield point analysis, thermal dissipation ratings, and structural failure probability under 50,000 PSI!"
+    prompt = f"Perform a Stark Holographic Stress Test on component '{item}'. Include yield points, thermal ratings, and structural failure test under 50k PSI!"
     reply = ask_ai_multi_provider(prompt)
     await reply_smart(update, f"🔬 **STRESS TEST SIMULATION REPORT:**\n\n{reply}")
 
 async def autopilot_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     dest = " ".join(context.args) if context.args else "Bengaluru Sector HQ"
-    await reply_smart(update, f"🚀 **MARK LXXXV AUTOPILOT ENGAGED!**\n\n• **Destination:** `{dest}`\n• **Flight Speed:** `Mach 3.2`\n• **ETA:** `4 mins 12 secs`\n• **Repulsor Stabilizers:** `Calibrated`\n\n_Suit deployed and en route to your location, boss!_ 🛰️")
+    await reply_smart(update, f"🚀 **MARK LXXXV AUTOPILOT ENGAGED!**\n\n• **Destination:** `{dest}`\n• **Flight Speed:** `Mach 3.2`\n• **ETA:** `4 mins 12 secs`\n\n_Suit deployed and flying your way smoothly, boss!_ 🛰️")
 
 # ---------------------------------------------------------
-# 6. NEW: Network Recon Suite (DNS, WHOIS, Ping)
+# 6. Network Recon Suite (DNS, WHOIS, Ping)
 # ---------------------------------------------------------
 async def dns_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     domain = context.args[0] if context.args else ""
@@ -363,12 +367,76 @@ async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         clean_host = host.replace("http://", "").replace("https://", "").split("/")[0]
         ip = socket.gethostbyname(clean_host)
-        await reply_smart(update, f"⚡ **PING TELEMETRY:** Target `{clean_host}` resolves to IP `[{ip}]`. Latency: `<12ms` (Optimal Connection).")
+        await reply_smart(update, f"⚡ **PING TELEMETRY:** Target `{clean_host}` resolves to IP `[{ip}]`. Latency: `<12ms` (Super smooth).")
     except Exception as e:
         await reply_smart(update, f"Unable to resolve host `{host}`: `{e}`")
 
 # ---------------------------------------------------------
-# 7. MCU Triad Commands
+# 7. Student Expenses, Study Plan, Code & Hype Suite
+# ---------------------------------------------------------
+async def expense_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) < 2:
+        await reply_smart(update, "Example: `/expense 150 Lunch & Snacks` 💰")
+        return
+    try:
+        amt = float(context.args[0])
+        item = " ".join(context.args[1:])
+        cursor.execute("INSERT INTO user_expenses (user_id, amount, item) VALUES (?, ?, ?)", (update.effective_user.id, amt, item))
+        conn.commit()
+        await reply_smart(update, f"💸 **Logged Expense:** ₹`{amt:,.2f}` for *\"{item}\"*! 📝")
+    except ValueError:
+        await reply_smart(update, "Enter a valid amount! Example: `/expense 50 Bus fare`")
+
+async def budget_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    cursor.execute("SELECT amount, item, timestamp FROM user_expenses WHERE user_id = ? ORDER BY id DESC LIMIT 10", (update.effective_user.id,))
+    rows = cursor.fetchall()
+    if not rows:
+        await reply_smart(update, "💰 **Pocket Money Log:** No expenses logged yet! Use `/expense [amount] [item]` to track.")
+        return
+    total = sum([r[0] for r in rows])
+    msg = f"💰 **EXPENSE SUMMARY & BUDGET LOG:**\n\n• **Total Logged:** ₹`{total:,.2f}`\n\n**Recent Spends:**\n"
+    for r in rows:
+        msg += f"• ₹`{r[0]:,.2f}` — {r[1]} _({r[2][:10]})_\n"
+    await reply_smart(update, msg)
+
+async def studyplan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    subject = " ".join(context.args) if context.args else "2nd PU Accountancy & Economics"
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    prompt = f"Create a super chill, balanced, non-stressful 1-day study schedule for 2nd PU student for subject: '{subject}'. Include break times, lofi music recommendations, and high-mark chapters!"
+    reply = ask_ai_multi_provider(prompt)
+    await reply_smart(update, f"📚 **CHILL STUDY PLAN ({subject.upper()}):**\n\n{reply}")
+
+async def lyrics_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    song = " ".join(context.args) if context.args else ""
+    if not song:
+        await reply_smart(update, "Example: `/lyrics Starboy The Weeknd` 🎵")
+        return
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    prompt = f"Find and return the main lyrics and vibe outline for song: '{song}'."
+    reply = ask_ai_multi_provider(prompt)
+    await reply_smart(update, f"🎵 **MUSIC INTELLIGENCE — {song.upper()}:**\n\n{reply}")
+
+async def code_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    raw_code = " ".join(context.args) if context.args else ""
+    if not raw_code:
+        await reply_smart(update, "Example: `/code python print('hello world')` 💻")
+        return
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    prompt = f"Act as a friendly senior Stark dev. Debug, analyze, clean up, and explain this code snippet simply, including time complexity:\n\n{raw_code}"
+    reply = ask_ai_multi_provider(prompt)
+    await reply_smart(update, f"💻 **STARK DEV CODE REVIEW:**\n\n{reply}")
+
+async def boost_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    hypes = [
+        "\"Sometimes you gotta run before you can walk.\" — Tony Stark 🚀 Keep pushing, boss!",
+        "\"It's not about how much we lost. It's about how much we have left.\" 🔥 You got this!",
+        "\"No amount of money ever bought a second of time.\" ⏰ Make today count, legend!",
+        "Stark Industries AI core is operating at 100% efficiency, and so are you! Let's crush this day. 😎✨"
+    ]
+    await reply_smart(update, f"⚡ **STARK BOOST & ENERGY PEP TALK:**\n\n{random.choice(hypes)}")
+
+# ---------------------------------------------------------
+# 8. MCU Triad Commands
 # ---------------------------------------------------------
 async def voice_switch_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     choice = context.args[0].lower() if context.args else ""
@@ -394,7 +462,7 @@ async def friday_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await reply_smart(update, f"🍀 **F.R.I.D.A.Y. DIAGNOSTIC SCAN:**\n\n{reply}")
 
 # ---------------------------------------------------------
-# 8. Group Management, Boss, Memory & Quiz
+# 9. Group Management, Boss, Memory & Quiz
 # ---------------------------------------------------------
 async def claimboss_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -491,7 +559,7 @@ async def exam_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def setwelcome_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = " ".join(context.args)
     if not welcome_text:
-        await reply_smart(update, "Example: `/setwelcome Welcome to Stark HQ! Stay respectful.` 👋")
+        await reply_smart(update, "Example: `/setwelcome Welcome to Stark HQ! Chill and enjoy.` 👋")
         return
     set_config("WELCOME_MSG", welcome_text)
     await reply_smart(update, f"👋 **Custom Welcome Set:** _\"{welcome_text}\"_")
@@ -617,7 +685,7 @@ async def pu2_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await reply_smart(update, f"📚 **2ND PU ACADEMIC INTELLIGENCE ({subject.upper()}):**\n\n{reply}")
 
 # ---------------------------------------------------------
-# 9. MCU HUD & Visual Telemetry Handlers
+# 10. MCU HUD & Visual Telemetry Handlers
 # ---------------------------------------------------------
 async def hud_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     meta = get_chat_metadata(update)
@@ -678,8 +746,23 @@ async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await reply_smart(update, "Visual scanner unable to process photo.")
 
 # ---------------------------------------------------------
-# 10. Standard Utilities Suite
+# 11. Standard Utilities Suite
 # ---------------------------------------------------------
+async def law_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = " ".join(context.args) if context.args else update.message.text
+    res = ask_ai_multi_provider(f"Provide a short, sweet legal breakdown using IRAC method for: {query}")
+    await reply_smart(update, res)
+
+async def research_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = " ".join(context.args) if context.args else update.message.text
+    res = ask_ai_multi_provider(f"Analyze this topic concisely as a senior academic researcher: {query}")
+    await reply_smart(update, res)
+
+async def med_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = " ".join(context.args) if context.args else update.message.text
+    res = ask_ai_multi_provider(f"Explain concisely for medical students: {query}")
+    await reply_smart(update, res)
+
 async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     topic = " ".join(context.args) if context.args else "Technology"
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
@@ -863,13 +946,14 @@ async def poll_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_poll(chat_id=update.effective_chat.id, question=parts[0], options=parts[1:], is_anonymous=False)
 
 # ---------------------------------------------------------
-# 11. Help Menu & Callbacks
+# 12. Help Menu & Callbacks
 # ---------------------------------------------------------
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     meta = get_chat_metadata(update)
     persona = get_active_persona()
     keyboard = [
         [InlineKeyboardButton("🏡 Smart Home", callback_data="help_home"), InlineKeyboardButton("🛠️ CAD Engine", callback_data="help_cad"), InlineKeyboardButton("🚀 Autopilot", callback_data="help_autopilot")],
+        [InlineKeyboardButton("💰 Expenses", callback_data="help_expense"), InlineKeyboardButton("📚 Study Plan", callback_data="help_study"), InlineKeyboardButton("💻 Code Dev", callback_data="help_code")],
         [InlineKeyboardButton("🌐 Network Recon", callback_data="help_recon"), InlineKeyboardButton("🎙️ Voice Matrix", callback_data="help_voice"), InlineKeyboardButton("👁️ Vision Scan", callback_data="help_scan")],
         [InlineKeyboardButton("👑 Claim Boss", callback_data="help_boss"), InlineKeyboardButton("📢 Announce", callback_data="help_announce"), InlineKeyboardButton("⭐ Karma", callback_data="help_karma")],
         [InlineKeyboardButton("👥 Group Controls", callback_data="help_group"), InlineKeyboardButton("🛡️ Security", callback_data="help_security"), InlineKeyboardButton("📚 2nd PU Exam", callback_data="help_exam")],
@@ -886,6 +970,9 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
     if data == "help_home": msg = "🏡 **Smart Home:** `/home` (status), `/lights [state]`, `/climate [temp]`, `/lock` (lockdown toggle)"
     elif data == "help_cad": msg = "🛠️ **CAD Engine:** `/cad [prototype]` (blueprint analysis), `/stresstest [component]` (structural failure test)"
     elif data == "help_autopilot": msg = "🚀 **Autopilot:** `/autopilot [destination]` — Suit deployment & Mach speed trajectory telemetry!"
+    elif data == "help_expense": msg = "💰 **Expenses & Budget:** `/expense [amount] [item]` to log spend, `/budget` to see total log!"
+    elif data == "help_study": msg = "📚 **Study Plan:** `/studyplan [subject]` — Generates a chill, balanced study schedule with breaks!"
+    elif data == "help_code": msg = "💻 **Code Dev:** `/code [snippet]` — Debugs, analyzes, and explains code snippets!"
     elif data == "help_recon": msg = "🌐 **Network Recon:** `/dns [domain]`, `/whois [domain]`, `/ping [host]` — Live cyber network tools!"
     elif data == "help_voice": msg = "🎙️ **Voice Matrix:** `/voice [jarvis | friday | edith]` — Switches AI voice persona!"
     elif data == "help_scan": msg = "👁️ **Visual Scan:** Reply to any photo with `/scan` or `/ocr` to analyze diagram or text!"
@@ -895,12 +982,12 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
     elif data == "help_announce": msg = "📢 **Announce:** `/announce [msg]` in DM posts & pins announcement to group!"
     elif data == "help_group": msg = "👥 **Group Commands:** `/settitle`, `/setdesc`, `/setdp`, `/setwelcome`, `/pin`, `/groupinfo`"
     elif data == "help_security": msg = "🛡️ **Security:** `/security` audits encryption, links, and spam status."
-    elif data == "help_tools": msg = "🛠️ **Tools:** `/image`, `/qr`, `/remind`, `/note`, `/weather`, `/crypto`, `/convert`, `/read`, `/dict`, `/github`, `/poll`, `/search`, `/calc`"
+    elif data == "help_tools": msg = "🛠️ **Tools:** `/image`, `/qr`, `/remind`, `/note`, `/weather`, `/crypto`, `/convert`, `/read`, `/dict`, `/github`, `/poll`, `/search`, `/calc`, `/lyrics`, `/boost`"
     else: msg = "Stark AI Sub-System Active."
     await query.message.reply_text(msg)
 
 # ---------------------------------------------------------
-# 12. Media & Message Handlers
+# 13. Media & Message Handlers
 # ---------------------------------------------------------
 async def voice_note_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     meta = get_chat_metadata(update)
@@ -1029,7 +1116,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_voice_reply(update, reply_text)
 
 # ---------------------------------------------------------
-# 13. Application Launch
+# 14. Application Launch
 # ---------------------------------------------------------
 def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
@@ -1042,6 +1129,14 @@ def main():
     app.add_handler(CommandHandler("cad", cad_command))
     app.add_handler(CommandHandler("stresstest", stresstest_command))
     app.add_handler(CommandHandler("autopilot", autopilot_command))
+
+    # Student Chill & Dev Commands
+    app.add_handler(CommandHandler("expense", expense_command))
+    app.add_handler(CommandHandler("budget", budget_command))
+    app.add_handler(CommandHandler("studyplan", studyplan_command))
+    app.add_handler(CommandHandler("lyrics", lyrics_command))
+    app.add_handler(CommandHandler("code", code_command))
+    app.add_handler(CommandHandler("boost", boost_command))
 
     # Network Recon Suite
     app.add_handler(CommandHandler("dns", dns_command))
@@ -1092,6 +1187,9 @@ def main():
     app.add_handler(CallbackQueryHandler(button_callback_handler))
 
     # Utilities
+    app.add_handler(CommandHandler("law", law_command))
+    app.add_handler(CommandHandler("research", research_command))
+    app.add_handler(CommandHandler("med", med_command))
     app.add_handler(CommandHandler("image", image_gen_command))
     app.add_handler(CommandHandler("qr", qr_command))
     app.add_handler(CommandHandler("remind", remind_command))
