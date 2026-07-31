@@ -201,10 +201,10 @@ def ask_ai_multi_provider(prompt: str) -> str:
     return "Apologies, sir. All available AI sub-systems are currently at capacity. 🤖💤"
 
 # ---------------------------------------------------------
-# 5. Multi-Core Vision & PDF Document Handlers
+# 5. Optimized Multi-Core Vision & PDF Handlers
 # ---------------------------------------------------------
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Processes photos with multi-provider vision fallback (Gemini -> Groq Vision -> OpenRouter Vision)."""
+    """Processes photos with image optimization and multi-provider vision fallback."""
     user_str = get_user_identifier(update)
     caption = update.message.caption or "Please analyze, solve, or describe what is in this image in detail."
     
@@ -215,8 +215,17 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         photo_file = await update.message.photo[-1].get_file()
         image_bytes = await photo_file.download_as_bytearray()
+        
+        # Optimize image for API processing
         pil_image = Image.open(io.BytesIO(image_bytes))
-        base64_img = base64.b64encode(image_bytes).decode('utf-8')
+        if pil_image.mode != "RGB":
+            pil_image = pil_image.convert("RGB")
+            
+        img_buffer = io.BytesIO()
+        pil_image.save(img_buffer, format="JPEG", quality=85)
+        clean_bytes = img_buffer.getvalue()
+        
+        base64_img = base64.b64encode(clean_bytes).decode('utf-8')
         data_url = f"data:image/jpeg;base64,{base64_img}"
         prompt_text = f"[User {user_str} sent photo]: {caption}"
 
@@ -233,7 +242,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 print(f"[Vision Core 1: Gemini] Failed: {e}. Trying Groq Vision...")
 
-        # 2. Secondary Vision Core: Groq Vision (llama-3.2-11b-vision-instruct)
+        # 2. Secondary Vision Core: Groq Vision
         if GROQ_API_KEY and not reply_text:
             try:
                 client = Groq(api_key=GROQ_API_KEY)
@@ -256,30 +265,39 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 print(f"[Vision Core 2: Groq Vision] Failed: {e}. Trying OpenRouter Vision...")
 
-        # 3. Tertiary Vision Core: OpenRouter Free Vision
+        # 3. Tertiary Vision Core: OpenRouter Free Vision Models
         if OPENROUTER_API_KEY and not reply_text:
-            try:
-                res = requests.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
-                    json={
-                        "model": "meta-llama/llama-3.2-11b-vision-instruct:free",
-                        "messages": [
-                            {"role": "system", "content": SYSTEM_INSTRUCTION},
-                            {
-                                "role": "user",
-                                "content": [
-                                    {"type": "text", "text": prompt_text},
-                                    {"type": "image_url", "image_url": {"url": data_url}}
-                                ]
-                            }
-                        ]
-                    },
-                    timeout=15
-                ).json()
-                reply_text = res["choices"][0]["message"]["content"]
-            except Exception as e:
-                print(f"[Vision Core 3: OpenRouter Vision] Failed: {e}")
+            free_vision_models = [
+                "google/gemini-2.0-flash-lite-001:free",
+                "meta-llama/llama-3.2-11b-vision-instruct:free",
+                "qwen/qwen-2-vl-72b-instruct:free"
+            ]
+            for vis_model in free_vision_models:
+                if reply_text:
+                    break
+                try:
+                    res = requests.post(
+                        "https://openrouter.ai/api/v1/chat/completions",
+                        headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
+                        json={
+                            "model": vis_model,
+                            "messages": [
+                                {"role": "system", "content": SYSTEM_INSTRUCTION},
+                                {
+                                    "role": "user",
+                                    "content": [
+                                        {"type": "text", "text": prompt_text},
+                                        {"type": "image_url", "image_url": {"url": data_url}}
+                                    ]
+                                }
+                            ]
+                        },
+                        timeout=15
+                    ).json()
+                    if "choices" in res and len(res["choices"]) > 0:
+                        reply_text = res["choices"][0]["message"]["content"]
+                except Exception as e:
+                    print(f"[Vision Core OpenRouter {vis_model}] Failed: {e}")
 
     except Exception as e:
         print(f"General Photo Handler Error: {e}")
