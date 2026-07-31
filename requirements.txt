@@ -5,3 +5,4 @@ edge-tts
 requests
 Pillow
 pypdf
+duckduckgo-search
