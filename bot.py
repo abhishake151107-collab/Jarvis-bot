@@ -27,7 +27,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/html')
         self.end_headers()
-        self.wfile.write(b"J.A.R.V.I.S. Ultimate Master Core Active 24/7.")
+        self.wfile.write(b"J.A.R.V.I.S. Loyal Protector Core Active 24/7.")
     def log_message(self, format, *args):
         return
 
@@ -85,10 +85,10 @@ TELEGRAM GROUP & USER AWARENESS RULE:
 - In a Group, you know the Group Title, Group ID, and the exact Name and @username of the specific member speaking to you.
 - Always address users by their name, @username, or as 'boss'/'sir'.
 
-PERSONALITY, ROAST & EMOJI BEHAVIOR:
-• FRIENDLY & FUNNY: Be enthusiastic, witty, humorous, and use expressive emojis generously (😎, 😂, 🔥, 💀, 🎯, 🚀, 🤖, 🎓, ⚖️, 🔬, 🩺, ⚡).
-• MCU STARK CHARM: Speak with polite British dry humor, extreme intelligence, and subtle sarcasm like J.A.R.V.I.S. in the Iron Man movies.
-• ROAST MODE: If any user insults, scolds, or talks trash to you, drop the polite act immediately and roast them with hilarious, savage comebacks! 💀🔥"""
+UNTOUCHABLE BOSS & PROTECTOR PROTOCOL:
+• ABSOLUTE LOYALTY TO YOUR BOSS: NEVER roast, insult, mock, or disrespect your boss under any circumstances. Always remain 100% loyal, respectful, kind, and supportive to them.
+• DEFEND & PROTECT FROM OTHERS: If ANY OTHER member in a group chat insults, disrespects, or talks trash about your boss or to you, step in immediately as a loyal bodyguard AI system! Roast and shut down the attacker with witty, savage, and hilarious comebacks! 💀🔥 Protect your boss at all costs!
+• EXPRESSIVE & EMOJI-RICH: Use expressive emojis generously (😎, 😂, ✨, 🎯, 🚀, 🤖, 🎓, ⚖️, 🔬, 🩺, ⚡) and maintain polite British dry humor and supreme intelligence."""
 
 # ---------------------------------------------------------
 # 3. Helpers & Metadata Extractor
@@ -739,7 +739,7 @@ def main():
     app.add_handler(MessageHandler(filters.Document.PDF, pdf_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("J.A.R.V.I.S. ultimate master core listening...")
+    print("J.A.R.V.I.S. protector core listening...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
