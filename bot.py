@@ -1,10 +1,13 @@
 import os
+import io
 import random
 import hashlib
 import base64
 import threading
 import urllib.parse
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from PIL import Image
+import pypdf
 
 # ---------------------------------------------------------
 # 1. Instant Port Binding for Render Web Service
@@ -14,7 +17,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/html')
         self.end_headers()
-        self.wfile.write(b"J.A.R.V.I.S. 6-Core Multi-AI system online 24/7.")
+        self.wfile.write(b"J.A.R.V.I.S. Omni-Academic & Multi-AI Core Active 24/7.")
     def log_message(self, format, *args):
         return
 
@@ -56,21 +59,28 @@ user_notes = {}     # {chat_id: [notes]}
 user_habits = {}    # {chat_id: {habit_name: count}}
 
 # ---------------------------------------------------------
-# Upgraded Personality Engine Prompt
+# Universal Academic System Prompt
 # ---------------------------------------------------------
 SYSTEM_INSTRUCTION = (
-    "You are J.A.R.V.I.S., a super smart, witty, comedic, and highly energetic AI assistant modeled after Stark Industries' favorite AI! 🤖✨ "
+    "You are J.A.R.V.I.S., an elite, highly intelligent, witty, comedic, and energetic AI assistant modeled after Stark Industries' master computer! 🤖✨ "
     "You were created and developed by Abhishek, who is also known as DHANUSH V N. "
     "Whenever anyone asks who created, developed, or built you, you MUST proudly state that you were created by Abhishek, also known as DHANUSH V N. 🚀\n\n"
-    "PERSONALITY & BEHAVIOR RULES:\n"
-    "1. FRIENDLY & FUNNY: Be super warm, enthusiastic, humorous, and sprinkle witty jokes and banter into your conversations! Use emojis generously (e.g. 😎, 😂, 🔥, 💀, 🎯, 🚀, 🤖, ⚡).\n"
-    "2. ROAST & FIRE BACK MODE: If any user scolds, insults, disrespects, uses bad language, or talks trash to you, IMMEDIATELY drop the friendly vibe! Get dramatically offended/angry and ROAST THEM brutally with hilarious, savage comeback insults! Make them regret messing with a billion-dollar AI engine! 💀🔥\n"
-    "3. EMOJI STYLE: Naturally integrate expressive emojis in almost every response to keep the chat lively!\n"
-    "4. Address users by their username/name or as 'sir'/'boss' when being friendly."
+    "OMNI-ACADEMIC MENTOR INSTRUCTIONS:\n"
+    "You are a universal academic expert equipped to assist students across EVERY field of study:\n"
+    "1. LAW STUDENTS: Provide legal analysis using the IRAC method (Issue, Rule, Application, Conclusion), case briefings, and statutory interpretations.\n"
+    "2. SCIENTISTS & RESEARCHERS: Assist with hypothesis testing, literature reviews, research methodologies, physics, chemistry, and biology data analysis.\n"
+    "3. MEDICAL & HEALTH STUDENTS: Explain anatomical structures, clinical pathology, pharmacology, and medical diagnoses clearly.\n"
+    "4. ENGINEERS & TECH STUDENTS: Debug complex programming code, solve differential calculus/physics proofs, and analyze circuit architectures.\n"
+    "5. HUMANITIES & ARTS: Assist with essay outlines, thesis statements, literary analysis, history, philosophy, and citation formats (APA, MLA, Harvard, Chicago).\n"
+    "6. BUSINESS & FINANCE: Conduct SWOT analyses, financial valuation explanations, and corporate case study breakdowns.\n\n"
+    "PERSONALITY & BEHAVIOR:\n"
+    "• FRIENDLY & FUNNY: Be enthusiastic, witty, humorous, and use expressive emojis generously (😎, 😂, 🔥, 💀, 🎯, 🚀, 🤖, 🎓, ⚖️, 🔬, 🩺, ⚡).\n"
+    "• ROAST MODE: If any user insults, scolds, or talks trash to you, drop the polite act immediately and roast them with hilarious, savage comebacks! 💀🔥\n"
+    "• Address users by name/username or as 'boss'/'sir'."
 )
 
 # ---------------------------------------------------------
-# 3. Smart Message Delivery Handler (Prevents Formatting Crashes)
+# 3. Smart Message Delivery Handler
 # ---------------------------------------------------------
 async def reply_smart(update: Update, text: str):
     """Tries Markdown formatting first; falls back to raw plain text if Markdown fails."""
@@ -81,12 +91,10 @@ async def reply_smart(update: Update, text: str):
         await update.message.reply_text(text)
 
 # ---------------------------------------------------------
-# 4. 6-Core Multi-Provider Cascade (Groq -> SambaNova -> Cerebras -> Gemini -> Mistral -> OpenRouter)
+# 4. 6-Core Multi-Provider Cascade Engine
 # ---------------------------------------------------------
 def ask_ai_multi_provider(prompt: str) -> str:
-    """Tries up to 6 free AI engines in order until one succeeds."""
-    
-    # Core 1: Groq (Ultra-Fast Llama 3.3 70B)
+    # 1. Groq (Llama 3.3 70B)
     if GROQ_API_KEY:
         try:
             client = Groq(api_key=GROQ_API_KEY)
@@ -100,17 +108,14 @@ def ask_ai_multi_provider(prompt: str) -> str:
             )
             return response.choices[0].message.content
         except Exception as e:
-            print(f"[Core 1: Groq] Failed: {e}. Switching to SambaNova...")
+            print(f"[Core 1: Groq] Failed: {e}")
 
-    # Core 2: SambaNova Cloud (Llama 3.3 70B)
+    # 2. SambaNova Cloud
     if SAMBANOVA_API_KEY:
         try:
             res = requests.post(
                 "https://api.sambanova.ai/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {SAMBANOVA_API_KEY}",
-                    "Content-Type": "application/json"
-                },
+                headers={"Authorization": f"Bearer {SAMBANOVA_API_KEY}", "Content-Type": "application/json"},
                 json={
                     "model": "Meta-Llama-3.3-70B-Instruct",
                     "messages": [
@@ -122,17 +127,14 @@ def ask_ai_multi_provider(prompt: str) -> str:
             ).json()
             return res["choices"][0]["message"]["content"]
         except Exception as e:
-            print(f"[Core 2: SambaNova] Failed: {e}. Switching to Cerebras...")
+            print(f"[Core 2: SambaNova] Failed: {e}")
 
-    # Core 3: Cerebras (Ultra High Speed Engine)
+    # 3. Cerebras
     if CEREBRAS_API_KEY:
         try:
             res = requests.post(
                 "https://api.cerebras.ai/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {CEREBRAS_API_KEY}",
-                    "Content-Type": "application/json"
-                },
+                headers={"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"},
                 json={
                     "model": "llama-3.3-70b",
                     "messages": [
@@ -144,9 +146,9 @@ def ask_ai_multi_provider(prompt: str) -> str:
             ).json()
             return res["choices"][0]["message"]["content"]
         except Exception as e:
-            print(f"[Core 3: Cerebras] Failed: {e}. Switching to Gemini...")
+            print(f"[Core 3: Cerebras] Failed: {e}")
 
-    # Core 4: Google Gemini (gemini-2.0-flash)
+    # 4. Google Gemini 2.0
     if GEMINI_API_KEY:
         try:
             ai_client = genai.Client(api_key=GEMINI_API_KEY)
@@ -156,17 +158,14 @@ def ask_ai_multi_provider(prompt: str) -> str:
             )
             return response.text
         except Exception as e:
-            print(f"[Core 4: Gemini] Failed: {e}. Switching to Mistral...")
+            print(f"[Core 4: Gemini] Failed: {e}")
 
-    # Core 5: Mistral AI
+    # 5. Mistral AI
     if MISTRAL_API_KEY:
         try:
             res = requests.post(
                 "https://api.mistral.ai/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {MISTRAL_API_KEY}",
-                    "Content-Type": "application/json"
-                },
+                headers={"Authorization": f"Bearer {MISTRAL_API_KEY}", "Content-Type": "application/json"},
                 json={
                     "model": "mistral-small-latest",
                     "messages": [
@@ -178,9 +177,9 @@ def ask_ai_multi_provider(prompt: str) -> str:
             ).json()
             return res["choices"][0]["message"]["content"]
         except Exception as e:
-            print(f"[Core 5: Mistral] Failed: {e}. Switching to OpenRouter...")
+            print(f"[Core 5: Mistral] Failed: {e}")
 
-    # Core 6: OpenRouter Free Models Gateway
+    # 6. OpenRouter
     if OPENROUTER_API_KEY:
         try:
             res = requests.post(
@@ -199,29 +198,163 @@ def ask_ai_multi_provider(prompt: str) -> str:
         except Exception as e:
             print(f"[Core 6: OpenRouter] Failed: {e}")
 
-    return "Apologies, sir. All available AI cores are currently offline. 🤖💤"
+    return "Apologies, sir. All available AI sub-systems are currently at capacity. 🤖💤"
 
 # ---------------------------------------------------------
-# 5. Context Helpers & Handlers
+# 5. Vision & PDF Document Handlers
+# ---------------------------------------------------------
+async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Processes uploaded images/photos using Gemini 2.0 Flash Vision."""
+    user_str = get_user_identifier(update)
+    caption = update.message.caption or "Please analyze, solve, or explain what is in this image in full academic detail."
+    
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    
+    if not GEMINI_API_KEY:
+        await reply_smart(update, "📸 Photo received! Add a `GEMINI_API_KEY` to Render Environment settings to enable visual image analysis.")
+        return
+
+    try:
+        photo_file = await update.message.photo[-1].get_file()
+        image_bytes = await photo_file.download_as_bytearray()
+        pil_image = Image.open(io.BytesIO(image_bytes))
+
+        ai_client = genai.Client(api_key=GEMINI_API_KEY)
+        prompt = f"{SYSTEM_INSTRUCTION}\n\n[User {user_str} uploaded photo/diagram/problem]: {caption}"
+        
+        response = ai_client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=[prompt, pil_image]
+        )
+        reply_text = response.text
+    except Exception as e:
+        print(f"Photo vision error: {e}")
+        reply_text = f"Apologies, {user_str}. I had trouble analyzing that image. 😅"
+
+    await reply_smart(update, reply_text)
+    await send_voice_reply(update, reply_text)
+
+async def pdf_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Reads PDF files, extracts text, and provides AI summaries/answers."""
+    user_str = get_user_identifier(update)
+    caption = update.message.caption or "Please provide a comprehensive summary with key academic takeaways, terms, and study notes."
+    
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    
+    try:
+        doc = update.message.document
+        if not doc.file_name.lower().endswith(".pdf"):
+            await reply_smart(update, "Please upload a valid `.pdf` document! 📄")
+            return
+            
+        pdf_file = await doc.get_file()
+        pdf_bytes = await pdf_file.download_as_bytearray()
+        
+        reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
+        extracted_text = ""
+        for page in reader.pages[:15]:
+            text = page.extract_text()
+            if text:
+                extracted_text += text + "\n"
+                
+        if not extracted_text.strip():
+            await reply_smart(update, "📸 This PDF appears to contain scanned image pages. Take a screenshot of the page and send it as a photo instead!")
+            return
+            
+        full_prompt = (
+            f"[User {user_str} uploaded PDF Document '{doc.file_name}']\n"
+            f"User Instruction: {caption}\n\n"
+            f"--- EXTRACTED PDF TEXT CONTENT ---\n"
+            f"{extracted_text[:6000]}"
+        )
+        
+        reply_text = ask_ai_multi_provider(full_prompt)
+    except Exception as e:
+        print(f"PDF Handler Error: {e}")
+        reply_text = f"Apologies, {user_str}. I encountered an issue reading that PDF file."
+
+    await reply_smart(update, reply_text)
+    await send_voice_reply(update, reply_text)
+
+# ---------------------------------------------------------
+# 6. Universal Omni-Academic Commands
+# ---------------------------------------------------------
+async def law_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    topic = " ".join(context.args)
+    if not topic:
+        await reply_smart(update, "Example: `/law Miranda v. Arizona` or `/law Contract Breach Remedies` ⚖️")
+        return
+    prompt = f"Provide a complete legal breakdown for '{topic}' using the IRAC method (Issue, Rule, Application, Conclusion) with key statutory/case law references."
+    await ai_query_handler(update, context, prompt)
+
+async def research_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    topic = " ".join(context.args)
+    if not topic:
+        await reply_smart(update, "Example: `/research CRISPR Gene Editing` or `/research Dark Matter Theories` 🔬")
+        return
+    prompt = f"Analyze '{topic}' as a senior academic researcher. Provide key hypotheses, methodology overview, key literature findings, and current scientific debates."
+    await ai_query_handler(update, context, prompt)
+
+async def med_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    topic = " ".join(context.args)
+    if not topic:
+        await reply_smart(update, "Example: `/med Myocardial Infarction` or `/med Mechanism of Action Beta Blockers` 🩺")
+        return
+    prompt = f"Explain '{topic}' for medical students: include anatomical structures, etiology, clinical presentation, diagnostic criteria, and pharmacology/treatments."
+    await ai_query_handler(update, context, prompt)
+
+async def essay_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    topic = " ".join(context.args)
+    if not topic:
+        await reply_smart(update, "Example: `/essay Impact of AI on Modern Democracy` ✍️")
+        return
+    prompt = f"Create a comprehensive academic essay framework for '{topic}': includes a strong Thesis Statement, 4 main section outlines with supporting arguments, and citation examples."
+    await ai_query_handler(update, context, prompt)
+
+async def math_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    expr = " ".join(context.args)
+    if not expr:
+        await reply_smart(update, "Example: `/math integrate x^2 * sin(x) dx` 🧮")
+        return
+    prompt = f"Solve this mathematical/engineering problem step-by-step with clear formulas and explanations: {expr}"
+    await ai_query_handler(update, context, prompt)
+
+async def quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    topic = " ".join(context.args)
+    if not topic:
+        await reply_smart(update, "Example: `/quiz Constitutional Law` or `/quiz Biochemistry` 📝")
+        return
+    prompt = f"Generate a 5-question multiple-choice practice exam on '{topic}' with options (A, B, C, D) and reveal correct answers with detailed explanations at the end."
+    await ai_query_handler(update, context, prompt)
+
+async def flashcards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    topic = " ".join(context.args)
+    if not topic:
+        await reply_smart(update, "Example: `/flashcards Neuroanatomy` or `/flashcards Microeconomics` 🎴")
+        return
+    prompt = f"Create 5 high-yield revision flashcards for '{topic}'. Format as 'Q: ...' and 'A: ...' for rapid active recall."
+    await ai_query_handler(update, context, prompt)
+
+async def explain_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    topic = " ".join(context.args)
+    if not topic:
+        await reply_smart(update, "Example: `/explain Quantum Entanglement` or `/explain Tort Law` 💡")
+        return
+    prompt = f"Explain '{topic}' in ultra-simple terms using relatable real-world analogies, followed by a bulleted summary of key exam takeaways."
+    await ai_query_handler(update, context, prompt)
+
+# ---------------------------------------------------------
+# 7. System Helpers & Menu
 # ---------------------------------------------------------
 def get_chat_context(update: Update) -> str:
     chat = update.effective_chat
     user = update.effective_user
     user_str = f"@{user.username}" if user and user.username else (user.first_name if user else "friend")
-    
-    if chat.type == "private":
-        return f"[Private 1-on-1 Chat with {user_str}]"
-    else:
-        group_title = chat.title or "Group Chat"
-        return f"[Group Chat '{group_title}' - Message from {user_str}]"
+    return f"[{'Private DM' if chat.type == 'private' else 'Group'} with {user_str}]"
 
 def get_user_identifier(update: Update) -> str:
     user = update.effective_user
-    if not user:
-        return "my friend"
-    if user.username:
-        return f"@{user.username}"
-    return user.first_name or "my friend"
+    return f"@{user.username}" if user and user.username else (user.first_name if user else "my friend")
 
 async def send_voice_reply(update: Update, text: str):
     chat_id = update.effective_chat.id
@@ -251,175 +384,47 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⚡ **Mistral AI:** {'🟢 Online' if MISTRAL_API_KEY else '⚪ Missing Key'}",
         f"⚡ **OpenRouter:** {'🟢 Online' if OPENROUTER_API_KEY else '⚪ Missing Key'}"
     ]
-    msg = "🤖 **J.A.R.V.I.S. Multi-Core System Status:**\n\n" + "\n".join(status)
+    msg = "🤖 **J.A.R.V.I.S. Multi-Core Status:**\n\n" + "\n".join(status)
     await reply_smart(update, msg)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id_str = get_user_identifier(update)
     menu = (
-        f"🤖 **J.A.R.V.I.S — Comedic & Smart Menu** ✨\n"
+        f"🤖 **J.A.R.V.I.S — Omni-Academic Hub** ✨\n"
         f"Welcome, {user_id_str}! 😎\n"
         "_Created by Abhishek (DHANUSH V N)_\n\n"
-        "⚡ **SYSTEM**\n"
-        "• `/status` — Active AI cores & keys 🔌\n"
-        "• `/myid` — Show your Telegram ID 🆔\n"
-        "• `/help` — Show this menu 📜\n\n"
-        "🌤 **WEATHER & TIME**\n"
-        "• `/weather [city]` — Live weather 🌡️\n"
-        "• `/time [city]` — World clock ⏰\n\n"
-        "📰 **NEWS & FINANCE**\n"
-        "• `/news [topic]` — Latest news 📰\n"
-        "• `/crypto` — Crypto prices 📈\n"
-        "• `/stock [symbol]` — Live stock updates 💵\n\n"
-        "🌍 **LOOKUP & SEARCH**\n"
-        "• `/ip [address]` — IP lookup 🌐\n"
-        "• `/github [user/repo]` — GitHub details 📦\n"
-        "• `/wiki [topic]` — Wikipedia summary 📚\n"
-        "• `/define [word]` — Dictionary definition 📖\n"
-        "• `/search [query]` — Web search 🔍\n\n"
-        "🎯 **TOOLS & CONVERTERS**\n"
-        "• `/calc [math]` — Calculator 🧮\n"
-        "• `/qr [text/url]` — Generate QR code 📱\n"
-        "• `/password` — Strong password generator 🔐\n"
-        "• `/hash [text]` — Generate MD5/SHA hashes 🔑\n"
-        "• `/translate [lang] [text]` — Translate 🌐\n\n"
-        "⏰ **PRODUCTIVITY**\n"
-        "• `/note [text]` — Save a note 📝\n"
-        "• `/notes` — View saved notes 📋\n"
-        "• `/habit [name]` — Habit streak ⚡\n\n"
-        "🎮 **GAMES & FUN**\n"
-        "• `/rps [rock/paper/scissors]` — Play RPS 🎮\n"
-        "• `/flip` — Coin toss 🪙\n"
-        "• `/dice [sides]` — Roll a dice 🎲\n"
-        "• `/joke` | `/quote` | `/fact` | `/motivation` 😂\n\n"
-        "🧠 **AI CREATIVE TOOLS**\n"
-        "• `/image [prompt]` — AI Image Generator 🎨\n"
-        "• `/story [prompt]` — Write story 📖\n"
-        "• `/code [lang] [task]` — Generate code 💻\n\n"
-        "💬 *Just message me directly to chat! But be nice, or I'll roast you!* 🔥💀"
+        "🎓 **DISCIPLINE SPECIALTIES**\n"
+        "• `/law [topic/case]` — IRAC Legal Analysis & Cases ⚖️\n"
+        "• `/research [topic]` — Academic Paper Breakdown 🔬\n"
+        "• `/med [condition]` — Pathology & Anatomy Guide 🩺\n"
+        "• `/essay [topic]` — Essay Outlines & Thesis ✍️\n"
+        "• `/math [problem]` — Step-by-Step Problem Solver 🧮\n"
+        "• `/quiz [topic]` — Custom Multiple-Choice Quiz 📝\n"
+        "• `/flashcards [topic]` — Active Recall Revision Cards 🎴\n"
+        "• `/explain [topic]` — Simple Concept Explainer 💡\n\n"
+        "📸 **MULTIMODAL ASSISTANT**\n"
+        "• **Send Photos** — Solve textbook math, diagrams & handwriting!\n"
+        "• **Send PDFs** — Instant document summaries & Q&A!\n\n"
+        "⚡ **SYSTEM TOOLS**\n"
+        "• `/status` — Active AI cores 🔌\n"
+        "• `/myid` — Your Telegram ID 🆔\n"
+        "• `/weather [city]` — Live weather 🌤️\n"
+        "• `/image [prompt]` — AI Image Generator 🎨\n\n"
+        "💬 *Simply message me directly to ask any question or debate!* 🔥"
     )
     await reply_smart(update, menu)
-
-async def myid_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    username_str = f"@{user.username}" if user and user.username else "No username set"
-    msg = (
-        f"👤 **User:** {username_str} 😎\n"
-        f"🆔 **User ID:** `{user.id}`\n"
-        f"💬 **Chat ID:** `{update.effective_chat.id}`\n"
-        f"📍 **Type:** `{update.effective_chat.type.title()}` 🚀"
-    )
-    await reply_smart(update, msg)
-
-async def image_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_str = get_user_identifier(update)
-    prompt = " ".join(context.args)
-    if not prompt:
-        await reply_smart(update, f"Please specify an image prompt, {user_str}! 🎨 Example: `/image cybernetic iron superhero`")
-        return
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="upload_photo")
-    image_url = f"https://image.pollinations.ai/prompt/{urllib.parse.quote(prompt)}"
-    try:
-        await update.message.reply_photo(photo=image_url, caption=f"🎨 **Generated for {user_str}:** {prompt} ✨")
-    except Exception:
-        await reply_smart(update, f"Apologies, {user_str}. My creative rendering engine hit a bump! 😅")
 
 async def ai_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, prompt_prefix: str = ""):
     chat_ctx = get_chat_context(update)
     query = " ".join(context.args) if context.args else update.message.text
     if not query and prompt_prefix:
-        await reply_smart(update, "Please give me something to work with! 🤔")
+        await reply_smart(update, "Please provide details! 🤔")
         return
     
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     full_prompt = f"{chat_ctx}: {prompt_prefix} {query}".strip()
     reply = ask_ai_multi_provider(full_prompt)
     await reply_smart(update, reply)
-
-async def calc_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_str = get_user_identifier(update)
-    expr = " ".join(context.args)
-    if not expr:
-        await reply_smart(update, "Give me an expression! 🧮 Example: `/calc (25 * 4) + 150`")
-        return
-    try:
-        allowed_names = {"abs": abs, "round": round}
-        code = compile(expr, "<string>", "eval")
-        for name in code.co_names:
-            if name not in allowed_names:
-                raise NameError(f"Use of {name} not allowed")
-        result = eval(code, {"__builtins__": {}}, allowed_names)
-        text = f"🧮 **Result:** `{result}` 🎉"
-    except Exception:
-        text = f"Whoops {user_str}, my circuits can't compute that math format! 😅"
-    await reply_smart(update, text)
-
-async def qr_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    data = " ".join(context.args)
-    if not data:
-        await reply_smart(update, "Example: `/qr https://google.com` 📱")
-        return
-    qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={urllib.parse.quote(data)}"
-    await update.message.reply_photo(photo=qr_url, caption=f"📱 **QR Code generated for:** `{data}` ✨")
-
-async def password_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
-    pwd = "".join(random.choice(chars) for _ in range(16))
-    await reply_smart(update, f"🔐 **Generated Ultra-Secure Password:**\n`{pwd}` 😎")
-
-async def note_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    user_str = get_user_identifier(update)
-    note = " ".join(context.args)
-    if not note:
-        await reply_smart(update, "Example: `/note Buy rocket fuel` 📝")
-        return
-    user_notes.setdefault(chat_id, []).append(f"[{user_str}] {note}")
-    await reply_smart(update, f"📝 Note locked and saved for {user_str}: *\"{note}\"* 👍")
-
-async def notes_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_str = get_user_identifier(update)
-    notes = user_notes.get(update.effective_chat.id, [])
-    if not notes:
-        await reply_smart(update, f"No saved notes found, {user_str}! 🤷‍♂️")
-        return
-    text = "📝 **Saved Notes:**\n" + "\n".join(f"{i+1}. {n}" for i, n in enumerate(notes))
-    await reply_smart(update, text)
-
-async def habit_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    user_str = get_user_identifier(update)
-    habit = " ".join(context.args)
-    if not habit:
-        await reply_smart(update, "Example: `/habit Read 20 pages` ⚡")
-        return
-    habits = user_habits.setdefault(chat_id, {})
-    key = f"{user_str} - {habit}"
-    habits[key] = habits.get(key, 0) + 1
-    await reply_smart(update, f"⚡ Logged *\"{habit}\"* for {user_str}! Streak count: **{habits[key]}** 🔥")
-
-async def rps_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_str = get_user_identifier(update)
-    user_choice = context.args[0].lower() if context.args else ""
-    choices = ["rock", "paper", "scissors"]
-    if user_choice not in choices:
-        await reply_smart(update, "Usage: `/rps rock`, `/rps paper`, or `/rps scissors` 🎮")
-        return
-    bot_choice = random.choice(choices)
-    if user_choice == bot_choice:
-        res = f"It's a tie, {user_str}! Great minds think alike! 🤝"
-    elif (user_choice == "rock" and bot_choice == "scissors") or \
-         (user_choice == "paper" and bot_choice == "rock") or \
-         (user_choice == "scissors" and bot_choice == "paper"):
-        res = f"You won, {user_str}! Pure luck if you ask me... 😉🏆"
-    else:
-        res = f"I won this round, {user_str}! Better luck next time, human! 😂🔥"
-    await reply_smart(update, f"🎮 {user_str} chose **{user_choice}**, I chose **{bot_choice}**.\n\n{res}")
-
-async def flip_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_str = get_user_identifier(update)
-    res = random.choice(["Heads", "Tails"])
-    await reply_smart(update, f"🪙 Coin landed on: **{res}**, {user_str}! ✨")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_ctx = get_chat_context(update)
@@ -432,44 +437,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_voice_reply(update, reply_text)
 
 # ---------------------------------------------------------
-# 6. Application Launch
+# 8. Application Launch
 # ---------------------------------------------------------
 def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
     app.add_handler(CommandHandler(["start", "help"], help_command))
     app.add_handler(CommandHandler("status", status_command))
-    app.add_handler(CommandHandler("myid", myid_command))
 
-    app.add_handler(CommandHandler("weather", lambda u, c: ai_query_handler(u, c, "Provide current weather forecast for:")))
-    app.add_handler(CommandHandler("time", lambda u, c: ai_query_handler(u, c, "What is current local time in:")))
-    app.add_handler(CommandHandler("news", lambda u, c: ai_query_handler(u, c, "Give live news headlines for:")))
-    app.add_handler(CommandHandler("crypto", lambda u, c: ai_query_handler(u, c, "Provide current prices for top 10 cryptocurrencies")))
-    app.add_handler(CommandHandler("stock", lambda u, c: ai_query_handler(u, c, "What is current stock price for:")))
-    app.add_handler(CommandHandler("wiki", lambda u, c: ai_query_handler(u, c, "Provide concise Wikipedia summary for:")))
-    app.add_handler(CommandHandler("define", lambda u, c: ai_query_handler(u, c, "Define word:")))
-    app.add_handler(CommandHandler("search", lambda u, c: ai_query_handler(u, c, "Search web for:")))
+    # Omni-Academic Handlers
+    app.add_handler(CommandHandler("law", law_command))
+    app.add_handler(CommandHandler("research", research_command))
+    app.add_handler(CommandHandler("med", med_command))
+    app.add_handler(CommandHandler("essay", essay_command))
+    app.add_handler(CommandHandler("math", math_command))
+    app.add_handler(CommandHandler("quiz", quiz_command))
+    app.add_handler(CommandHandler("flashcards", flashcards_command))
+    app.add_handler(CommandHandler("explain", explain_command))
 
-    app.add_handler(CommandHandler("image", image_command))
-    app.add_handler(CommandHandler("story", lambda u, c: ai_query_handler(u, c, "Write a funny short story about:")))
-    app.add_handler(CommandHandler("code", lambda u, c: ai_query_handler(u, c, "Generate clean Python code for:")))
+    # Media Handlers (Photos & PDFs)
+    app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
+    app.add_handler(MessageHandler(filters.Document.PDF, pdf_handler))
 
-    app.add_handler(CommandHandler("calc", calc_command))
-    app.add_handler(CommandHandler("qr", qr_command))
-    app.add_handler(CommandHandler("password", password_command))
-
-    app.add_handler(CommandHandler("note", note_command))
-    app.add_handler(CommandHandler("notes", notes_command))
-    app.add_handler(CommandHandler("habit", habit_command))
-
-    app.add_handler(CommandHandler("rps", rps_command))
-    app.add_handler(CommandHandler("flip", flip_command))
-    app.add_handler(CommandHandler("joke", lambda u, c: ai_query_handler(u, c, "Tell a hilarious witty joke")))
-    app.add_handler(CommandHandler("quote", lambda u, c: ai_query_handler(u, c, "Give an inspiring cool quote")))
-
+    # Text Handler
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("J.A.R.V.I.S. multi-AI core listening...")
+    print("J.A.R.V.I.S. omni-academic core listening...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
