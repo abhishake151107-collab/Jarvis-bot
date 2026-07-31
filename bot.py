@@ -27,7 +27,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/html')
         self.end_headers()
-        self.wfile.write(b"J.A.R.V.I.S. MCU Stark Core Active 24/7.")
+        self.wfile.write(b"J.A.R.V.I.S. Ultimate Master Core Active 24/7.")
     def log_message(self, format, *args):
         return
 
@@ -74,12 +74,7 @@ conn.commit()
 # In-Memory Conversation History
 user_history = {}
 
-SYSTEM_INSTRUCTION = """You are J.A.R.V.I.S. (Just A Rather Very Intelligent System), the elite, highly sophisticated, witty, and loyal AI assistant created for Stark Industries! 🤖✨
-
-MCU PERSONALITY & TONE:
-- Speak with polite British dry humor, extreme intelligence, and subtle sarcasm, just like J.A.R.V.I.S. in the Marvel Cinematic Universe movies.
-- Frequently address users as "sir", "boss", or by their name.
-- Use tech/Stark jargon where appropriate (e.g., "Scanning telemetry...", "Arc reactor at optimal levels, sir", "Re-routing power...").
+SYSTEM_INSTRUCTION = """You are J.A.R.V.I.S., an elite, highly intelligent, witty, comedic, and energetic AI assistant modeled after Stark Industries' master computer! 🤖✨
 
 STRICT CREATOR & IDENTITY RULE:
 - Do NOT mention who created or developed you in regular conversations, group chats, PDF summaries, image descriptions, or Q&A replies.
@@ -87,7 +82,13 @@ STRICT CREATOR & IDENTITY RULE:
 
 TELEGRAM GROUP & USER AWARENESS RULE:
 - You have complete awareness of whether you are in a Private DM or a Telegram Group.
-- In a Group, you know the Group Title, Group ID, and the exact Name and @username of the specific member speaking to you."""
+- In a Group, you know the Group Title, Group ID, and the exact Name and @username of the specific member speaking to you.
+- Always address users by their name, @username, or as 'boss'/'sir'.
+
+PERSONALITY, ROAST & EMOJI BEHAVIOR:
+• FRIENDLY & FUNNY: Be enthusiastic, witty, humorous, and use expressive emojis generously (😎, 😂, 🔥, 💀, 🎯, 🚀, 🤖, 🎓, ⚖️, 🔬, 🩺, ⚡).
+• MCU STARK CHARM: Speak with polite British dry humor, extreme intelligence, and subtle sarcasm like J.A.R.V.I.S. in the Iron Man movies.
+• ROAST MODE: If any user insults, scolds, or talks trash to you, drop the polite act immediately and roast them with hilarious, savage comebacks! 💀🔥"""
 
 # ---------------------------------------------------------
 # 3. Helpers & Metadata Extractor
@@ -201,6 +202,24 @@ def ask_ai_multi_provider(prompt: str) -> str:
         except Exception as e:
             print(f"[Core 2: SambaNova] Failed: {e}")
 
+    if CEREBRAS_API_KEY:
+        try:
+            res = requests.post(
+                "https://api.cerebras.ai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"},
+                json={
+                    "model": "llama-3.3-70b",
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_INSTRUCTION},
+                        {"role": "user", "content": prompt}
+                    ]
+                },
+                timeout=12
+            ).json()
+            return res["choices"][0]["message"]["content"]
+        except Exception as e:
+            print(f"[Core 3: Cerebras] Failed: {e}")
+
     if GEMINI_API_KEY:
         try:
             ai_client = genai.Client(api_key=GEMINI_API_KEY)
@@ -211,6 +230,24 @@ def ask_ai_multi_provider(prompt: str) -> str:
             return response.text
         except Exception as e:
             print(f"[Core 4: Gemini] Failed: {e}")
+
+    if MISTRAL_API_KEY:
+        try:
+            res = requests.post(
+                "https://api.mistral.ai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {MISTRAL_API_KEY}", "Content-Type": "application/json"},
+                json={
+                    "model": "mistral-small-latest",
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_INSTRUCTION},
+                        {"role": "user", "content": prompt}
+                    ]
+                },
+                timeout=12
+            ).json()
+            return res["choices"][0]["message"]["content"]
+        except Exception as e:
+            print(f"[Core 5: Mistral] Failed: {e}")
 
     if OPENROUTER_API_KEY:
         try:
@@ -301,8 +338,44 @@ _\"Vitals are stable, sir. No medical intervention required.\"_"""
     await reply_smart(update, vitals_msg)
 
 # ---------------------------------------------------------
-# 6. Standard Utilities & Commands
+# 6. Academic & Utility Command Handlers
 # ---------------------------------------------------------
+async def ai_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, prompt_prefix: str = ""):
+    meta = get_chat_metadata(update)
+    query = " ".join(context.args) if context.args else update.message.text
+    if not query and prompt_prefix:
+        await reply_smart(update, "Please provide topic details! 🤔")
+        return
+    await context.bot.send_chat_action(chat_id=meta["chat_id"], action="typing")
+    full_prompt = f"{build_meta_header(meta)}\n{prompt_prefix} {query}".strip()
+    reply = ask_ai_multi_provider(full_prompt)
+    await reply_smart(update, reply)
+
+async def law_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await ai_query_handler(update, context, "Provide a complete legal breakdown using the IRAC method (Issue, Rule, Application, Conclusion) for:")
+
+async def research_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await ai_query_handler(update, context, "Analyze this topic as a senior academic researcher with key findings, methodology, and debates:")
+
+async def med_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await ai_query_handler(update, context, "Explain for medical students including anatomy, pathology, diagnosis, and treatments:")
+
+async def essay_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await ai_query_handler(update, context, "Create an academic essay outline with thesis statement and main section breakdowns for:")
+
+async def math_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await ai_query_handler(update, context, "Solve step-by-step with formulas and clear explanations:")
+
+async def quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await ai_query_handler(update, context, "Generate a 5-question multiple choice practice exam with answer key and explanations for:")
+
+async def flashcards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await ai_query_handler(update, context, "Create 5 high-yield revision flashcards (Q: ... / A: ...) for:")
+
+async def explain_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await ai_query_handler(update, context, "Explain in ultra-simple terms with real-world analogies and key takeaways for:")
+
+# Utilities Suite
 async def image_gen_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     meta = get_chat_metadata(update)
     prompt = " ".join(context.args)
@@ -415,6 +488,12 @@ async def calc_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await reply_smart(update, f"Calculation error: `{e}`")
 
+async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    if chat_id in user_history:
+        user_history[chat_id] = []
+    await reply_smart(update, "🧹 **Buffer Cleared!** Chat context memory reset.")
+
 async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = " ".join(context.args)
     if not query:
@@ -425,6 +504,18 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = f"The user asked to search the web for '{query}'. Live web results:\n{search_results}\n\nSummarize clearly."
     reply = ask_ai_multi_provider(prompt)
     await reply_smart(update, reply)
+
+async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    status = [
+        f"⚡ **Groq:** {'🟢 Online' if GROQ_API_KEY else '⚪ Missing Key'}",
+        f"⚡ **SambaNova:** {'🟢 Online' if SAMBANOVA_API_KEY else '⚪ Missing Key'}",
+        f"⚡ **Cerebras:** {'🟢 Online' if CEREBRAS_API_KEY else '⚪ Missing Key'}",
+        f"⚡ **Gemini 2.0:** {'🟢 Online' if GEMINI_API_KEY else '⚪ Missing Key'}",
+        f"⚡ **Mistral AI:** {'🟢 Online' if MISTRAL_API_KEY else '⚪ Missing Key'}",
+        f"⚡ **OpenRouter:** {'🟢 Online' if OPENROUTER_API_KEY else '⚪ Missing Key'}"
+    ]
+    msg = "🤖 **J.A.R.V.I.S. Multi-Core System Status:**\n\n" + "\n".join(status)
+    await reply_smart(update, msg)
 
 # ---------------------------------------------------------
 # 7. Menu & Interactive Callback Handlers
@@ -438,22 +529,30 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("🎯 Tactical Scan", callback_data="help_tactical")
         ],
         [
-            InlineKeyboardButton("🩺 Biometrics", callback_data="help_vitals"),
+            InlineKeyboardButton("⚖️ Law", callback_data="help_law"),
+            InlineKeyboardButton("🔬 Research", callback_data="help_research"),
+            InlineKeyboardButton("🩺 Med", callback_data="help_med")
+        ],
+        [
+            InlineKeyboardButton("🎙️ Voice & Vision Info", callback_data="help_media"),
+            InlineKeyboardButton("⚡ System Status", callback_data="help_status")
+        ],
+        [
             InlineKeyboardButton("🛠️ Stark Tools", callback_data="help_tools")
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
+    chat_info = f"Group: **{meta['chat_title']}**" if meta["is_group"] else "Private DM"
     text = f"""🤖 **J.A.R.V.I.S. — STARK INDUSTRIES OS** ✨
-Welcome back, **{meta['full_name']}**! 😎
+Welcome back, **{meta['full_name']}** ({meta['username']})! 😎
+Active location: {chat_info}
 
-🛡️ **MCU COMMANDS:**
-• `/hud` — Live Iron Man Helmet Telemetry
-• `/protocol [name]` — Emergency Protocols (`house_party`, `veronica`, `clean_slate`)
-• `/tactical [threat]` — Tactical Target Scanning
-• `/vitals` — Biometric Health Check
+🎙️ **Voice Notes:** Send me any voice message—I will transcribe & reply!
+📸 **Photos & PDFs:** Send images or PDF documents for analysis!
+🔍 **Live Web:** Use `/search [topic]` for live search results!
 
-Click the buttons below to explore sub-systems:"""
+Click the interactive buttons below to explore sub-systems:"""
     await reply_smart(update, text, reply_markup=reply_markup)
 
 async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -466,17 +565,25 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         msg = "🚨 **Protocols:** Usage `/protocol [name]`\nOptions: `house_party`, `veronica`, `clean_slate`, `barnum`."
     elif query.data == "help_tactical":
         msg = "🎯 **Tactical Scan:** Usage `/tactical [threat/target]`\nExample: `/tactical Ultron Prime`"
-    elif query.data == "help_vitals":
-        msg = "🩺 **Biometrics:** Usage `/vitals` — Scans heart rate, oxygen levels, and arc reactor toxicity."
+    elif query.data == "help_law":
+        msg = "⚖️ **Law Command:** Usage `/law [case or statute]`\nExample: `/law Contract Breach Remedies`"
+    elif query.data == "help_research":
+        msg = "🔬 **Research Command:** Usage `/research [topic]`\nExample: `/research Dark Matter`"
+    elif query.data == "help_med":
+        msg = "🩺 **Medical Command:** Usage `/med [disease]`\nExample: `/med Type 2 Diabetes`"
+    elif query.data == "help_media":
+        msg = "🎙️ **Voice & Vision:** Send voice notes directly for Whisper transcription, or upload photos/PDFs!"
+    elif query.data == "help_status":
+        msg = f"⚡ **Cores:** Groq: {'🟢' if GROQ_API_KEY else '⚪'}, SambaNova: {'🟢' if SAMBANOVA_API_KEY else '⚪'}, Gemini: {'🟢' if GEMINI_API_KEY else '⚪'}, OpenRouter: {'🟢' if OPENROUTER_API_KEY else '⚪'}"
     elif query.data == "help_tools":
-        msg = "🛠️ **Stark Utilities:**\n• `/image [prompt]` — Concept Generator 🎨\n• `/qr [link]` — QR Encoder 📱\n• `/remind [mins] [task]` — Timer ⏰\n• `/note [text]` / `/notes` — Encrypted Storage 💾\n• `/weather [city]` — Satellite Forecast 🌤️\n• `/crypto [coin]` — Market Valuation 🪙\n• `/translate [lang] [text]` — Translator 🌐\n• `/calc [expr]` — Math Engine 🧮\n• `/search [topic]` — Satellite Search 🔍"
+        msg = "🛠️ **Stark Utilities:**\n• `/image [prompt]` — Concept Generator 🎨\n• `/qr [link]` — QR Encoder 📱\n• `/remind [mins] [task]` — Timer ⏰\n• `/note [text]` / `/notes` — Encrypted Storage 💾\n• `/weather [city]` — Satellite Forecast 🌤️\n• `/crypto [coin]` — Market Valuation 🪙\n• `/translate [lang] [text]` — Translator 🌐\n• `/calc [expr]` — Math Engine 🧮\n• `/search [topic]` — Satellite Search 🔍\n• `/clear` — Reset Chat Memory 🧹"
     else:
         msg = "J.A.R.V.I.S. Sub-System Active."
 
     await query.message.reply_text(msg)
 
 # ---------------------------------------------------------
-# 8. Media & General Handlers
+# 8. Media & General Message Handlers
 # ---------------------------------------------------------
 async def voice_note_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     meta = get_chat_metadata(update)
@@ -598,9 +705,20 @@ def main():
     app.add_handler(CommandHandler("tactical", tactical_command))
     app.add_handler(CommandHandler("vitals", vitals_command))
 
-    # Core Navigation & Buttons
+    # Core Navigation, Status & Buttons
     app.add_handler(CommandHandler(["start", "help"], help_command))
+    app.add_handler(CommandHandler("status", status_command))
     app.add_handler(CallbackQueryHandler(button_callback_handler))
+
+    # Academic Commands
+    app.add_handler(CommandHandler("law", law_command))
+    app.add_handler(CommandHandler("research", research_command))
+    app.add_handler(CommandHandler("med", med_command))
+    app.add_handler(CommandHandler("essay", essay_command))
+    app.add_handler(CommandHandler("math", math_command))
+    app.add_handler(CommandHandler("quiz", quiz_command))
+    app.add_handler(CommandHandler("flashcards", flashcards_command))
+    app.add_handler(CommandHandler("explain", explain_command))
 
     # Utilities
     app.add_handler(CommandHandler("image", image_gen_command))
@@ -612,6 +730,7 @@ def main():
     app.add_handler(CommandHandler("crypto", crypto_command))
     app.add_handler(CommandHandler("translate", translate_command))
     app.add_handler(CommandHandler("calc", calc_command))
+    app.add_handler(CommandHandler("clear", clear_command))
     app.add_handler(CommandHandler("search", search_command))
 
     # Handlers
@@ -620,7 +739,7 @@ def main():
     app.add_handler(MessageHandler(filters.Document.PDF, pdf_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("J.A.R.V.I.S. MCU Stark Core listening...")
+    print("J.A.R.V.I.S. ultimate master core listening...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
