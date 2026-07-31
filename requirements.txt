@@ -3,3 +3,5 @@ google-genai
 groq
 edge-tts
 requests
+Pillow
+pypdf
