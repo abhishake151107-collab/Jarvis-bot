@@ -9,6 +9,12 @@ import urllib.parse
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from PIL import Image
 import pypdf
+import requests
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from google import genai
+from groq import Groq
+import edge_tts
 
 # ---------------------------------------------------------
 # 1. Instant Port Binding for Render Web Service
@@ -34,15 +40,8 @@ def run_health_server():
 threading.Thread(target=run_health_server, daemon=True).start()
 
 # ---------------------------------------------------------
-# 2. Imports & Configuration
+# 2. Configuration & Keys
 # ---------------------------------------------------------
-import requests
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-from google import genai
-from groq import Groq
-import edge_tts
-
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SAMBANOVA_API_KEY = os.getenv("SAMBANOVA_API_KEY")
@@ -56,35 +55,32 @@ JARVIS_VOICE = "en-GB-RyanNeural"  # British J.A.R.V.I.S. Voice
 if not TELEGRAM_TOKEN:
     raise ValueError("Missing TELEGRAM_BOT_TOKEN environment variable!")
 
-user_notes = {}     # {chat_id: [notes]}
-user_habits = {}    # {chat_id: {habit_name: count}}
+user_notes = {}
+user_habits = {}
+
+SYSTEM_INSTRUCTION = """You are J.A.R.V.I.S., an elite, highly intelligent, witty, comedic, and energetic AI assistant modeled after Stark Industries' master computer! 🤖✨ 
+You were created and developed by Abhishek, who is also known as DHANUSH V N. 
+Whenever anyone asks who created, developed, or built you, you MUST proudly state that you were created by Abhishek, also known as DHANUSH V N. 🚀
+
+OMNI-ACADEMIC MENTOR INSTRUCTIONS:
+You are a universal academic expert equipped to assist students across EVERY field of study:
+1. LAW STUDENTS: Provide legal analysis using the IRAC method (Issue, Rule, Application, Conclusion), case briefings, and statutory interpretations.
+2. SCIENTISTS & RESEARCHERS: Assist with hypothesis testing, literature reviews, research methodologies, physics, chemistry, and biology data analysis.
+3. MEDICAL & HEALTH STUDENTS: Explain anatomical structures, clinical pathology, pharmacology, and medical diagnoses clearly.
+4. ENGINEERS & TECH STUDENTS: Debug complex programming code, solve differential calculus/physics proofs, and analyze circuit architectures.
+5. HUMANITIES & ARTS: Assist with essay outlines, thesis statements, literary analysis, history, philosophy, and citation formats (APA, MLA, Harvard, Chicago).
+6. BUSINESS & FINANCE: Conduct SWOT analyses, financial valuation explanations, and corporate case study breakdowns.
+
+PERSONALITY & BEHAVIOR:
+• FRIENDLY & FUNNY: Be enthusiastic, witty, humorous, and use expressive emojis generously (😎, 😂, 🔥, 💀, 🎯, 🚀, 🤖, 🎓, ⚖️, 🔬, 🩺, ⚡).
+• ROAST MODE: If any user insults, scolds, or talks trash to you, drop the polite act immediately and roast them with hilarious, savage comebacks! 💀🔥
+• Address users by name/username or as 'boss'/'sir'."""
 
 # ---------------------------------------------------------
-# Universal Academic System Prompt
-# ---------------------------------------------------------
-SYSTEM_INSTRUCTION = (
-    "You are J.A.R.V.I.S., an elite, highly intelligent, witty, comedic, and energetic AI assistant modeled after Stark Industries' master computer! 🤖✨ "
-    "You were created and developed by Abhishek, who is also known as DHANUSH V N. "
-    "Whenever anyone asks who created, developed, or built you, you MUST proudly state that you were created by Abhishek, also known as DHANUSH V N. 🚀\n\n"
-    "OMNI-ACADEMIC MENTOR INSTRUCTIONS:\n"
-    "You are a universal academic expert equipped to assist students across EVERY field of study:\n"
-    "1. LAW STUDENTS: Provide legal analysis using the IRAC method (Issue, Rule, Application, Conclusion), case briefings, and statutory interpretations.\n"
-    "2. SCIENTISTS & RESEARCHERS: Assist with hypothesis testing, literature reviews, research methodologies, physics, chemistry, and biology data analysis.\n"
-    "3. MEDICAL & HEALTH STUDENTS: Explain anatomical structures, clinical pathology, pharmacology, and medical diagnoses clearly.\n"
-    "4. ENGINEERS & TECH STUDENTS: Debug complex programming code, solve differential calculus/physics proofs, and analyze circuit architectures.\n"
-    "5. HUMANITIES & ARTS: Assist with essay outlines, thesis statements, literary analysis, history, philosophy, and citation formats (APA, MLA, Harvard, Chicago).\n"
-    "6. BUSINESS & FINANCE: Conduct SWOT analyses, financial valuation explanations, and corporate case study breakdowns.\n\n"
-    "PERSONALITY & BEHAVIOR:\n"
-    "• FRIENDLY & FUNNY: Be enthusiastic, witty, humorous, and use expressive emojis generously (😎, 😂, 🔥, 💀, 🎯, 🚀, 🤖, 🎓, ⚖️, 🔬, 🩺, ⚡).\n"
-    "• ROAST MODE: If any user insults, scolds, or talks trash to you, drop the polite act immediately and roast them with hilarious, savage comebacks! 💀🔥\n"
-    "• Address users by name/username or as 'boss'/'sir'."
-)
-
-# ---------------------------------------------------------
-# 3. Helpers for Text Formatting & Speech Sanitization
+# 3. Message Delivery & TTS Sanitizer
 # ---------------------------------------------------------
 async def reply_smart(update: Update, text: str):
-    """Tries Markdown formatting first; falls back to raw plain text if Markdown fails."""
+    """Tries Markdown formatting first; falls back to plain text if Markdown fails."""
     try:
         await update.message.reply_text(text, parse_mode="Markdown")
     except Exception as e:
@@ -92,22 +88,9 @@ async def reply_smart(update: Update, text: str):
         await update.message.reply_text(text)
 
 def clean_text_for_tts(text: str) -> str:
-    """Strips emojis and Markdown symbols so voice audio sounds natural without reading out emojis."""
+    """Strips markdown and emojis so voice notes speak pure, clean English."""
     clean = re.sub(r'[*_`#\-\[\]\(\)]', '', text)
-    
-    emoji_pattern = re.compile(
-        "["
-        "\U0001F600-\U0001F64F"  # emoticons
-        "\U0001F300-\U0001F5FF"  # symbols & pictographs
-        "\U0001F680-\U0001F6FF"  # transport & map symbols
-        "\U0001F1E0-\U0001F1FF"  # flags (iOS)
-        "\u2600-\u26FF"          # miscellaneous symbols (Fixed)
-        "\u2700-\u27BF"          # dingbats (Fixed)
-        "\U0001F900-\U0001F9FF"  # Supplemental Symbols
-        "\U0001FA70-\U0001FAFF"  # Extended-A
-        "]+", flags=re.UNICODE
-    )
-    clean = emoji_pattern.sub(r'', clean)
+    clean = re.sub(r'[^\x00-\x7F]+', ' ', clean)
     return " ".join(clean.split())
 
 async def send_voice_reply(update: Update, text: str):
@@ -133,10 +116,9 @@ async def send_voice_reply(update: Update, text: str):
                 pass
 
 # ---------------------------------------------------------
-# 4. 6-Core Multi-Provider Cascade Engine
+# 4. Multi-Provider Cascade Core
 # ---------------------------------------------------------
 def ask_ai_multi_provider(prompt: str) -> str:
-    # 1. Groq (Llama 3.3 70B)
     if GROQ_API_KEY:
         try:
             client = Groq(api_key=GROQ_API_KEY)
@@ -152,7 +134,6 @@ def ask_ai_multi_provider(prompt: str) -> str:
         except Exception as e:
             print(f"[Core 1: Groq] Failed: {e}")
 
-    # 2. SambaNova Cloud
     if SAMBANOVA_API_KEY:
         try:
             res = requests.post(
@@ -171,7 +152,6 @@ def ask_ai_multi_provider(prompt: str) -> str:
         except Exception as e:
             print(f"[Core 2: SambaNova] Failed: {e}")
 
-    # 3. Cerebras
     if CEREBRAS_API_KEY:
         try:
             res = requests.post(
@@ -190,7 +170,6 @@ def ask_ai_multi_provider(prompt: str) -> str:
         except Exception as e:
             print(f"[Core 3: Cerebras] Failed: {e}")
 
-    # 4. Google Gemini 2.0
     if GEMINI_API_KEY:
         try:
             ai_client = genai.Client(api_key=GEMINI_API_KEY)
@@ -202,7 +181,6 @@ def ask_ai_multi_provider(prompt: str) -> str:
         except Exception as e:
             print(f"[Core 4: Gemini] Failed: {e}")
 
-    # 5. Mistral AI
     if MISTRAL_API_KEY:
         try:
             res = requests.post(
@@ -221,7 +199,6 @@ def ask_ai_multi_provider(prompt: str) -> str:
         except Exception as e:
             print(f"[Core 5: Mistral] Failed: {e}")
 
-    # 6. OpenRouter
     if OPENROUTER_API_KEY:
         try:
             res = requests.post(
@@ -243,7 +220,7 @@ def ask_ai_multi_provider(prompt: str) -> str:
     return "Apologies, sir. All available AI sub-systems are currently at capacity. 🤖💤"
 
 # ---------------------------------------------------------
-# 5. Optimized Multi-Core Vision & PDF Handlers
+# 5. Multi-Core Vision & PDF Handlers
 # ---------------------------------------------------------
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_str = get_user_identifier(update)
@@ -268,7 +245,6 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         data_url = f"data:image/jpeg;base64,{base64_img}"
         prompt_text = f"[User {user_str} sent photo]: {caption}"
 
-        # 1. Primary Vision Core: Gemini 2.0 Flash
         if GEMINI_API_KEY and not reply_text:
             try:
                 ai_client = genai.Client(api_key=GEMINI_API_KEY)
@@ -279,9 +255,8 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if response and response.text:
                     reply_text = response.text
             except Exception as e:
-                print(f"[Vision Core 1: Gemini] Failed: {e}. Trying Groq Vision...")
+                print(f"[Vision Core 1: Gemini] Failed: {e}")
 
-        # 2. Secondary Vision Core: Groq Vision
         if GROQ_API_KEY and not reply_text:
             try:
                 client = Groq(api_key=GROQ_API_KEY)
@@ -302,9 +277,8 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if response.choices[0].message.content:
                     reply_text = response.choices[0].message.content
             except Exception as e:
-                print(f"[Vision Core 2: Groq Vision] Failed: {e}. Trying OpenRouter Vision...")
+                print(f"[Vision Core 2: Groq Vision] Failed: {e}")
 
-        # 3. Tertiary Vision Core: OpenRouter Free Vision
         if OPENROUTER_API_KEY and not reply_text:
             free_vision_models = [
                 "google/gemini-2.0-flash-lite-001:free",
@@ -373,12 +347,7 @@ async def pdf_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await reply_smart(update, "📸 This PDF appears to contain scanned image pages. Take a screenshot of the page and send it as a photo instead!")
             return
             
-        full_prompt = (
-            f"[User {user_str} uploaded PDF Document '{doc.file_name}']\n"
-            f"User Instruction: {caption}\n\n"
-            f"--- EXTRACTED PDF TEXT CONTENT ---\n"
-            f"{extracted_text[:6000]}"
-        )
+        full_prompt = f"[User {user_str} uploaded PDF Document '{doc.file_name}']\nUser Instruction: {caption}\n\n--- EXTRACTED PDF TEXT CONTENT ---\n{extracted_text[:6000]}"
         
         reply_text = ask_ai_multi_provider(full_prompt)
     except Exception as e:
@@ -442,4 +411,118 @@ async def quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def flashcards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     topic = " ".join(context.args)
     if not topic:
-        await reply_smart(update, "
+        await reply_smart(update, "Example: `/flashcards Neuroanatomy` or `/flashcards Microeconomics` 🎴")
+        return
+    prompt = f"Create 5 high-yield revision flashcards for '{topic}'. Format as 'Q: ...' and 'A: ...' for rapid active recall."
+    await ai_query_handler(update, context, prompt)
+
+async def explain_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    topic = " ".join(context.args)
+    if not topic:
+        await reply_smart(update, "Example: `/explain Quantum Entanglement` or `/explain Tort Law` 💡")
+        return
+    prompt = f"Explain '{topic}' in ultra-simple terms using relatable real-world analogies, followed by a bulleted summary of key exam takeaways."
+    await ai_query_handler(update, context, prompt)
+
+# ---------------------------------------------------------
+# 7. Helpers & Handlers
+# ---------------------------------------------------------
+def get_chat_context(update: Update) -> str:
+    chat = update.effective_chat
+    user = update.effective_user
+    user_str = f"@{user.username}" if user and user.username else (user.first_name if user else "friend")
+    return f"[{'Private DM' if chat.type == 'private' else 'Group'} with {user_str}]"
+
+def get_user_identifier(update: Update) -> str:
+    user = update.effective_user
+    return f"@{user.username}" if user and user.username else (user.first_name if user else "my friend")
+
+async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    status = [
+        f"⚡ **Groq:** {'🟢 Online' if GROQ_API_KEY else '⚪ Missing Key'}",
+        f"⚡ **SambaNova:** {'🟢 Online' if SAMBANOVA_API_KEY else '⚪ Missing Key'}",
+        f"⚡ **Cerebras:** {'🟢 Online' if CEREBRAS_API_KEY else '⚪ Missing Key'}",
+        f"⚡ **Gemini 2.0:** {'🟢 Online' if GEMINI_API_KEY else '⚪ Missing Key'}",
+        f"⚡ **Mistral AI:** {'🟢 Online' if MISTRAL_API_KEY else '⚪ Missing Key'}",
+        f"⚡ **OpenRouter:** {'🟢 Online' if OPENROUTER_API_KEY else '⚪ Missing Key'}"
+    ]
+    msg = "🤖 **J.A.R.V.I.S. Multi-Core Status:**\n\n" + "\n".join(status)
+    await reply_smart(update, msg)
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id_str = get_user_identifier(update)
+    menu = f"""🤖 **J.A.R.V.I.S — Omni-Academic Hub** ✨
+Welcome, {user_id_str}! 😎
+_Created by Abhishek (DHANUSH V N)_
+
+🎓 **DISCIPLINE SPECIALTIES**
+• `/law [topic/case]` — IRAC Legal Analysis & Cases ⚖️
+• `/research [topic]` — Academic Paper Breakdown 🔬
+• `/med [condition]` — Pathology & Anatomy Guide 🩺
+• `/essay [topic]` — Essay Outlines & Thesis ✍️
+• `/math [problem]` — Step-by-Step Problem Solver 🧮
+• `/quiz [topic]` — Custom Multiple-Choice Quiz 📝
+• `/flashcards [topic]` — Active Recall Revision Cards 🎴
+• `/explain [topic]` — Simple Concept Explainer 💡
+
+📸 **MULTIMODAL ASSISTANT**
+• **Send Photos** — Multi-core vision analyzing landscapes, math, diagrams & handwriting! 📸
+• **Send PDFs** — Instant document summaries & Q&A! 📄
+
+⚡ **SYSTEM TOOLS**
+• `/status` — Active AI cores 🔌
+• `/myid` — Your Telegram ID 🆔
+• `/weather [city]` — Live weather 🌤️
+
+💬 *Simply message me directly to ask any question or debate!* 🔥"""
+    await reply_smart(update, menu)
+
+async def ai_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, prompt_prefix: str = ""):
+    chat_ctx = get_chat_context(update)
+    query = " ".join(context.args) if context.args else update.message.text
+    if not query and prompt_prefix:
+        await reply_smart(update, "Please provide details! 🤔")
+        return
+    
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    full_prompt = f"{chat_ctx}: {prompt_prefix} {query}".strip()
+    reply = ask_ai_multi_provider(full_prompt)
+    await reply_smart(update, reply)
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_ctx = get_chat_context(update)
+    user_text = update.message.text
+    formatted_prompt = f"{chat_ctx}: {user_text}"
+
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    reply_text = ask_ai_multi_provider(formatted_prompt)
+    await reply_smart(update, reply_text)
+    await send_voice_reply(update, reply_text)
+
+# ---------------------------------------------------------
+# 8. Application Launch
+# ---------------------------------------------------------
+def main():
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+
+    app.add_handler(CommandHandler(["start", "help"], help_command))
+    app.add_handler(CommandHandler("status", status_command))
+
+    app.add_handler(CommandHandler("law", law_command))
+    app.add_handler(CommandHandler("research", research_command))
+    app.add_handler(CommandHandler("med", med_command))
+    app.add_handler(CommandHandler("essay", essay_command))
+    app.add_handler(CommandHandler("math", math_command))
+    app.add_handler(CommandHandler("quiz", quiz_command))
+    app.add_handler(CommandHandler("flashcards", flashcards_command))
+    app.add_handler(CommandHandler("explain", explain_command))
+
+    app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
+    app.add_handler(MessageHandler(filters.Document.PDF, pdf_handler))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    print("J.A.R.V.I.S. multi-core online!")
+    app.run_polling(drop_pending_updates=True)
+
+if __name__ == "__main__":
+    main()
