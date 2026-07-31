@@ -1,7 +1,6 @@
 import os
 import io
 import re
-import ast
 import random
 import hashlib
 import base64
@@ -28,7 +27,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/html')
         self.end_headers()
-        self.wfile.write(b"J.A.R.V.I.S. Master Core Active 24/7.")
+        self.wfile.write(b"J.A.R.V.I.S. Ultimate Everything-in-One Core Active 24/7.")
     def log_message(self, format, *args):
         return
 
@@ -198,6 +197,24 @@ def ask_ai_multi_provider(prompt: str) -> str:
         except Exception as e:
             print(f"[Core 2: SambaNova] Failed: {e}")
 
+    if CEREBRAS_API_KEY:
+        try:
+            res = requests.post(
+                "https://api.cerebras.ai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"},
+                json={
+                    "model": "llama-3.3-70b",
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_INSTRUCTION},
+                        {"role": "user", "content": prompt}
+                    ]
+                },
+                timeout=12
+            ).json()
+            return res["choices"][0]["message"]["content"]
+        except Exception as e:
+            print(f"[Core 3: Cerebras] Failed: {e}")
+
     if GEMINI_API_KEY:
         try:
             ai_client = genai.Client(api_key=GEMINI_API_KEY)
@@ -208,6 +225,24 @@ def ask_ai_multi_provider(prompt: str) -> str:
             return response.text
         except Exception as e:
             print(f"[Core 4: Gemini] Failed: {e}")
+
+    if MISTRAL_API_KEY:
+        try:
+            res = requests.post(
+                "https://api.mistral.ai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {MISTRAL_API_KEY}", "Content-Type": "application/json"},
+                json={
+                    "model": "mistral-small-latest",
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_INSTRUCTION},
+                        {"role": "user", "content": prompt}
+                    ]
+                },
+                timeout=12
+            ).json()
+            return res["choices"][0]["message"]["content"]
+        except Exception as e:
+            print(f"[Core 5: Mistral] Failed: {e}")
 
     if OPENROUTER_API_KEY:
         try:
@@ -230,15 +265,50 @@ def ask_ai_multi_provider(prompt: str) -> str:
     return "Apologies, sir. All available AI sub-systems are currently at capacity. 🤖💤"
 
 # ---------------------------------------------------------
-# 5. Advanced Feature Suite
+# 5. Academic & Utility Command Handlers
 # ---------------------------------------------------------
+async def ai_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, prompt_prefix: str = ""):
+    meta = get_chat_metadata(update)
+    query = " ".join(context.args) if context.args else update.message.text
+    if not query and prompt_prefix:
+        await reply_smart(update, "Please provide topic details! 🤔")
+        return
+    await context.bot.send_chat_action(chat_id=meta["chat_id"], action="typing")
+    full_prompt = f"{build_meta_header(meta)}\n{prompt_prefix} {query}".strip()
+    reply = ask_ai_multi_provider(full_prompt)
+    await reply_smart(update, reply)
+
+async def law_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await ai_query_handler(update, context, "Provide a complete legal breakdown using the IRAC method (Issue, Rule, Application, Conclusion) for:")
+
+async def research_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await ai_query_handler(update, context, "Analyze this topic as a senior academic researcher with key findings, methodology, and debates:")
+
+async def med_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await ai_query_handler(update, context, "Explain for medical students including anatomy, pathology, diagnosis, and treatments:")
+
+async def essay_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await ai_query_handler(update, context, "Create an academic essay outline with thesis statement and main section breakdowns for:")
+
+async def math_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await ai_query_handler(update, context, "Solve step-by-step with formulas and clear explanations:")
+
+async def quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await ai_query_handler(update, context, "Generate a 5-question multiple choice practice exam with answer key and explanations for:")
+
+async def flashcards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await ai_query_handler(update, context, "Create 5 high-yield revision flashcards (Q: ... / A: ...) for:")
+
+async def explain_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await ai_query_handler(update, context, "Explain in ultra-simple terms with real-world analogies and key takeaways for:")
+
+# New Power Utilities
 async def image_gen_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     meta = get_chat_metadata(update)
     prompt = " ".join(context.args)
     if not prompt:
         await reply_smart(update, "Example: `/image a futuristic cyberpunk iron man suit` 🎨")
         return
-    
     await context.bot.send_chat_action(chat_id=meta["chat_id"], action="upload_photo")
     try:
         encoded_prompt = urllib.parse.quote(prompt)
@@ -253,7 +323,6 @@ async def qr_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not text:
         await reply_smart(update, "Example: `/qr https://google.com` 📱")
         return
-    
     encoded_text = urllib.parse.quote(text)
     qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={encoded_text}"
     await update.message.reply_photo(photo=qr_url, caption=f"📱 **QR Code Generated:**\n`{text}`")
@@ -262,19 +331,15 @@ async def remind_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2:
         await reply_smart(update, "Example: `/remind 5 Check oven` ⏰")
         return
-    
     try:
         minutes = float(context.args[0])
         reminder_text = " ".join(context.args[1:])
         seconds = int(minutes * 60)
         chat_id = update.effective_chat.id
-        
         await reply_smart(update, f"⏰ **Reminder Set!** Alert in {minutes} min(s): *\"{reminder_text}\"*")
-        
         async def send_delayed_reminder():
             await asyncio.sleep(seconds)
             await context.bot.send_message(chat_id=chat_id, text=f"🚨 **REMINDER ALERT:** {reminder_text}")
-            
         asyncio.create_task(send_delayed_reminder())
     except ValueError:
         await reply_smart(update, "Please enter valid minutes! Example: `/remind 10 Study time`")
@@ -285,7 +350,6 @@ async def note_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not note_text:
         await reply_smart(update, "Example: `/note Remember milk` 📝")
         return
-    
     cursor.execute("INSERT INTO user_notes (user_id, note) VALUES (?, ?)", (user_id, note_text))
     conn.commit()
     await reply_smart(update, f"💾 **Note Saved!**\n_\"{note_text}\"_")
@@ -294,11 +358,9 @@ async def notes_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     cursor.execute("SELECT id, note, timestamp FROM user_notes WHERE user_id = ? ORDER BY id DESC LIMIT 10", (user_id,))
     rows = cursor.fetchall()
-    
     if not rows:
         await reply_smart(update, "No saved notes found! Use `/note [text]` to add one.")
         return
-        
     msg = "📂 **Your Permanent Notes:**\n\n"
     for row in rows:
         msg += f"• **#{row[0]}:** {row[1]} _({row[2][:10]})_\n"
@@ -322,7 +384,7 @@ async def crypto_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             inr = res[coin]['inr']
             await reply_smart(update, f"🪙 **{coin.capitalize()} Price:**\n• **USD:** ${usd:,.2f}\n• **INR:** ₹{inr:,.2f}")
         else:
-            await reply_smart(update, f"Coin '{coin}' not found! Example: `/crypto bitcoin` or `/crypto ethereum`")
+            await reply_smart(update, f"Coin '{coin}' not found! Example: `/crypto bitcoin`")
     except Exception as e:
         print(f"Crypto Error: {e}")
         await reply_smart(update, "Unable to fetch crypto data currently.")
@@ -331,11 +393,9 @@ async def translate_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2:
         await reply_smart(update, "Example: `/translate Spanish Hello, how are you?` 🗣️")
         return
-    
     target_lang = context.args[0]
     text_to_translate = " ".join(context.args[1:])
-    prompt = f"Translate the following text accurately into {target_lang}. Only return the direct translation:\n\n{text_to_translate}"
-    
+    prompt = f"Translate accurately into {target_lang}. Return only the direct translation:\n\n{text_to_translate}"
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     translation = ask_ai_multi_provider(prompt)
     await reply_smart(update, f"🌐 **Translation ({target_lang}):**\n{translation}")
@@ -345,16 +405,15 @@ async def calc_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not expr:
         await reply_smart(update, "Example: `/calc (50 * 12) / 4` 🧮")
         return
-    
     allowed = set("0123456789+-*/(). ")
     if not set(expr).issubset(allowed):
-        await reply_smart(update, "For security, `/calc` accepts basic operators (`+`, `-`, `*`, `/`, `()`).")
+        await reply_smart(update, "Accepts basic math operators (`+`, `-`, `*`, `/`, `()`).")
         return
     try:
         result = eval(expr, {"__builtins__": None}, {})
-        await reply_smart(update, f"🧮 **Calculation Result:**\n`{expr}` = **{result}**")
+        await reply_smart(update, f"🧮 **Result:** `{expr}` = **{result}**")
     except Exception as e:
-        await reply_smart(update, f"Invalid expression! Error: `{e}`")
+        await reply_smart(update, f"Invalid math expression! Error: `{e}`")
 
 async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -373,8 +432,74 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply = ask_ai_multi_provider(prompt)
     await reply_smart(update, reply)
 
+async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    status = [
+        f"⚡ **Groq:** {'🟢 Online' if GROQ_API_KEY else '⚪ Missing Key'}",
+        f"⚡ **SambaNova:** {'🟢 Online' if SAMBANOVA_API_KEY else '⚪ Missing Key'}",
+        f"⚡ **Cerebras:** {'🟢 Online' if CEREBRAS_API_KEY else '⚪ Missing Key'}",
+        f"⚡ **Gemini 2.0:** {'🟢 Online' if GEMINI_API_KEY else '⚪ Missing Key'}",
+        f"⚡ **Mistral AI:** {'🟢 Online' if MISTRAL_API_KEY else '⚪ Missing Key'}",
+        f"⚡ **OpenRouter:** {'🟢 Online' if OPENROUTER_API_KEY else '⚪ Missing Key'}"
+    ]
+    msg = "🤖 **J.A.R.V.I.S. Multi-Core Status:**\n\n" + "\n".join(status)
+    await reply_smart(update, msg)
+
 # ---------------------------------------------------------
-# 6. Media Handlers
+# 6. Interactive Keyboards & Help Menu
+# ---------------------------------------------------------
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    meta = get_chat_metadata(update)
+    keyboard = [
+        [
+            InlineKeyboardButton("⚖️ Law", callback_data="help_law"),
+            InlineKeyboardButton("🔬 Research", callback_data="help_research"),
+            InlineKeyboardButton("🩺 Med", callback_data="help_med")
+        ],
+        [
+            InlineKeyboardButton("🎙️ Voice & Vision Info", callback_data="help_media"),
+            InlineKeyboardButton("⚡ System Status", callback_data="help_status")
+        ],
+        [
+            InlineKeyboardButton("🛠️ Tools & Utilities", callback_data="help_tools")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    chat_info = f"Group: **{meta['chat_title']}**" if meta["is_group"] else "Private DM"
+    text = f"""🤖 **J.A.R.V.I.S — Multi-Interactive Assistant** ✨
+Welcome, **{meta['full_name']}** ({meta['username']})! 😎
+Active in: {chat_info}
+
+🎙️ **Voice Notes:** Send me any voice message—I will transcribe & reply!
+📸 **Photos & PDFs:** Send images or PDF documents for analysis!
+🔍 **Live Web:** Use `/search [topic]` for live search results!
+
+Click the interactive buttons below to explore features:"""
+    await reply_smart(update, text, reply_markup=reply_markup)
+
+async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == "help_law":
+        msg = "⚖️ **Law Command:** Usage `/law [case or statute]`\nExample: `/law Contract Breach Remedies`"
+    elif query.data == "help_research":
+        msg = "🔬 **Research Command:** Usage `/research [topic]`\nExample: `/research Dark Matter`"
+    elif query.data == "help_med":
+        msg = "🩺 **Medical Command:** Usage `/med [disease]`\nExample: `/med Type 2 Diabetes`"
+    elif query.data == "help_media":
+        msg = "🎙️ **Voice & Vision:** Send voice notes directly for Whisper transcription, or upload photos/PDFs!"
+    elif query.data == "help_status":
+        msg = f"⚡ **Cores:** Groq: {'🟢' if GROQ_API_KEY else '⚪'}, SambaNova: {'🟢' if SAMBANOVA_API_KEY else '⚪'}, Gemini: {'🟢' if GEMINI_API_KEY else '⚪'}, OpenRouter: {'🟢' if OPENROUTER_API_KEY else '⚪'}"
+    elif query.data == "help_tools":
+        msg = "🛠️ **Utilities:**\n• `/image [prompt]` — AI Image Generator 🎨\n• `/qr [link]` — QR Code Generator 📱\n• `/remind [mins] [task]` — Reminder Timer ⏰\n• `/note [text]` / `/notes` — Permanent Notes 💾\n• `/weather [city]` — Live Weather 🌤️\n• `/crypto [coin]` — Crypto Prices 🪙\n• `/translate [lang] [text]` — Translator 🌐\n• `/calc [expr]` — Math Calculator 🧮\n• `/clear` — Reset Chat Context 🧹"
+    else:
+        msg = "J.A.R.V.I.S. Core Online."
+
+    await query.message.reply_text(msg)
+
+# ---------------------------------------------------------
+# 7. Media Handlers
 # ---------------------------------------------------------
 async def voice_note_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     meta = get_chat_metadata(update)
@@ -463,31 +588,6 @@ async def pdf_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"PDF Error: {e}")
         await reply_smart(update, "Failed to parse PDF.")
 
-# ---------------------------------------------------------
-# 7. Menu & Text Handlers
-# ---------------------------------------------------------
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    meta = get_chat_metadata(update)
-    text = f"""🤖 **J.A.R.V.I.S — Master Multi-Tool Suite** ✨
-Welcome, {meta['full_name']}! 😎
-
-🛠️ **UTILITIES & TOOLS**
-• `/image [prompt]` — AI Image Generator 🎨
-• `/qr [link/text]` — Instant QR Code Generator 📱
-• `/remind [mins] [task]` — Timer & Reminders ⏰
-• `/note [text]` / `/notes` — Permanent Notes 📝
-• `/weather [city]` — Live Weather Reports 🌤️
-• `/crypto [coin]` — Real-Time Crypto Prices 🪙
-• `/translate [lang] [text]` — Multi-Lingual Translator 🌐
-• `/calc [expr]` — Fast Math Calculator 🧮
-• `/search [topic]` — Live Web Search 🔍
-• `/clear` — Clear Chat Context 🧹
-
-🎙️ **MULTIMODAL ASSISTANT**
-• **Voice Notes** — Auto Whisper STT transcription & voice replies!
-• **Photos & PDFs** — Visual analysis & document Q&A!"""
-    await reply_smart(update, text)
-
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     meta = get_chat_metadata(update)
     chat_id = meta["chat_id"]
@@ -515,7 +615,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
+    # Core Navigation & Buttons
     app.add_handler(CommandHandler(["start", "help"], help_command))
+    app.add_handler(CommandHandler("status", status_command))
+    app.add_handler(CallbackQueryHandler(button_callback_handler))
+
+    # Academic Commands
+    app.add_handler(CommandHandler("law", law_command))
+    app.add_handler(CommandHandler("research", research_command))
+    app.add_handler(CommandHandler("med", med_command))
+    app.add_handler(CommandHandler("essay", essay_command))
+    app.add_handler(CommandHandler("math", math_command))
+    app.add_handler(CommandHandler("quiz", quiz_command))
+    app.add_handler(CommandHandler("flashcards", flashcards_command))
+    app.add_handler(CommandHandler("explain", explain_command))
+
+    # Power Utilities Suite
     app.add_handler(CommandHandler("image", image_gen_command))
     app.add_handler(CommandHandler("qr", qr_command))
     app.add_handler(CommandHandler("remind", remind_command))
@@ -528,12 +643,13 @@ def main():
     app.add_handler(CommandHandler("clear", clear_command))
     app.add_handler(CommandHandler("search", search_command))
 
+    # Media & Message Handlers
     app.add_handler(MessageHandler(filters.VOICE, voice_note_handler))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app.add_handler(MessageHandler(filters.Document.PDF, pdf_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("J.A.R.V.I.S. master core listening...")
+    print("J.A.R.V.I.S. ultimate integrated core listening...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
