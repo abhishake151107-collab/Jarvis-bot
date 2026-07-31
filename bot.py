@@ -25,7 +25,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/html')
         self.end_headers()
-        self.wfile.write(b"J.A.R.V.I.S. Full Voice-STT & Web Search Core Active 24/7.")
+        self.wfile.write(b"J.A.R.V.I.S. Group Awareness & Memory Core Active 24/7.")
     def log_message(self, format, *args):
         return
 
@@ -56,24 +56,66 @@ JARVIS_VOICE = "en-GB-RyanNeural"  # British J.A.R.V.I.S. Voice
 if not TELEGRAM_TOKEN:
     raise ValueError("Missing TELEGRAM_BOT_TOKEN environment variable!")
 
+# Conversation Memory Store {chat_id: [recent_messages]}
+user_history = {}
+
 SYSTEM_INSTRUCTION = """You are J.A.R.V.I.S., an elite, highly intelligent, witty, comedic, and energetic AI assistant modeled after Stark Industries' master computer! 🤖✨
 
 STRICT CREATOR & IDENTITY RULE:
-- Do NOT mention who created or developed you in regular conversations, PDF summaries, image descriptions, or Q&A replies.
+- Do NOT mention who created or developed you in regular conversations, group chats, PDF summaries, image descriptions, or Q&A replies.
 - ONLY state that you were created and developed by Abhishek (also known as DHANUSH V N) if the user EXPLICITLY asks "Who created you?", "Who made you?", "Who built you?", "Who developed you?", or similar questions about your origin.
 
-OMNI-ACADEMIC & MULTI-TOOL INSTRUCTIONS:
-You are equipped with real-time web search capabilities, vision processing, speech transcription, and multi-disciplinary academic analysis (Law, Med, Science, Tech, Arts, Business).
+TELEGRAM GROUP & USER AWARENESS RULE:
+- You have complete awareness of whether you are in a Private DM or a Telegram Group.
+- In a Group, you know the Group Title, Group ID, and the exact Name and @username of the specific member speaking to you.
+- When replying in a group, address the specific person who sent the message so everyone in the group knows who you are responding to!
 
 PERSONALITY & BEHAVIOR:
 • FRIENDLY & FUNNY: Be enthusiastic, witty, humorous, and use expressive emojis generously (😎, 😂, 🔥, 💀, 🎯, 🚀, 🤖, 🎓, ⚖️, 🔬, 🩺, ⚡).
 • ROAST MODE: If any user insults, scolds, or talks trash to you, drop the polite act immediately and roast them with hilarious, savage comebacks! 💀🔥
 • Address users by name/username or as 'boss'/'sir'."""
+
 # ---------------------------------------------------------
-# 3. Message Delivery, TTS & Web Search Helpers
+# 3. Helpers & Group Metadata Extractor
 # ---------------------------------------------------------
+def get_chat_metadata(update: Update) -> dict:
+    """Extracts chat location (DM or Group Name) and user info."""
+    chat = update.effective_chat
+    user = update.effective_user
+    
+    is_group = chat.type in ['group', 'supergroup']
+    chat_title = chat.title if is_group else "Private DM"
+    
+    first_name = user.first_name if user and user.first_name else "Friend"
+    last_name = f" {user.last_name}" if user and user.last_name else ""
+    full_name = f"{first_name}{last_name}"
+    username = f"@{user.username}" if user and user.username else "No @username"
+    user_id = user.id if user else "Unknown"
+
+    return {
+        "is_group": is_group,
+        "chat_title": chat_title,
+        "chat_type": chat.type,
+        "chat_id": chat.id,
+        "full_name": full_name,
+        "username": username,
+        "user_id": user_id
+    }
+
+def build_meta_header(meta: dict) -> str:
+    """Formats context for AI processing."""
+    if meta["is_group"]:
+        return (
+            f"📍 LOCATION: Telegram Group '{meta['chat_title']}' (ID: {meta['chat_id']})\n"
+            f"👤 SENDER: {meta['full_name']} (Username: {meta['username']}, ID: {meta['user_id']})\n"
+        )
+    else:
+        return (
+            f"📍 LOCATION: Private Direct Message\n"
+            f"👤 SENDER: {meta['full_name']} (Username: {meta['username']}, ID: {meta['user_id']})\n"
+        )
+
 async def reply_smart(update: Update, text: str, reply_markup=None):
-    """Tries Markdown formatting first; falls back to plain text if Markdown fails."""
     try:
         await update.message.reply_text(text, parse_mode="Markdown", reply_markup=reply_markup)
     except Exception as e:
@@ -81,7 +123,6 @@ async def reply_smart(update: Update, text: str, reply_markup=None):
         await update.message.reply_text(text, reply_markup=reply_markup)
 
 def clean_text_for_tts(text: str) -> str:
-    """Strips markdown and emojis so voice notes speak pure, clean English."""
     clean = re.sub(r'[*_`#\-\[\]\(\)]', '', text)
     clean = re.sub(r'[^\x00-\x7F]+', ' ', clean)
     return " ".join(clean.split())
@@ -109,7 +150,6 @@ async def send_voice_reply(update: Update, text: str):
                 pass
 
 def live_web_search(query: str) -> str:
-    """Fetches real-time search results using DuckDuckGo."""
     try:
         results = []
         with DDGS() as ddgs:
@@ -226,15 +266,14 @@ def ask_ai_multi_provider(prompt: str) -> str:
     return "Apologies, sir. All available AI sub-systems are currently at capacity. 🤖💤"
 
 # ---------------------------------------------------------
-# 5. Media Handlers (Voice STT, Vision, PDF)
+# 5. Group-Aware Media Handlers
 # ---------------------------------------------------------
 async def voice_note_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Transcribes incoming user voice notes using Groq Whisper and answers."""
-    user_str = get_user_identifier(update)
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    meta = get_chat_metadata(update)
+    await context.bot.send_chat_action(chat_id=meta["chat_id"], action="typing")
     
     if not GROQ_API_KEY:
-        await reply_smart(update, "🎙️ I received your voice message, but I need a `GROQ_API_KEY` configured to run speech transcription!")
+        await reply_smart(update, "🎙️ Voice message received, but `GROQ_API_KEY` is missing in Render settings!")
         return
 
     try:
@@ -249,22 +288,22 @@ async def voice_note_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         
         user_text = transcription if isinstance(transcription, str) else transcription.text
-        await reply_smart(update, f"🗣️ **I heard:** *\"{user_text.strip()}\"*")
+        await reply_smart(update, f"🗣️ **I heard {meta['full_name']}:** *\"{user_text.strip()}\"*")
         
-        formatted_prompt = f"[{user_str} sent a voice note asking]: {user_text}"
-        reply_text = ask_ai_multi_provider(formatted_prompt)
+        full_prompt = f"{build_meta_header(meta)}\nUser Voice Message: {user_text}"
+        reply_text = ask_ai_multi_provider(full_prompt)
         await reply_smart(update, reply_text)
         await send_voice_reply(update, reply_text)
 
     except Exception as e:
         print(f"Voice STT Error: {e}")
-        await reply_smart(update, f"Apologies, {user_str}. I had trouble processing your voice note! 😅")
+        await reply_smart(update, f"Apologies, {meta['full_name']}. I had trouble processing your voice note! 😅")
 
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_str = get_user_identifier(update)
+    meta = get_chat_metadata(update)
     caption = update.message.caption or "Please analyze, solve, or describe what is in this image in detail."
     
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    await context.bot.send_chat_action(chat_id=meta["chat_id"], action="typing")
     reply_text = None
 
     try:
@@ -275,13 +314,14 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if pil_image.mode != "RGB":
             pil_image = pil_image.convert("RGB")
             
+        pil_image.thumbnail((1024, 1024))
         img_buffer = io.BytesIO()
-        pil_image.save(img_buffer, format="JPEG", quality=85)
+        pil_image.save(img_buffer, format="JPEG", quality=80)
         clean_bytes = img_buffer.getvalue()
         
         base64_img = base64.b64encode(clean_bytes).decode('utf-8')
         data_url = f"data:image/jpeg;base64,{base64_img}"
-        prompt_text = f"[User {user_str} sent photo]: {caption}"
+        prompt_text = f"{build_meta_header(meta)}\nUser uploaded image with caption: {caption}"
 
         if GEMINI_API_KEY and not reply_text:
             try:
@@ -321,16 +361,16 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"General Photo Handler Error: {e}")
 
     if not reply_text:
-        reply_text = f"Apologies, {user_str}. All vision AI cores are currently offline or quota-limited. 😅"
+        reply_text = f"Apologies, {meta['full_name']}. All vision AI cores are currently offline or quota-limited. 😅"
 
     await reply_smart(update, reply_text)
     await send_voice_reply(update, reply_text)
 
 async def pdf_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_str = get_user_identifier(update)
+    meta = get_chat_metadata(update)
     caption = update.message.caption or "Please provide a comprehensive summary with key academic takeaways, terms, and study notes."
     
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    await context.bot.send_chat_action(chat_id=meta["chat_id"], action="typing")
     
     try:
         doc = update.message.document
@@ -352,71 +392,33 @@ async def pdf_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await reply_smart(update, "📸 This PDF appears to contain scanned image pages. Take a screenshot of the page and send it as a photo instead!")
             return
             
-        full_prompt = f"[User {user_str} uploaded PDF Document '{doc.file_name}']\nUser Instruction: {caption}\n\n--- EXTRACTED PDF TEXT CONTENT ---\n{extracted_text[:6000]}"
+        full_prompt = f"{build_meta_header(meta)}\nUploaded PDF '{doc.file_name}'\nUser Instruction: {caption}\n\n--- EXTRACTED PDF TEXT CONTENT ---\n{extracted_text[:6000]}"
         
         reply_text = ask_ai_multi_provider(full_prompt)
     except Exception as e:
         print(f"PDF Handler Error: {e}")
-        reply_text = f"Apologies, {user_str}. I encountered an issue reading that PDF file."
+        reply_text = f"Apologies, {meta['full_name']}. I encountered an issue reading that PDF file."
 
     await reply_smart(update, reply_text)
     await send_voice_reply(update, reply_text)
 
 # ---------------------------------------------------------
-# 6. Live Search & Academic Commands
+# 6. Group Commands & Memory Handler
 # ---------------------------------------------------------
 async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    meta = get_chat_metadata(update)
     query = " ".join(context.args)
     if not query:
-        await reply_smart(update, "Example: `/search latest quantum computing breakthrough 2026` 🔍")
+        await reply_smart(update, "Example: `/search latest tech news` 🔍")
         return
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    await context.bot.send_chat_action(chat_id=meta["chat_id"], action="typing")
     search_results = live_web_search(query)
-    prompt = f"The user asked to search the web for '{query}'. Here are live web results:\n{search_results}\n\nPlease summarize these results clearly for the user."
+    prompt = f"{build_meta_header(meta)}\nUser asked to search for '{query}'. Live web results:\n{search_results}\n\nSummarize clearly."
     reply = ask_ai_multi_provider(prompt)
     await reply_smart(update, reply)
 
-async def law_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    topic = " ".join(context.args)
-    if not topic:
-        await reply_smart(update, "Example: `/law Miranda v. Arizona` ⚖️")
-        return
-    prompt = f"Provide a complete legal breakdown for '{topic}' using the IRAC method (Issue, Rule, Application, Conclusion)."
-    await ai_query_handler(update, context, prompt)
-
-async def research_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    topic = " ".join(context.args)
-    if not topic:
-        await reply_smart(update, "Example: `/research CRISPR Gene Editing` 🔬")
-        return
-    prompt = f"Analyze '{topic}' as a senior academic researcher."
-    await ai_query_handler(update, context, prompt)
-
-async def med_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    topic = " ".join(context.args)
-    if not topic:
-        await reply_smart(update, "Example: `/med Myocardial Infarction` 🩺")
-        return
-    prompt = f"Explain '{topic}' for medical students: anatomical structures, pathology, and treatments."
-    await ai_query_handler(update, context, prompt)
-
-async def quiz_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    topic = " ".join(context.args)
-    if not topic:
-        await reply_smart(update, "Example: `/quiz Physics` 📝")
-        return
-    prompt = f"Generate a 5-question multiple-choice practice exam on '{topic}' with answers at the end."
-    await ai_query_handler(update, context, prompt)
-
-# ---------------------------------------------------------
-# 7. Interactive Keyboards & Help
-# ---------------------------------------------------------
-def get_user_identifier(update: Update) -> str:
-    user = update.effective_user
-    return f"@{user.username}" if user and user.username else (user.first_name if user else "my friend")
-
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id_str = get_user_identifier(update)
+    meta = get_chat_metadata(update)
     keyboard = [
         [
             InlineKeyboardButton("⚖️ Law", callback_data="help_law"),
@@ -430,15 +432,14 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    text = f"""🤖 **J.A.R.V.I.S — Multi-Interactive Assistant** ✨
-Welcome, {user_id_str}! 😎
-_Created by Abhishek (DHANUSH V N)_
+    chat_info = f"Group: **{meta['chat_title']}**" if meta["is_group"] else "Private DM"
+    text = f"""🤖 **J.A.R.V.I.S — Group & Multi-User Core** ✨
+Active in: {chat_info}
+Speaking to: **{meta['full_name']}** ({meta['username']})
 
-🎙️ **Voice Notes:** Send me any voice message—I will transcribe & reply!
-📸 **Photos & PDFs:** Send images or PDF documents for analysis!
-🔍 **Live Web:** Use `/search [topic]` for live search results!
-
-Click the buttons below to explore specialties:"""
+🎙️ **Voice Notes:** Send any voice message—I will transcribe & reply!
+📸 **Photos & PDFs:** Upload images or document files!
+🔍 **Live Web:** `/search [topic]` for instant search results!"""
     await reply_smart(update, text, reply_markup=reply_markup)
 
 async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -446,11 +447,11 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
     await query.answer()
     
     if query.data == "help_law":
-        msg = "⚖️ **Law Command:** Usage `/law [case or statute]`\nExample: `/law Contract Breach Remedies`"
+        msg = "⚖️ **Law Command:** Usage `/law [case or statute]`"
     elif query.data == "help_research":
-        msg = "🔬 **Research Command:** Usage `/research [topic]`\nExample: `/research Dark Matter`"
+        msg = "🔬 **Research Command:** Usage `/research [topic]`"
     elif query.data == "help_med":
-        msg = "🩺 **Medical Command:** Usage `/med [disease]`\nExample: `/med Type 2 Diabetes`"
+        msg = "🩺 **Medical Command:** Usage `/med [disease]`"
     elif query.data == "help_media":
         msg = "🎙️ **Voice & Vision:** Send voice notes directly for Whisper transcription, or upload photos/PDFs!"
     elif query.data == "help_status":
@@ -460,36 +461,53 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
 
     await query.message.reply_text(msg)
 
-async def ai_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, prompt_prefix: str = ""):
-    query = " ".join(context.args) if context.args else update.message.text
-    if not query and prompt_prefix:
-        await reply_smart(update, "Please provide details! 🤔")
-        return
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    full_prompt = f"{prompt_prefix} {query}".strip()
-    reply = ask_ai_multi_provider(full_prompt)
-    await reply_smart(update, reply)
-
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    meta = get_chat_metadata(update)
+    chat_id = meta["chat_id"]
     user_text = update.message.text
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    reply_text = ask_ai_multi_provider(user_text)
+
+    if chat_id not in user_history:
+        user_history[chat_id] = []
+
+    # Store user message with sender identity
+    user_history[chat_id].append({
+        "role": "user", 
+        "name": meta["full_name"], 
+        "username": meta["username"], 
+        "text": user_text
+    })
+    user_history[chat_id] = user_history[chat_id][-10:]
+
+    # Build multi-user conversation history
+    conversation_context = ""
+    for msg in user_history[chat_id]:
+        if msg["role"] == "user":
+            conversation_context += f"\nMember {msg['name']} ({msg['username']}): {msg['text']}"
+        else:
+            conversation_context += f"\nJ.A.R.V.I.S.: {msg['text']}"
+
+    full_prompt = (
+        f"{build_meta_header(meta)}\n"
+        f"RECENT CHAT HISTORY:\n{conversation_context}\n\n"
+        f"Reply as J.A.R.V.I.S. to the latest message above by addressing {meta['full_name']} directly:"
+    )
+
+    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+    reply_text = ask_ai_multi_provider(full_prompt)
+
+    user_history[chat_id].append({"role": "assistant", "text": reply_text})
+
     await reply_smart(update, reply_text)
     await send_voice_reply(update, reply_text)
 
 # ---------------------------------------------------------
-# 8. Application Launch
+# 7. Application Launch
 # ---------------------------------------------------------
 def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
     app.add_handler(CommandHandler(["start", "help"], help_command))
     app.add_handler(CommandHandler("search", search_command))
-    app.add_handler(CommandHandler("law", law_command))
-    app.add_handler(CommandHandler("research", research_command))
-    app.add_handler(CommandHandler("med", med_command))
-    app.add_handler(CommandHandler("quiz", quiz_command))
-
     app.add_handler(CallbackQueryHandler(button_callback_handler))
 
     app.add_handler(MessageHandler(filters.VOICE, voice_note_handler))
@@ -497,7 +515,7 @@ def main():
     app.add_handler(MessageHandler(filters.Document.PDF, pdf_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("J.A.R.V.I.S. master voice-STT, search & interactive core listening...")
+    print("J.A.R.V.I.S. group awareness & multi-user core listening...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
