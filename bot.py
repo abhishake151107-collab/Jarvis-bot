@@ -17,7 +17,7 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/html')
         self.end_headers()
-        self.wfile.write(b"J.A.R.V.I.S. Omni-Academic & Multi-AI Core Active 24/7.")
+        self.wfile.write(b"J.A.R.V.I.S. Multi-Modal Vision & Omni-Academic Core Active 24/7.")
     def log_message(self, format, *args):
         return
 
@@ -201,35 +201,91 @@ def ask_ai_multi_provider(prompt: str) -> str:
     return "Apologies, sir. All available AI sub-systems are currently at capacity. 🤖💤"
 
 # ---------------------------------------------------------
-# 5. Vision & PDF Document Handlers
+# 5. Multi-Core Vision & PDF Document Handlers
 # ---------------------------------------------------------
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Processes uploaded images/photos using Gemini 2.0 Flash Vision."""
+    """Processes photos with multi-provider vision fallback (Gemini -> Groq Vision -> OpenRouter Vision)."""
     user_str = get_user_identifier(update)
-    caption = update.message.caption or "Please analyze, solve, or explain what is in this image in full academic detail."
+    caption = update.message.caption or "Please analyze, solve, or describe what is in this image in detail."
     
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     
-    if not GEMINI_API_KEY:
-        await reply_smart(update, "📸 Photo received! Add a `GEMINI_API_KEY` to Render Environment settings to enable visual image analysis.")
-        return
+    reply_text = None
 
     try:
         photo_file = await update.message.photo[-1].get_file()
         image_bytes = await photo_file.download_as_bytearray()
         pil_image = Image.open(io.BytesIO(image_bytes))
+        base64_img = base64.b64encode(image_bytes).decode('utf-8')
+        data_url = f"data:image/jpeg;base64,{base64_img}"
+        prompt_text = f"[User {user_str} sent photo]: {caption}"
 
-        ai_client = genai.Client(api_key=GEMINI_API_KEY)
-        prompt = f"{SYSTEM_INSTRUCTION}\n\n[User {user_str} uploaded photo/diagram/problem]: {caption}"
-        
-        response = ai_client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=[prompt, pil_image]
-        )
-        reply_text = response.text
+        # 1. Primary Vision Core: Gemini 2.0 Flash
+        if GEMINI_API_KEY and not reply_text:
+            try:
+                ai_client = genai.Client(api_key=GEMINI_API_KEY)
+                response = ai_client.models.generate_content(
+                    model="gemini-2.0-flash",
+                    contents=[f"{SYSTEM_INSTRUCTION}\n\n{prompt_text}", pil_image]
+                )
+                if response and response.text:
+                    reply_text = response.text
+            except Exception as e:
+                print(f"[Vision Core 1: Gemini] Failed: {e}. Trying Groq Vision...")
+
+        # 2. Secondary Vision Core: Groq Vision (llama-3.2-11b-vision-instruct)
+        if GROQ_API_KEY and not reply_text:
+            try:
+                client = Groq(api_key=GROQ_API_KEY)
+                response = client.chat.completions.create(
+                    model="llama-3.2-11b-vision-instruct",
+                    messages=[
+                        {"role": "system", "content": SYSTEM_INSTRUCTION},
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt_text},
+                                {"type": "image_url", "image_url": {"url": data_url}}
+                            ]
+                        }
+                    ],
+                    max_tokens=1000
+                )
+                if response.choices[0].message.content:
+                    reply_text = response.choices[0].message.content
+            except Exception as e:
+                print(f"[Vision Core 2: Groq Vision] Failed: {e}. Trying OpenRouter Vision...")
+
+        # 3. Tertiary Vision Core: OpenRouter Free Vision
+        if OPENROUTER_API_KEY and not reply_text:
+            try:
+                res = requests.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
+                    json={
+                        "model": "meta-llama/llama-3.2-11b-vision-instruct:free",
+                        "messages": [
+                            {"role": "system", "content": SYSTEM_INSTRUCTION},
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": prompt_text},
+                                    {"type": "image_url", "image_url": {"url": data_url}}
+                                ]
+                            }
+                        ]
+                    },
+                    timeout=15
+                ).json()
+                reply_text = res["choices"][0]["message"]["content"]
+            except Exception as e:
+                print(f"[Vision Core 3: OpenRouter Vision] Failed: {e}")
+
     except Exception as e:
-        print(f"Photo vision error: {e}")
-        reply_text = f"Apologies, {user_str}. I had trouble analyzing that image. 😅"
+        print(f"General Photo Handler Error: {e}")
+
+    if not reply_text:
+        reply_text = f"Apologies, {user_str}. All vision AI cores are currently offline or quota-limited. 😅"
 
     await reply_smart(update, reply_text)
     await send_voice_reply(update, reply_text)
@@ -377,12 +433,12 @@ async def send_voice_reply(update: Update, text: str):
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     status = [
-        f"⚡ **Groq:** {'🟢 Online' if GROQ_API_KEY else '⚪ Missing Key'}",
+        f"⚡ **Groq (Text & Vision):** {'🟢 Online' if GROQ_API_KEY else '⚪ Missing Key'}",
         f"⚡ **SambaNova:** {'🟢 Online' if SAMBANOVA_API_KEY else '⚪ Missing Key'}",
         f"⚡ **Cerebras:** {'🟢 Online' if CEREBRAS_API_KEY else '⚪ Missing Key'}",
-        f"⚡ **Gemini 2.0:** {'🟢 Online' if GEMINI_API_KEY else '⚪ Missing Key'}",
+        f"⚡ **Gemini 2.0 (Text & Vision):** {'🟢 Online' if GEMINI_API_KEY else '⚪ Missing Key'}",
         f"⚡ **Mistral AI:** {'🟢 Online' if MISTRAL_API_KEY else '⚪ Missing Key'}",
-        f"⚡ **OpenRouter:** {'🟢 Online' if OPENROUTER_API_KEY else '⚪ Missing Key'}"
+        f"⚡ **OpenRouter (Text & Vision):** {'🟢 Online' if OPENROUTER_API_KEY else '⚪ Missing Key'}"
     ]
     msg = "🤖 **J.A.R.V.I.S. Multi-Core Status:**\n\n" + "\n".join(status)
     await reply_smart(update, msg)
@@ -403,8 +459,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• `/flashcards [topic]` — Active Recall Revision Cards 🎴\n"
         "• `/explain [topic]` — Simple Concept Explainer 💡\n\n"
         "📸 **MULTIMODAL ASSISTANT**\n"
-        "• **Send Photos** — Solve textbook math, diagrams & handwriting!\n"
-        "• **Send PDFs** — Instant document summaries & Q&A!\n\n"
+        "• **Send Photos** — Multi-core vision analyzing landscapes, math, diagrams & handwriting! 📸\n"
+        "• **Send PDFs** — Instant document summaries & Q&A! 📄\n\n"
         "⚡ **SYSTEM TOOLS**\n"
         "• `/status` — Active AI cores 🔌\n"
         "• `/myid` — Your Telegram ID 🆔\n"
@@ -462,7 +518,7 @@ def main():
     # Text Handler
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("J.A.R.V.I.S. omni-academic core listening...")
+    print("J.A.R.V.I.S. omni-academic & multi-core vision listening...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
