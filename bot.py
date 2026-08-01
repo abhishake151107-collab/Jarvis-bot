@@ -30,6 +30,7 @@ class StarkDashboardHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/html; charset=utf-8')
         self.end_headers()
+        # Using standard string and encoding to fix ASCII byte errors
         html_dashboard = """
         <!DOCTYPE html>
         <html>
@@ -43,14 +44,14 @@ class StarkDashboardHandler(BaseHTTPRequestHandler):
             </style>
         </head>
         <body>
-            <h1>STARK INDUSTRIES — MASTER TELEMETRY</h1>
+            <h1>🛡️ STARK INDUSTRIES — MASTER TELEMETRY</h1>
             <div class="card">
                 <h2>J.A.R.V.I.S. / F.R.I.D.A.Y. / E.D.I.T.H. Tri-Core</h2>
                 <p>System Status: <span class="status">ONLINE & SECURE</span></p>
                 <p>Arc Reactor Output: 100% Optimal</p>
                 <p>Security Grid: Active (Anti-Raid & Captcha Shield Live)</p>
             </div>
-            <p>_"Systems are operating at peak efficiency, boss."_</p>
+            <p>_"Systems are operating at peak efficiency, boss."_ 😎✨</p>
         </body>
         </html>
         """
@@ -303,7 +304,7 @@ def ask_ai_multi_provider(prompt: str) -> str:
     except Exception as e:
         print(f"[Core 4: Pollinations] Failed: {e}")
 
-    return "All AI sub-systems are currently resting up, boss! Give it a sec. 🤖💤"
+    return "All AI sub-systems are currently resting up, boss! Give it a sec. 😎💤"
 
 # ---------------------------------------------------------
 # 5. Advanced Security, Captcha, Lockdown & Agentic Planner
@@ -1202,9 +1203,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_voice_reply(update, reply_text)
 
 # ---------------------------------------------------------
-# 14. Application Launch
+# 14. Application Launch (Asyncio Loop Fixed)
 # ---------------------------------------------------------
-def main():
+async def run_bot():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
     # Advanced Security & Planner Commands
@@ -1309,7 +1310,17 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("J.A.R.V.I.S. absolute ultimate architecture core listening...")
-    app.run_polling(drop_pending_updates=True)
+    
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling(drop_pending_updates=True)
+
+    # Keep alive loop
+    stop_event = asyncio.Event()
+    await stop_event.wait()
+
+def main():
+    asyncio.run(run_bot())
 
 if __name__ == "__main__":
     main()
