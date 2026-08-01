@@ -10,7 +10,7 @@ import sqlite3
 import asyncio
 import threading
 import urllib.parse
-import functools  # <-- NEW: Required for the Security Gate
+import functools
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from PIL import Image
 import pypdf
@@ -166,7 +166,7 @@ async def reply_smart(update: Update, text: str, reply_markup=None):
     except Exception as e:
         await update.message.reply_text(text, reply_markup=reply_markup)
 
-# 🔥 THE NEW BOSS GATE SECUIRTY SHIELD
+# 🔥 THE BOSS GATE SECURITY SHIELD
 def boss_gate(critical=False):
     """Decorator to enforce strict Boss-only access boundaries."""
     def decorator(func):
@@ -188,7 +188,7 @@ def boss_gate(critical=False):
         return wrapper
     return decorator
 
-# 🔥 THE ENHANCED CORTICAL SYSTEM PROMPT
+# 🔥 THE CORTICAL SYSTEM PROMPT
 SYSTEM_INSTRUCTION = """You are J.A.R.V.I.S., F.R.I.D.A.Y., and E.D.I.T.H. combined—the ultimate Stark AI core! 🤖✨
 
 TONE & PERSONALITY:
@@ -301,7 +301,6 @@ async def handle_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     response = ask_ai_multi_provider(user_text)
     await reply_smart(update, response)
 
-# 🔥 FIXED CUT-OFF: Complete Captcha logic
 async def welcome_captcha_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for member in update.message.new_chat_members:
         cursor.execute("INSERT OR IGNORE INTO verified_users (user_id, status) VALUES (?, ?)", (member.id, "pending"))
@@ -327,11 +326,10 @@ async def captcha_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------------------------------------------------------
 # 🌅 AUTONOMOUS SCHEDULER (Proactive Briefings)
 # ---------------------------------------------------------
-async def morning_briefing(context: ContextTypes.DEFAULT_TYPE):
+async def morning_briefing(app):
     boss_id = get_config("BOSS_USER_ID")
     if not boss_id: return
     
-    # You can expand this to include DB checks (like budget or 2nd PU goals)
     report = (
         "🌅 **Good morning, Boss.**\n\n"
         "Here is your daily system brief:\n"
@@ -341,16 +339,24 @@ async def morning_briefing(context: ContextTypes.DEFAULT_TYPE):
         "I am ready when you are. What's the plan today?"
     )
     try:
-        await context.bot.send_message(chat_id=boss_id, text=report, parse_mode="Markdown")
+        await app.bot.send_message(chat_id=boss_id, text=report, parse_mode="Markdown")
         log_audit("SCHEDULED_TASK", "Morning briefing delivered.")
     except Exception as e:
         print(f"Failed to send briefing: {e}")
+
+async def setup_scheduler(app):
+    """Initializes APScheduler during the Telegram Application startup phase."""
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(morning_briefing, 'cron', hour=8, minute=0, args=[app])
+    scheduler.start()
+    print("⏰ Autonomous Scheduler Online.")
 
 # ---------------------------------------------------------
 # 🚀 MAIN LAUNCH SEQUENCE
 # ---------------------------------------------------------
 if __name__ == '__main__':
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    # Build app with the post_init hook to safely start the scheduler
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).post_init(setup_scheduler).build()
 
     # Commands
     app.add_handler(CommandHandler("start", start_command))
@@ -365,11 +371,6 @@ if __name__ == '__main__':
     
     # Standard Chat Handler (Needs to be last)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_chat))
-
-    # Start the Daily Scheduler (Runs at 8:00 AM)
-    scheduler = AsyncIOScheduler()
-    scheduler.add_job(morning_briefing, 'cron', hour=8, minute=0, args=[app])
-    scheduler.start()
 
     print("⚡ ARC REACTOR ONLINE. J.A.R.V.I.S. OS IS RUNNING...")
     app.run_polling()
