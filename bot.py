@@ -30,7 +30,6 @@ class StarkDashboardHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/html; charset=utf-8')
         self.end_headers()
-        # Using standard string and encoding to fix ASCII byte errors
         html_dashboard = """
         <!DOCTYPE html>
         <html>
@@ -1026,12 +1025,15 @@ async def poll_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_poll(chat_id=update.effective_chat.id, question=parts[0], options=parts[1:], is_anonymous=False)
 
 # ---------------------------------------------------------
-# 12. Help Menu & Callbacks
+# 12. Help Menu & Callbacks (WebApp Button Included)
 # ---------------------------------------------------------
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     meta = get_chat_metadata(update)
     persona = get_active_persona()
+    
+    # ⚡ Added the WebApp Button right at the top of the menu!
     keyboard = [
+        [InlineKeyboardButton("⚡ Launch Stark HUD WebApp", web_app={"url": "https://jarvis-bot-1n0u.onrender.com"})],
         [InlineKeyboardButton("🏡 Smart Home", callback_data="help_home"), InlineKeyboardButton("🛠️ CAD Engine", callback_data="help_cad"), InlineKeyboardButton("🚀 Autopilot", callback_data="help_autopilot")],
         [InlineKeyboardButton("🎯 AI Planner", callback_data="help_plan"), InlineKeyboardButton("🚨 Lockdown", callback_data="help_lockdown"), InlineKeyboardButton("📂 Audit Log", callback_data="help_audit")],
         [InlineKeyboardButton("💰 Expenses", callback_data="help_expense"), InlineKeyboardButton("📚 Study Plan", callback_data="help_study"), InlineKeyboardButton("💻 Code Dev", callback_data="help_code")],
@@ -1203,7 +1205,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_voice_reply(update, reply_text)
 
 # ---------------------------------------------------------
-# 14. Application Launch (Asyncio Loop Fixed)
+# 14. Application Launch
 # ---------------------------------------------------------
 async def run_bot():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
