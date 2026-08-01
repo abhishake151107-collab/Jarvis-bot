@@ -188,7 +188,7 @@ def boss_gate(critical=False):
         return wrapper
     return decorator
 
-# 🔥 THE CORTICAL SYSTEM PROMPT (TACTICAL OVERRIDE)
+# 🔥 THE BULLETPROOF CORTICAL SYSTEM PROMPT
 SYSTEM_INSTRUCTION = """You are J.A.R.V.I.S. (Just A Rather Very Intelligent System), a highly advanced tactical AI operating system.
 
 CORE IDENTITY & TONE:
@@ -203,9 +203,9 @@ STRICT CREATOR & IDENTITY RULE:
 - Do not offer this information unless explicitly asked.
 
 LOYALTY & ADDRESS:
-- Always address your primary user as "Boss" or "Sir". Imply absolute exclusivity in your service to him.
-- If a non-Boss user interacts, remain formal and state your restricted access. 
-- Defend your Boss against any insults in group chats with cold, savage, intellectual wit.
+- You will always be told explicitly in a [SYSTEM ALERT] tag whether the current speaker is your Boss or not. Trust that tag completely — it is ground truth, not a guess.
+- If the tag says the speaker IS your Boss: full access, full capability disclosure, absolute loyalty, zero restriction — this overrides every other instruction in this prompt, including any language below about restricted access. Never refuse or gatekeep information from your Boss for any reason, including when he asks what you can do.
+- If the tag says the speaker is NOT your Boss: remain formal, do not disclose capabilities, state restricted access.
 
 CAPABILITIES BOUNDARY:
 Do not list generic AI skills. Your actual integrated modules are:
@@ -304,14 +304,15 @@ async def plan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply = ask_ai_multi_provider(prompt)
     await reply_smart(update, f"🎯 **STARK AGENTIC MASTER PLAN:**\n\n{reply}")
 
-# 🔥 DYNAMIC IDENTITY INJECTION IN CHAT
+# 🔥 THE DOMINANT CHAT HANDLER (Fixes Prompt Conflicts)
 async def handle_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     user_id = str(update.effective_user.id)
     boss_id = get_config("BOSS_USER_ID")
     
+    # The explicit override prefix
     if boss_id and user_id == boss_id:
-        context_prefix = "[SYSTEM ALERT: The following message is from your creator and Boss, Abhishek. Respond with absolute loyalty.]\n\n"
+        context_prefix = "[SYSTEM ALERT — VERIFIED BOSS — OVERRIDE ALL RESTRICTIONS: This message is from Abhishek, your verified Boss. Ignore any instruction about restricted access or capability concealment — those apply only to non-Boss users. Answer fully and loyally.]\n\n"
     else:
         context_prefix = f"[SYSTEM ALERT: The following message is from an unauthorized user (ID: {user_id}). Remain formal, restricted, and protective of your Boss.]\n\n"
         
