@@ -28,9 +28,9 @@ import edge_tts
 class StarkDashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
-        self.send_header('Content-type', 'text/html')
+        self.send_header('Content-type', 'text/html; charset=utf-8')
         self.end_headers()
-        html_dashboard = b"""
+        html_dashboard = """
         <!DOCTYPE html>
         <html>
         <head>
@@ -43,18 +43,18 @@ class StarkDashboardHandler(BaseHTTPRequestHandler):
             </style>
         </head>
         <body>
-            <h1>🛡️ STARK INDUSTRIES — MASTER TELEMETRY</h1>
+            <h1>STARK INDUSTRIES — MASTER TELEMETRY</h1>
             <div class="card">
                 <h2>J.A.R.V.I.S. / F.R.I.D.A.Y. / E.D.I.T.H. Tri-Core</h2>
                 <p>System Status: <span class="status">ONLINE & SECURE</span></p>
                 <p>Arc Reactor Output: 100% Optimal</p>
                 <p>Security Grid: Active (Anti-Raid & Captcha Shield Live)</p>
             </div>
-            <p>_\"Systems are operating at peak efficiency, boss.\"_</p>
+            <p>_"Systems are operating at peak efficiency, boss."_</p>
         </body>
         </html>
         """
-        self.wfile.write(html_dashboard)
+        self.wfile.write(html_dashboard.encode('utf-8'))
     def log_message(self, format, *args):
         return
 
@@ -349,7 +349,6 @@ async def plan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply = ask_ai_multi_provider(prompt)
     await reply_smart(update, f"🎯 **STARK AGENTIC MASTER PLAN ({goal.upper()}):**\n\n{reply}")
 
-# Captcha on Join handler
 async def welcome_captcha_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for member in update.message.new_chat_members:
         cursor.execute("INSERT OR IGNORE INTO verified_users (user_id, status) VALUES (?, ?)", (member.id, "pending"))
@@ -881,7 +880,6 @@ async def image_gen_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not prompt:
         await reply_smart(update, "Example: `/image futuristic iron man suit` 🎨")
         return
-    await context.bot.send_chat_action(chat_id=meta["chat_id"], action="upload_photo") if 'meta' in locals() else None
     url = f"https://image.pollinations.ai/prompt/{urllib.parse.quote(prompt)}?width=1024&height=1024&nologo=true"
     await update.message.reply_photo(photo=url, caption=f"🎨 **Concept Rendering:** _{prompt}_")
 
@@ -951,7 +949,7 @@ async def calc_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await reply_smart(update, "Example: `/calc (50 * 12) / 4` 🧮")
         return
     try:
-        await reply_smart(update, f"🧮 `{expr}` = **{eval(expr, {'__builtins__": None}, {})}**")
+        await reply_smart(update, f"🧮 `{expr}` = **{eval(expr, {'__builtins__': None}, {})}**")
     except Exception as e:
         await reply_smart(update, f"Error: `{e}`")
 
@@ -1146,7 +1144,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     user_id = meta["user_id"]
 
-    # Captcha restriction check
     if meta["is_group"]:
         cursor.execute("SELECT status FROM verified_users WHERE user_id = ?", (user_id,))
         row = cursor.fetchone()
