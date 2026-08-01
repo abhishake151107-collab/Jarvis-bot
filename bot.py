@@ -27,6 +27,7 @@ import edge_tts
 # ---------------------------------------------------------
 class StarkDashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self):
+        # We catch ALL get requests and serve the HUD to prevent "Not Found" errors
         self.send_response(200)
         self.send_header('Content-type', 'text/html; charset=utf-8')
         self.end_headers()
@@ -35,20 +36,22 @@ class StarkDashboardHandler(BaseHTTPRequestHandler):
         <html>
         <head>
             <title>J.A.R.V.I.S. — Stark Industries OS</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <style>
-                body { background-color: #0b0f19; color: #00f0ff; font-family: 'Courier New', monospace; text-align: center; padding: 50px; }
-                h1 { color: #ff3366; text-shadow: 0 0 10px #ff3366; }
-                .card { background: #131b2e; border: 1px solid #00f0ff; padding: 20px; margin: 20px auto; width: 60%; border-radius: 10px; box-shadow: 0 0 15px rgba(0,240,255,0.2); }
+                body { background-color: #0b0f19; color: #00f0ff; font-family: 'Courier New', monospace; text-align: center; padding: 20px; margin: 0; }
+                h1 { color: #ff3366; text-shadow: 0 0 10px #ff3366; font-size: 24px; margin-top: 20px; }
+                .card { background: #131b2e; border: 1px solid #00f0ff; padding: 20px; margin: 20px auto; width: 90%; max-width: 500px; border-radius: 10px; box-shadow: 0 0 15px rgba(0,240,255,0.2); }
                 .status { color: #00ff66; font-weight: bold; }
+                p { font-size: 14px; line-height: 1.5; }
             </style>
         </head>
         <body>
-            <h1>🛡️ STARK INDUSTRIES — MASTER TELEMETRY</h1>
+            <h1>🛡️ STARK INDUSTRIES HUD</h1>
             <div class="card">
-                <h2>J.A.R.V.I.S. / F.R.I.D.A.Y. / E.D.I.T.H. Tri-Core</h2>
+                <h2>J.A.R.V.I.S. Tri-Core</h2>
                 <p>System Status: <span class="status">ONLINE & SECURE</span></p>
                 <p>Arc Reactor Output: 100% Optimal</p>
-                <p>Security Grid: Active (Anti-Raid & Captcha Shield Live)</p>
+                <p>Security Grid: ACTIVE</p>
             </div>
             <p>_"Systems are operating at peak efficiency, boss."_ 😎✨</p>
         </body>
@@ -1031,9 +1034,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     meta = get_chat_metadata(update)
     persona = get_active_persona()
     
-    # ⚡ Added the WebApp Button right at the top of the menu!
+    # ⚡ WebApp URL successfully hardcoded with the trailing slash `/`
     keyboard = [
-        [InlineKeyboardButton("⚡ Launch Stark HUD WebApp", web_app={"url": "https://jarvis-bot-1n0u.onrender.com"})],
+        [InlineKeyboardButton("⚡ Launch Stark HUD WebApp", web_app={"url": "https://jarvis-bot-1n0u.onrender.com/"})],
         [InlineKeyboardButton("🏡 Smart Home", callback_data="help_home"), InlineKeyboardButton("🛠️ CAD Engine", callback_data="help_cad"), InlineKeyboardButton("🚀 Autopilot", callback_data="help_autopilot")],
         [InlineKeyboardButton("🎯 AI Planner", callback_data="help_plan"), InlineKeyboardButton("🚨 Lockdown", callback_data="help_lockdown"), InlineKeyboardButton("📂 Audit Log", callback_data="help_audit")],
         [InlineKeyboardButton("💰 Expenses", callback_data="help_expense"), InlineKeyboardButton("📚 Study Plan", callback_data="help_study"), InlineKeyboardButton("💻 Code Dev", callback_data="help_code")],
