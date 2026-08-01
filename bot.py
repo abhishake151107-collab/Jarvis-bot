@@ -23,53 +23,89 @@ from groq import Groq
 import edge_tts
 
 # ---------------------------------------------------------
-# 1. Stark Industries Web Dashboard & Health Server
+# 1. HOLOGRAPHIC STARK WEB DASHBOARD
 # ---------------------------------------------------------
+HOLOGRAPHIC_HTML = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>J.A.R.V.I.S. Core</title>
+    <style>
+        body { margin: 0; padding: 0; background-color: #02060d; color: #00f3ff; font-family: 'Courier New', Courier, monospace; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        .hud { position: relative; width: 100vw; height: 100vh; background: radial-gradient(circle at center, rgba(0, 243, 255, 0.1) 0%, rgba(2, 6, 13, 1) 100%); }
+        .center-arc { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); display: flex; justify-content: center; align-items: center; }
+        .ring { position: absolute; border-radius: 50%; background: transparent; }
+        .ring-1 { width: 280px; height: 280px; border: 2px solid rgba(0, 243, 255, 0.5); border-top: 2px solid #00f3ff; border-bottom: 2px solid #00f3ff; animation: spin 4s linear infinite; box-shadow: 0 0 15px rgba(0,243,255,0.4); }
+        .ring-2 { width: 240px; height: 240px; border: 1px dashed rgba(0, 243, 255, 0.7); animation: spin-reverse 6s linear infinite; }
+        .ring-3 { width: 200px; height: 200px; border: 3px solid rgba(0, 243, 255, 0.2); border-left: 3px solid #00f3ff; animation: spin 3s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        @keyframes spin-reverse { 100% { transform: rotate(-360deg); } }
+        .core-text { position: absolute; text-align: center; z-index: 10; }
+        .core-text h1 { margin: 0; font-size: 28px; text-shadow: 0 0 10px #00f3ff; letter-spacing: 4px; }
+        .core-text p { margin: 5px 0 0 0; font-size: 12px; color: #ff3366; text-shadow: 0 0 5px #ff3366; font-weight: bold; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        .scanline { position: absolute; top: 0; left: 0; width: 100%; height: 2px; background: rgba(0, 243, 255, 0.6); box-shadow: 0 0 10px #00f3ff; animation: scan 3s linear infinite; z-index: 20; opacity: 0.5; pointer-events: none; }
+        @keyframes scan { 0% { top: -10%; } 100% { top: 110%; } }
+        .telemetry { position: absolute; padding: 15px; font-size: 10px; line-height: 1.8; text-shadow: 0 0 5px #00f3ff; background: rgba(0, 243, 255, 0.05); border: 1px solid rgba(0, 243, 255, 0.2); backdrop-filter: blur(2px); }
+        .top-left { top: 20px; left: 20px; border-left: 3px solid #00f3ff; }
+        .bottom-right { bottom: 20px; right: 20px; text-align: right; border-right: 3px solid #ff3366; }
+    </style>
+</head>
+<body>
+    <div class="hud">
+        <div class="scanline"></div>
+        <div class="telemetry top-left">
+            SYS.ID: MARK_LXXXV<br>
+            PWR.SRC: VIBRANIUM ARC<br>
+            OUT: 100% STABLE<br>
+            NET: ENCRYPTED
+        </div>
+        <div class="center-arc">
+            <div class="ring ring-1"></div>
+            <div class="ring ring-2"></div>
+            <div class="ring ring-3"></div>
+            <div class="core-text">
+                <h1>J.A.R.V.I.S.</h1>
+                <p>ONLINE</p>
+            </div>
+        </div>
+        <div class="telemetry bottom-right">
+            AUTH: ABHISHEK<br>
+            LAT: BENGALURU, IN<br>
+            PROT: ACTIVE<br>
+            STATUS: SECURE
+        </div>
+    </div>
+</body>
+</html>
+"""
+
 class StarkDashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        # We catch ALL get requests and serve the HUD to prevent "Not Found" errors
-        self.send_response(200)
-        self.send_header('Content-type', 'text/html; charset=utf-8')
-        self.end_headers()
-        html_dashboard = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>J.A.R.V.I.S. — Stark Industries OS</title>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <style>
-                body { background-color: #0b0f19; color: #00f0ff; font-family: 'Courier New', monospace; text-align: center; padding: 20px; margin: 0; }
-                h1 { color: #ff3366; text-shadow: 0 0 10px #ff3366; font-size: 24px; margin-top: 20px; }
-                .card { background: #131b2e; border: 1px solid #00f0ff; padding: 20px; margin: 20px auto; width: 90%; max-width: 500px; border-radius: 10px; box-shadow: 0 0 15px rgba(0,240,255,0.2); }
-                .status { color: #00ff66; font-weight: bold; }
-                p { font-size: 14px; line-height: 1.5; }
-            </style>
-        </head>
-        <body>
-            <h1>🛡️ STARK INDUSTRIES HUD</h1>
-            <div class="card">
-                <h2>J.A.R.V.I.S. Tri-Core</h2>
-                <p>System Status: <span class="status">ONLINE & SECURE</span></p>
-                <p>Arc Reactor Output: 100% Optimal</p>
-                <p>Security Grid: ACTIVE</p>
-            </div>
-            <p>_"Systems are operating at peak efficiency, boss."_ 😎✨</p>
-        </body>
-        </html>
-        """
-        self.wfile.write(html_dashboard.encode('utf-8'))
+        try:
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html; charset=utf-8')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(HOLOGRAPHIC_HTML.encode('utf-8'))
+        except Exception as e:
+            print(f"Web Server Error: {e}")
+            
     def log_message(self, format, *args):
-        return
+        pass # Suppress HTTP logs to keep console clean
 
 def run_health_server():
     port = int(os.environ.get("PORT", 10000))
     try:
         server = HTTPServer(('0.0.0.0', port), StarkDashboardHandler)
-        print(f"Stark dashboard web service listening on 0.0.0.0:{port}")
+        print(f"Stark Holographic UI listening on 0.0.0.0:{port}")
         server.serve_forever()
     except Exception as e:
-        print(f"Web server error: {e}")
+        print(f"Failed to start web server: {e}")
 
+# Start the web server on a background thread so the Telegram Bot can run too!
 threading.Thread(target=run_health_server, daemon=True).start()
 
 # ---------------------------------------------------------
@@ -77,18 +113,15 @@ threading.Thread(target=run_health_server, daemon=True).start()
 # ---------------------------------------------------------
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-SAMBANOVA_API_KEY = os.getenv("SAMBANOVA_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 if not TELEGRAM_TOKEN:
     raise ValueError("Missing TELEGRAM_BOT_TOKEN environment variable!")
 
-# Permanent SQLite Database
 conn = sqlite3.connect("jarvis_memory.db", check_same_thread=False)
 cursor = conn.cursor()
 
-# Tables Setup
 cursor.execute("CREATE TABLE IF NOT EXISTS user_notes (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, note TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
 cursor.execute("CREATE TABLE IF NOT EXISTS long_term_memory (user_id INTEGER, memory_key TEXT, memory_val TEXT, PRIMARY KEY (user_id, memory_key))")
 cursor.execute("CREATE TABLE IF NOT EXISTS bot_config (config_key TEXT PRIMARY KEY, config_val TEXT)")
@@ -1034,7 +1067,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     meta = get_chat_metadata(update)
     persona = get_active_persona()
     
-    # ⚡ WebApp URL successfully hardcoded with the trailing slash `/`
     keyboard = [
         [InlineKeyboardButton("⚡ Launch Stark HUD WebApp", web_app={"url": "https://jarvis-bot-1n0u.onrender.com/"})],
         [InlineKeyboardButton("🏡 Smart Home", callback_data="help_home"), InlineKeyboardButton("🛠️ CAD Engine", callback_data="help_cad"), InlineKeyboardButton("🚀 Autopilot", callback_data="help_autopilot")],
