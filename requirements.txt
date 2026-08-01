@@ -6,3 +6,4 @@ duckduckgo-search
 pypdf
 pillow
 requests
+apscheduler
