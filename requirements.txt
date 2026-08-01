@@ -1,8 +1,9 @@
-python-telegram-bot>=20.0
+python-telegram-bot==20.7
 google-genai
 groq
-edge-tts
-requests
-Pillow
 pypdf
-duckduckgo-search
+Pillow
+requests
+duckduckgo_search
+edge-tts
+apscheduler
