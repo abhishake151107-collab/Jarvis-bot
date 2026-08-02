@@ -250,7 +250,7 @@ async def panic_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception: pass
 
 # ---------------------------------------------------------
-# 5. NEW: PRODUCTIVITY & VOICE SUITE
+# 5. PRODUCTIVITY & VOICE SUITE
 # ---------------------------------------------------------
 async def add_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
