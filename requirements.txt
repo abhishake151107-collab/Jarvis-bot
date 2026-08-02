@@ -1,9 +1,10 @@
 python-telegram-bot
+APScheduler
 groq
 google-genai
 edge-tts
+requests
 duckduckgo-search
 pypdf
-pillow
-requests
-apscheduler
+Pillow
+qrcode
