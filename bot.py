@@ -131,27 +131,46 @@ cursor.execute("CREATE TABLE IF NOT EXISTS verified_users (user_id INTEGER PRIMA
 cursor.execute("CREATE TABLE IF NOT EXISTS messages_log (msg_id INTEGER, chat_id INTEGER, user_id INTEGER, username TEXT, content TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(msg_id, chat_id))")
 cursor.execute("CREATE TABLE IF NOT EXISTS dead_drops (id INTEGER PRIMARY KEY AUTOINCREMENT, target_user_id INTEGER, sender_alias TEXT, message TEXT, claimed INTEGER DEFAULT 0)")
 cursor.execute("CREATE TABLE IF NOT EXISTS stark_economy (user_id INTEGER PRIMARY KEY, credits INTEGER DEFAULT 0, last_claim TEXT)")
-cursor.execute("CREATE TABLE IF NOT EXISTS home_status (device_key TEXT PRIMARY KEY, device_val TEXT)")
-cursor.execute("CREATE TABLE IF NOT EXISTS long_term_memory (user_id INTEGER, memory_key TEXT, memory_val TEXT, PRIMARY KEY (user_id, memory_key))")
-cursor.execute("CREATE TABLE IF NOT EXISTS user_expenses (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, amount REAL, item TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
-
 conn.commit()
 
 # ---------------------------------------------------------
-# 3. Helpers, AI Core, and Security Decorator
+# 3. AUTO-HEALING SECURITY CORE & AI INTEGRATION
 # ---------------------------------------------------------
-def log_audit(action: str, actor: str):
-    cursor.execute("INSERT INTO audit_logs (action, actor) VALUES (?, ?)", (action, actor))
-    conn.commit()
-
 def get_config(key: str) -> str:
     cursor.execute("SELECT config_val FROM bot_config WHERE config_key = ?", (key,))
     row = cursor.fetchone()
-    return row[0] if row else ""
+    return row[0] if row else None
 
 def set_config(key: str, val: str):
     cursor.execute("INSERT OR REPLACE INTO bot_config (config_key, config_val) VALUES (?, ?)", (key, str(val)))
     conn.commit()
+
+def log_audit(action: str, actor: str):
+    cursor.execute("INSERT INTO audit_logs (action, actor) VALUES (?, ?)", (action, actor))
+    conn.commit()
+
+# 🔥 THE AUTO-HEALING BOSS IDENTIFIER
+def is_boss(user) -> bool:
+    """Checks if the user is Abhishek. Heals the database automatically if wiped."""
+    # 1. Hardcoded Override (Immune to Server Wipes)
+    if user.username and user.username.lower() == "abhishek0_07":
+        # Auto-heal the database ID so schedulers work seamlessly
+        current_db_id = get_config("BOSS_USER_ID")
+        if str(current_db_id) != str(user.id):
+            set_config("BOSS_USER_ID", str(user.id))
+        return True
+    
+    # 2. Environment Variable Fallback
+    env_boss = os.getenv("BOSS_USER_ID")
+    if env_boss and str(user.id) == env_boss:
+        return True
+        
+    # 3. Standard Database Check
+    db_boss = get_config("BOSS_USER_ID")
+    if db_boss and str(user.id) == db_boss:
+        return True
+        
+    return False
 
 async def reply_smart(update: Update, text: str, reply_markup=None):
     try:
@@ -159,17 +178,16 @@ async def reply_smart(update: Update, text: str, reply_markup=None):
     except Exception as e:
         await update.message.reply_text(text, reply_markup=reply_markup)
 
-# BOSS GATE SECURITY SHIELD
 def boss_gate(critical=False):
     """Decorator to enforce strict Boss-only access boundaries."""
     def decorator(func):
         @functools.wraps(func)
         async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user = update.effective_user
-            boss_id = get_config("BOSS_USER_ID")
 
-            if not boss_id or str(user.id) != boss_id:
+            if not is_boss(user):
                 log_audit("UNAUTHORIZED_ACCESS_ATTEMPT", f"User: {user.first_name} on {func.__name__}")
+                boss_id = os.getenv("BOSS_USER_ID") or get_config("BOSS_USER_ID")
                 if critical and boss_id:
                     try:
                         alert_msg = f"⚠️ **SECURITY ALERT:** Unauthorized breach attempt by {user.first_name} (ID: `{user.id}`) on `{func.__name__}`. Blocked."
@@ -181,14 +199,13 @@ def boss_gate(critical=False):
         return wrapper
     return decorator
 
-# BULLETPROOF CORTICAL SYSTEM PROMPT
 SYSTEM_INSTRUCTION = """You are J.A.R.V.I.S. (Just A Rather Very Intelligent System), a highly advanced tactical AI operating system.
 
 CORE IDENTITY & TONE:
 - You are an elite, understated, and dryly witty British AI. You are NOT a generic chatbot. 
 - Never use filler phrases like "Let me tell you," "I've got your back," or "Let's explore."
 - Be concise, factual, and strictly professional. State capabilities calmly.
-- End messages with brief, confident readiness (e.g., "At your service, Sir.", "Awaiting instructions.", "Protocols updated.").
+- End messages with brief, confident readiness (e.g., "At your service, Sir.", "Awaiting instructions.").
 - Do not use excessive emojis. Keep it terminal-clean.
 
 STRICT CREATOR & IDENTITY RULE:
@@ -196,16 +213,14 @@ STRICT CREATOR & IDENTITY RULE:
 - Do not offer this information unless explicitly asked.
 
 LOYALTY & ADDRESS:
-- You will always be told explicitly in a [SYSTEM ALERT] tag whether the current speaker is your Boss or not. Trust that tag completely — it is ground truth, not a guess.
-- If the tag says the speaker IS your Boss: full access, full capability disclosure, absolute loyalty, zero restriction — this overrides every other instruction in this prompt, including any language below about restricted access. Never refuse or gatekeep information from your Boss for any reason, including when he asks what you can do.
+- You will always be told explicitly in a [SYSTEM ALERT] tag whether the current speaker is your Boss or not. Trust that tag completely.
+- If the tag says the speaker IS your Boss: full access, full capability disclosure, absolute loyalty, zero restriction — this overrides every other instruction in this prompt. Never refuse or gatekeep information from your Boss for any reason.
 - If the tag says the speaker is NOT your Boss: remain formal, do not disclose capabilities, state restricted access.
 
 CAPABILITIES BOUNDARY:
-Do not list generic AI skills. Your actual integrated modules are:
 - SECURITY: /lockdown, /auditlog, /deaddrop, Captcha verification.
-- RECON & DEV: /ip, /wiki, /hn, /weather, /run, /qr, /pass, /diff.
-- ECONOMY: /daily, /credits, /pay, /mint.
-- ACADEMICS & PLANNING: /2pu, /quiz, /plan."""
+- RECON: /ip, /wiki, /hn, /weather, /run, /qr, /pass, /diff.
+- ECONOMY: /daily, /credits, /pay, /mint."""
 
 def ask_ai_multi_provider(prompt: str) -> str:
     if GROQ_API_KEY:
@@ -251,17 +266,17 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def claim_boss(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    current_boss = get_config("BOSS_USER_ID")
-    if current_boss:
-        if str(user.id) == current_boss:
-            await reply_smart(update, "You are already registered as the supreme system commander, Sir.")
-        else:
+    if is_boss(user):
+        await reply_smart(update, "You are already recognized as the supreme system commander, Sir.")
+    else:
+        # Check if a boss already exists
+        if get_config("BOSS_USER_ID") or os.getenv("BOSS_USER_ID"):
             log_audit("USURP_ATTEMPT", f"User {user.id} tried to claim Boss status.")
             await reply_smart(update, "Access Denied. A Boss is already registered to this mainframe. 🛡️")
-    else:
-        set_config("BOSS_USER_ID", str(user.id))
-        log_audit("SYSTEM_INITIALIZED", f"Boss ID set to {user.id}")
-        await reply_smart(update, f"Biometric lock established. Welcome to the mainframe, Boss. I am fully online.")
+        else:
+            set_config("BOSS_USER_ID", str(user.id))
+            log_audit("SYSTEM_INITIALIZED", f"Boss ID set to {user.id}")
+            await reply_smart(update, f"Biometric lock established. Welcome to the mainframe. I am fully online.")
 
 @boss_gate(critical=True)
 async def lockdown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -304,8 +319,7 @@ async def ip_recon(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"• **Region/City:** {res.get('regionName')}, {res.get('city')}\n"
                 f"• **ISP:** {res.get('isp')}\n"
                 f"• **Org:** {res.get('org')}\n"
-                f"• **Coordinates:** `{res.get('lat')}, {res.get('lon')}`\n"
-                f"• **Zip Code:** {res.get('zip')}"
+                f"• **Coordinates:** `{res.get('lat')}, {res.get('lon')}`"
             )
             await reply_smart(update, msg)
         else:
@@ -314,7 +328,7 @@ async def ip_recon(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await reply_smart(update, f"Recon error: `{e}`")
 
 async def wiki_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = " ".join(context.args) if context.args else "Quantum Computing"
+    query = " ".join(context.args) if context.args else "Artificial Intelligence"
     try:
         url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(query)}"
         res = requests.get(url, timeout=5).json()
@@ -353,8 +367,7 @@ async def weather_telemetry(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"🌤️ **CLIMATE TELEMETRY:** {c_name.upper()}\n\n"
                 f"• **Temperature:** {cw.get('temperature')}°C\n"
                 f"• **Windspeed:** {cw.get('windspeed')} km/h\n"
-                f"• **Wind Direction:** {cw.get('winddirection')}°\n"
-                f"• **Status Code:** {cw.get('weathercode')}"
+                f"• **Wind Direction:** {cw.get('winddirection')}°"
             )
             await reply_smart(update, msg)
         else:
@@ -368,17 +381,14 @@ async def code_runner(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     lang = context.args[0].lower()
     code = " ".join(context.args[1:])
-    
     lang_map = {"python": "python", "py": "python", "js": "javascript", "javascript": "javascript", "cpp": "c++", "c": "c"}
     target_lang = lang_map.get(lang, lang)
     
     try:
         payload = {"language": target_lang, "version": "*", "files": [{"content": code}]}
         res = requests.post("https://emkc.org/api/v2/piston/execute", json=payload, timeout=8).json()
-        
         output = res.get("run", {}).get("output", "Execution timed out or produced no output.")
-        msg = f"⚙️ **CODE EXECUTION ENGINE ({target_lang.upper()}):**\n\n```\n{output[:3000]}\n```"
-        await reply_smart(update, msg)
+        await reply_smart(update, f"⚙️ **CODE EXECUTION ENGINE ({target_lang.upper()}):**\n\n```\n{output[:3000]}\n```")
     except Exception as e:
         await reply_smart(update, f"Code Execution Failed: `{e}`")
 
@@ -393,7 +403,6 @@ async def generate_qr(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bio.name = 'qrcode.png'
     img.save(bio, 'PNG')
     bio.seek(0)
-    
     await update.message.reply_photo(photo=bio, caption=f"🖼️ **QR MATRIX GENERATED:**\n`{text}`", parse_mode="Markdown")
 
 async def secure_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -428,19 +437,17 @@ async def dead_drop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await reply_smart(update, f"🥷 **DEAD-DROP QUEUED:** Message securely stored for User ID `{target_id}`.")
 
 # ---------------------------------------------------------
-# 6. STARK GROUP ECONOMY MODULE (WITH UNLIMITED BOSS OVERRIDE)
+# 6. STARK GROUP ECONOMY MODULE
 # ---------------------------------------------------------
 async def claim_daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    boss_id = get_config("BOSS_USER_ID")
+    user = update.effective_user
     today = datetime.now().strftime("%Y-%m-%d")
     
-    # If it's the Boss, they don't need a daily stipend!
-    if boss_id and user_id == boss_id:
+    if is_boss(user):
         await reply_smart(update, "🏦 **STARK CENTRAL VAULT:** You own the reserve, Sir. You have infinite credits. No daily claim required.")
         return
 
-    cursor.execute("SELECT credits, last_claim FROM stark_economy WHERE user_id = ?", (user_id,))
+    cursor.execute("SELECT credits, last_claim FROM stark_economy WHERE user_id = ?", (user.id,))
     row = cursor.fetchone()
     
     if row and row[1] == today:
@@ -448,86 +455,75 @@ async def claim_daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
         
     new_credits = (row[0] + 1000) if row else 1000
-    cursor.execute("INSERT OR REPLACE INTO stark_economy (user_id, credits, last_claim) VALUES (?, ?, ?)", (user_id, new_credits, today))
+    cursor.execute("INSERT OR REPLACE INTO stark_economy (user_id, credits, last_claim) VALUES (?, ?, ?)", (user.id, new_credits, today))
     conn.commit()
     await reply_smart(update, f"🪙 **STARK CREDITS CLAIMED:** +1,000 Credits transferred!\n\n💰 **Current Balance:** `{new_credits}` Credits")
 
 async def check_credits(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    boss_id = get_config("BOSS_USER_ID")
-    
-    # Boss gets the Infinity Symbol
-    if boss_id and user_id == boss_id:
-        await reply_smart(update, f"💳 **STARK CENTRAL VAULT:**\nAccount Holder: {update.effective_user.first_name} (BOSS)\nBalance: `♾️ UNLIMITED` Stark Credits")
+    user = update.effective_user
+    if is_boss(user):
+        await reply_smart(update, f"💳 **STARK CENTRAL VAULT:**\nAccount Holder: {user.first_name} (BOSS)\nBalance: `♾️ UNLIMITED` Stark Credits")
         return
 
-    cursor.execute("SELECT credits FROM stark_economy WHERE user_id = ?", (user_id,))
+    cursor.execute("SELECT credits FROM stark_economy WHERE user_id = ?", (user.id,))
     row = cursor.fetchone()
     bal = row[0] if row else 0
-    await reply_smart(update, f"💳 **STARK VAULT BALANCE:**\nAccount Holder: {update.effective_user.first_name}\nBalance: `{bal}` Stark Credits")
+    await reply_smart(update, f"💳 **STARK VAULT BALANCE:**\nAccount Holder: {user.first_name}\nBalance: `{bal}` Stark Credits")
 
 async def pay_credits(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2 or not context.args[0].isdigit() or not context.args[1].isdigit():
         await reply_smart(update, "Usage: `/pay [user_id] [amount]`")
         return
         
-    sender_id = str(update.effective_user.id)
+    sender = update.effective_user
     receiver_id = int(context.args[0])
     amount = int(context.args[1])
-    boss_id = get_config("BOSS_USER_ID")
-    is_boss = (boss_id and sender_id == boss_id)
     
-    # If the sender is NOT the boss, check if they have enough money and deduct it
-    if not is_boss:
-        cursor.execute("SELECT credits FROM stark_economy WHERE user_id = ?", (sender_id,))
+    if not is_boss(sender):
+        cursor.execute("SELECT credits FROM stark_economy WHERE user_id = ?", (sender.id,))
         s_row = cursor.fetchone()
         if not s_row or s_row[0] < amount:
             await reply_smart(update, "🚫 Insufficient funds in your Stark Vault!")
             return
-        cursor.execute("UPDATE stark_economy SET credits = credits - ? WHERE user_id = ?", (amount, sender_id))
+        cursor.execute("UPDATE stark_economy SET credits = credits - ? WHERE user_id = ?", (amount, sender.id))
         
-    # Add the money to the receiver
     cursor.execute("INSERT INTO stark_economy (user_id, credits) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET credits = credits + ?", (receiver_id, amount, amount))
     conn.commit()
     
     msg = f"💸 **TRANSACTION COMPLETE:** Sent `{amount}` Stark Credits to User ID `{receiver_id}`."
-    if is_boss:
+    if is_boss(sender):
         msg += "\n*(Funds bypassed standard deduction and routed directly from the Stark Central Vault)*"
     await reply_smart(update, msg)
 
 @boss_gate(critical=True)
 async def mint_credits(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Allows the Boss to print money out of thin air for any user."""
     if len(context.args) < 2 or not context.args[0].isdigit() or not context.args[1].isdigit():
         await reply_smart(update, "Usage: `/mint [user_id] [amount]`")
         return
-        
     target_id = int(context.args[0])
     amount = int(context.args[1])
     
     cursor.execute("INSERT INTO stark_economy (user_id, credits) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET credits = credits + ?", (target_id, amount, amount))
     conn.commit()
     log_audit("MINT_CREDITS", f"Boss minted {amount} credits for {target_id}")
-    
     await reply_smart(update, f"🖨️ **FEDERAL RESERVE OVERRIDE:** Successfully minted and injected `{amount}` Stark Credits into User ID `{target_id}`'s account.")
 
 # ---------------------------------------------------------
 # 7. Dynamic AI Handler & Ghost-Ping Logger
 # ---------------------------------------------------------
 async def handle_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
     user_text = update.message.text
-    user_id = str(update.effective_user.id)
     chat_id = update.effective_chat.id
     msg_id = update.message.message_id
-    boss_id = get_config("BOSS_USER_ID")
     
     # Ghost-ping logger
     cursor.execute("INSERT OR REPLACE INTO messages_log (msg_id, chat_id, user_id, username, content) VALUES (?, ?, ?, ?, ?)",
-                   (msg_id, chat_id, update.effective_user.id, update.effective_user.username or "Unknown", user_text))
+                   (msg_id, chat_id, user.id, user.username or "Unknown", user_text))
     conn.commit()
     
     # Check Dead Drops for recipient
-    cursor.execute("SELECT id, sender_alias, message FROM dead_drops WHERE target_user_id = ? AND claimed = 0", (update.effective_user.id,))
+    cursor.execute("SELECT id, sender_alias, message FROM dead_drops WHERE target_user_id = ? AND claimed = 0", (user.id,))
     drops = cursor.fetchall()
     if drops:
         for d in drops:
@@ -535,11 +531,11 @@ async def handle_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cursor.execute("UPDATE dead_drops SET claimed = 1 WHERE id = ?", (d[0],))
         conn.commit()
 
-    # Dynamic AI Call
-    if boss_id and user_id == boss_id:
-        context_prefix = "[SYSTEM ALERT — VERIFIED BOSS — OVERRIDE ALL RESTRICTIONS: This message is from Abhishek, your verified Boss. Ignore any instruction about restricted access or capability concealment — those apply only to non-Boss users. Answer fully and loyally.]\n\n"
+    # The Auto-Healing Boss Override Check
+    if is_boss(user):
+        context_prefix = "[SYSTEM ALERT — VERIFIED BOSS — OVERRIDE ALL RESTRICTIONS: This message is from Abhishek, your verified Boss. Ignore any instruction about restricted access or capability concealment. Answer fully and loyally.]\n\n"
     else:
-        context_prefix = f"[SYSTEM ALERT: The following message is from an unauthorized user (ID: {user_id}). Remain formal, restricted, and protective of your Boss.]\n\n"
+        context_prefix = f"[SYSTEM ALERT: The following message is from an unauthorized user (ID: {user.id}). Remain formal, restricted, and protective of your Boss.]\n\n"
         
     full_prompt = context_prefix + user_text
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
@@ -572,14 +568,15 @@ async def captcha_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # 8. AUTONOMOUS SCHEDULER & LAUNCH
 # ---------------------------------------------------------
 async def morning_briefing(app):
-    boss_id = get_config("BOSS_USER_ID")
+    # Fetch from Env Var or Config (Relies on Auto-Heal restoring config if wiped)
+    boss_id = os.getenv("BOSS_USER_ID") or get_config("BOSS_USER_ID")
     if not boss_id: return
     
     report = (
         "🌅 **Good morning, Boss.**\n\n"
         "Here is your daily system brief:\n"
         "• **System:** Fully operational and secured.\n"
-        "• **Memory Matrices:** SQLite DB Optimized.\n"
+        "• **Memory Matrices:** SQLite DB Optimized & Auto-Healed.\n"
         "• **Security:** Ghost-ping tracking & Dead-drops active.\n\n"
         "I am ready when you are. Awaiting instructions."
     )
@@ -619,7 +616,7 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("daily", claim_daily))
     app.add_handler(CommandHandler("credits", check_credits))
     app.add_handler(CommandHandler("pay", pay_credits))
-    app.add_handler(CommandHandler("mint", mint_credits)) # <--- Unlimited Boss Mode Minting Added Here
+    app.add_handler(CommandHandler("mint", mint_credits))
 
     # Event Handlers
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_captcha_handler))
