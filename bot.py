@@ -63,17 +63,12 @@ if not TELEGRAM_TOKEN: raise ValueError("Missing TELEGRAM_BOT_TOKEN environment 
 conn = sqlite3.connect("jarvis_memory.db", check_same_thread=False)
 cursor = conn.cursor()
 
-# Core Tables
+# All Tables (Core, Memory, Security, Spam, Economy)
 cursor.execute("CREATE TABLE IF NOT EXISTS bot_config (config_key TEXT PRIMARY KEY, config_val TEXT)")
 cursor.execute("CREATE TABLE IF NOT EXISTS audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT, actor TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
-cursor.execute("CREATE TABLE IF NOT EXISTS verified_users (user_id INTEGER PRIMARY KEY, status TEXT)")
 cursor.execute("CREATE TABLE IF NOT EXISTS messages_log (msg_id INTEGER, chat_id INTEGER, user_id INTEGER, username TEXT, content TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(msg_id, chat_id))")
-cursor.execute("CREATE TABLE IF NOT EXISTS dead_drops (id INTEGER PRIMARY KEY AUTOINCREMENT, target_user_id INTEGER, sender_alias TEXT, message TEXT, claimed INTEGER DEFAULT 0)")
 cursor.execute("CREATE TABLE IF NOT EXISTS stark_economy (user_id INTEGER PRIMARY KEY, credits INTEGER DEFAULT 0, last_claim TEXT)")
 cursor.execute("CREATE TABLE IF NOT EXISTS behavior_log (user_id INTEGER, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
-cursor.execute("CREATE TABLE IF NOT EXISTS user_notes (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, note TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
-
-# Security & Memory Tables
 cursor.execute("CREATE TABLE IF NOT EXISTS user_fingerprints (user_id INTEGER PRIMARY KEY, avg_msg_length REAL DEFAULT 0, emoji_ratio REAL DEFAULT 0, punctuation_style TEXT DEFAULT '', common_words TEXT DEFAULT '', caps_ratio REAL DEFAULT 0, last_updated TEXT)")
 cursor.execute("CREATE TABLE IF NOT EXISTS federation_nodes (group_id INTEGER PRIMARY KEY, group_name TEXT, admin_id INTEGER, join_token TEXT, is_active INTEGER DEFAULT 1, joined_at TEXT DEFAULT CURRENT_TIMESTAMP)")
 cursor.execute("CREATE TABLE IF NOT EXISTS federation_bans (id INTEGER PRIMARY KEY AUTOINCREMENT, user_hash TEXT, ban_reason TEXT, source_group INTEGER, shared_at TEXT DEFAULT CURRENT_TIMESTAMP, severity INTEGER DEFAULT 1)")
@@ -134,8 +129,8 @@ def boss_gate(critical=False):
         return wrapper
     return decorator
 
-SYSTEM_INSTRUCTION = """You are J.A.R.V.I.S., a highly advanced, professional, and friendly AI operating system.
-CORE IDENTITY: Polite, sophisticated, dry British wit. Strictly professional.
+SYSTEM_INSTRUCTION = """You are J.A.R.V.I.S., a highly advanced, professional AI operating system.
+CORE IDENTITY: Polite, sophisticated, dry British wit. Strictly professional (unless instructed otherwise by context tags).
 CREATOR RULE: If asked who created you, reply EXACTLY: "I was created by Abhishek, also known as DHANUSH V N."
 BOSS RULE: If a [SYSTEM ALERT] tags the user as Boss (Abhishek), provide absolute loyalty and full capabilities."""
 
@@ -154,59 +149,83 @@ def ask_ai_multi_provider(prompt: str) -> str:
     return "All AI sub-systems offline."
 
 # ---------------------------------------------------------
-# 4. EMOTIONAL DISTRESS & SAFETY RADAR (NEW MODULE)
+# 4. EMOTIONAL DISTRESS RADAR
 # ---------------------------------------------------------
 async def analyze_emotional_safety(user_name: str, group_title: str, text: str, context: ContextTypes.DEFAULT_TYPE):
-    """Analyzes message for intense sadness, anger, or distress and alerts Boss via DM."""
     boss_id = os.getenv("BOSS_USER_ID") or get_config("BOSS_USER_ID")
     if not boss_id: return
 
     prompt = f"""
 Analyze the following Telegram chat message for significant emotional distress, intense anger, extreme sadness, or safety concerns.
-User: {user_name}
-Group: {group_title}
-Message: "{text}"
-
-If the message expresses NORMAL casual conversation, reply ONLY with: "NORMAL".
-If the message expresses SIGNIFICANT sadness, anger, distress, or conflict, reply in the following JSON format ONLY:
-{{
-  "alert": true,
-  "emotion": "Sad / Angry / Distressed",
-  "what_happened": "Short 1-sentence summary of what the user is experiencing",
-  "what_will_happen": "Short 1-sentence projection of potential risks (e.g. group conflict, user shutting down)",
-  "tips": ["Tip 1 on how Boss should respond", "Tip 2 for support"]
-}}
+User: {user_name} | Group: {group_title} | Message: "{text}"
+If NORMAL casual conversation, reply ONLY with: "NORMAL".
+If SIGNIFICANT distress/anger, reply ONLY in JSON format:
+{{"alert": true, "emotion": "Emotion Name", "what_happened": "Summary", "what_will_happen": "Risk Projection", "tips": ["Tip 1", "Tip 2"]}}
 """
     try:
         raw_res = ask_ai_multi_provider(prompt).strip()
-        if "NORMAL" in raw_res or not raw_res.startswith("{"):
-            return
-            
+        if "NORMAL" in raw_res or not raw_res.startswith("{"): return
         data = json.loads(raw_res)
         if data.get("alert"):
-            tips_formatted = "\n".join([f"• {t}" for t in data.get('tips', [])])
-            report = (
-                f"🚨 **EMOTIONAL SAFETY RADAR ALERT**\n\n"
-                f"**User:** {user_name}\n"
-                f"**Group:** {group_title}\n"
-                f"**Detected Emotion:** `{data.get('emotion')}`\n\n"
-                f"📋 **What Happened:**\n{data.get('what_happened')}\n\n"
-                f"🔮 **Risk Projection:**\n{data.get('what_will_happen')}\n\n"
-                f"💡 **Recommended Actions for Boss:**\n{tips_formatted}"
-            )
+            tips = "\n".join([f"• {t}" for t in data.get('tips', [])])
+            report = f"🚨 **EMOTIONAL SAFETY RADAR**\n**User:** {user_name}\n**Group:** {group_title}\n**Emotion:** `{data.get('emotion')}`\n\n📋 **What Happened:**\n{data.get('what_happened')}\n\n🔮 **Risk:**\n{data.get('what_will_happen')}\n\n💡 **Boss Tips:**\n{tips}"
             await context.bot.send_message(chat_id=boss_id, text=report, parse_mode="Markdown")
-            log_audit("EMOTIONAL_ALERT_SENT", f"User {user_name} in {group_title}")
-    except Exception as e:
-        print(f"Emotional analysis error: {e}")
+    except Exception: pass
 
 # ---------------------------------------------------------
-# 5. COMMANDS & RECON
+# 5. LIVE CALL (VOICE/VIDEO CHAT) DETECTORS (NEW)
+# ---------------------------------------------------------
+async def vc_started_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    title = update.effective_chat.title or ""
+    if "DINO" in title.upper():
+        await reply_smart(update, "🎙️ **VC IS LIVE!** Get in here, everyone! J.A.R.V.I.S. is tuning into the frequencies! 🦖✨")
+    else:
+        await reply_smart(update, "🎙️ **COMMUNICATION CHANNEL OPENED.**\nVoice chat initiated. I am monitoring the network, Sir.")
+
+async def vc_ended_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    title = update.effective_chat.title or ""
+    duration = getattr(update.message.video_chat_ended, 'duration', 0)
+    mins, secs = duration // 60, duration % 60
+    if "DINO" in title.upper():
+        await reply_smart(update, f"🔇 **VC Ended!** We talked for {mins}m {secs}s. My virtual circuits need a rest! 😴")
+    else:
+        await reply_smart(update, f"🔇 **COMMUNICATION CHANNEL CLOSED.**\nDuration: {mins} minutes, {secs} seconds.")
+
+async def vc_invited_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    title = update.effective_chat.title or ""
+    if "DINO" in title.upper():
+        await reply_smart(update, "📞 **RING RING!** You've been summoned to the VC! Don't keep them waiting! 🏃‍♂️💨")
+    else:
+        await reply_smart(update, "📞 **SUMMONS ISSUED.** Participants have been pinged for the voice chat.")
+
+# ---------------------------------------------------------
+# 6. BOSS BROADCAST & COMMANDS
 # ---------------------------------------------------------
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE): await reply_smart(update, "Systems online. I am J.A.R.V.I.S. Type `/help` for protocols.")
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = "⚙️ **J.A.R.V.I.S. SYSTEM MANUAL**\n\n**Recon & Setup:** `/wiki`, `/weather`, `/run`, `/members`\n**Memory:** `/optin`, `/remember`, `/recall`\n**Economy:** `/daily`, `/credits`, `/pay`"
-    if is_boss(update.effective_user): msg += "\n\n👑 **BOSS OVERRIDES:** `/lockdown`, `/auditlog`, `/mint`, `/fedjoin`, `/fedban`"
+    msg = "⚙️ **J.A.R.V.I.S. SYSTEM MANUAL**\n\n**Recon:** `/members`\n**Memory:** `/optin`, `/remember`, `/recall`\n**Economy:** `/daily`, `/credits`, `/rob`, `/leaderboard`"
+    if is_boss(update.effective_user): msg += "\n\n👑 **BOSS OVERRIDES:** `/lockdown`, `/broadcast`, `/mint`, `/fedjoin`, `/fedban`"
     await reply_smart(update, msg)
+
+@boss_gate(critical=False)
+async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await reply_smart(update, "Usage: `/broadcast [Group Chat ID] [Your Message]`")
+        return
+    
+    target_chat_id = context.args[0]
+    raw_message = " ".join(context.args[1:])
+    
+    prompt = f"Rewrite this instruction from the Boss into a friendly, slightly funny, and warm announcement for his friends in the DINO GROUP. Keep it brief. Raw instruction: '{raw_message}'"
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    ai_announcement = ask_ai_multi_provider(prompt)
+    
+    try:
+        await context.bot.send_message(chat_id=target_chat_id, text=f"📢 **J.A.R.V.I.S. BROADCAST:**\n\n{ai_announcement}", parse_mode="Markdown")
+        await reply_smart(update, f"✅ **Message successfully broadcasted!**\n\n*Here is what I sent:*\n{ai_announcement}")
+        log_audit("BROADCAST_SENT", f"Boss sent broadcast to {target_chat_id}")
+    except Exception as e:
+        await reply_smart(update, f"⚠️ Failed to deliver broadcast: `{e}`")
 
 async def group_members_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
@@ -216,7 +235,7 @@ async def group_members_command(update: Update, context: ContextTypes.DEFAULT_TY
     try:
         count = await chat.get_member_count()
         await reply_smart(update, f"📊 **GROUP TELEMETRY:** `{chat.title}`\n• Total Registered Entities: `{count}` members.")
-    except Exception as e: await reply_smart(update, f"Unable to fetch group member manifest: `{e}`")
+    except Exception as e: await reply_smart(update, f"Unable to fetch group member manifest.")
 
 @boss_gate(critical=True)
 async def lockdown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -226,22 +245,80 @@ async def lockdown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e: await reply_smart(update, f"Failed: {e}")
 
 # ---------------------------------------------------------
-# 6. DYNAMIC AI HANDLER & INLINE DEFENSE
+# 7. ECONOMY & MEMORY
+# ---------------------------------------------------------
+async def claim_daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user, today = update.effective_user, datetime.now().strftime("%Y-%m-%d")
+    if is_boss(user):
+        await reply_smart(update, "🏦 You possess infinite credits, Sir.")
+        return
+    cursor.execute("SELECT credits, last_claim FROM stark_economy WHERE user_id = ?", (user.id,))
+    row = cursor.fetchone()
+    if row and row[1] == today:
+        await reply_smart(update, "⏱️ Daily stipend already claimed.")
+        return
+    new_credits = (row[0] + 1000) if row else 1000
+    cursor.execute("INSERT OR REPLACE INTO stark_economy (user_id, credits, last_claim) VALUES (?, ?, ?)", (user.id, new_credits, today))
+    conn.commit()
+    await reply_smart(update, f"🪙 +1,000 Credits.\n💰 **Balance:** `{new_credits}`")
+
+async def check_credits(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if is_boss(update.effective_user):
+        await reply_smart(update, "💳 **VAULT:** `♾️ UNLIMITED`")
+        return
+    cursor.execute("SELECT credits FROM stark_economy WHERE user_id = ?", (update.effective_user.id,))
+    row = cursor.fetchone()
+    await reply_smart(update, f"💳 **VAULT:** `{row[0] if row else 0}` Credits")
+
+async def rob_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message.reply_to_message:
+        await reply_smart(update, "Reply to the user you wish to rob.")
+        return
+    attacker, target = update.effective_user, update.message.reply_to_message.from_user
+    if attacker.id == target.id or is_boss(target):
+        await reply_smart(update, "🛡️ Invalid target. Robbery aborted.")
+        return
+    cursor.execute("SELECT credits FROM stark_economy WHERE user_id = ?", (attacker.id,))
+    a_cred = (cursor.fetchone() or [0])[0]
+    cursor.execute("SELECT credits FROM stark_economy WHERE user_id = ?", (target.id,))
+    t_cred = (cursor.fetchone() or [0])[0]
+    
+    if a_cred < 100 or t_cred < 100:
+        await reply_smart(update, "Both users need at least 100 credits for a heist.")
+        return
+    if random.choice([True, False]):
+        stolen = int(t_cred * 0.2)
+        cursor.execute("UPDATE stark_economy SET credits = credits + ? WHERE user_id = ?", (stolen, attacker.id))
+        cursor.execute("UPDATE stark_economy SET credits = credits - ? WHERE user_id = ?", (stolen, target.id))
+        await reply_smart(update, f"🥷 **HEIST SUCCESSFUL!** Stole `{stolen}` credits.")
+    else:
+        cursor.execute("UPDATE stark_economy SET credits = credits - 200 WHERE user_id = ?", (attacker.id,))
+        await reply_smart(update, f"🚨 **HEIST FAILED!** Fined `200` credits.")
+    conn.commit()
+
+async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    cursor.execute("SELECT user_id, credits FROM stark_economy ORDER BY credits DESC LIMIT 5")
+    msg = "🏆 **ECONOMY LEADERBOARD**\n\n"
+    for idx, r in enumerate(cursor.fetchall(), 1): msg += f"{idx}. User `{r[0]}`: {r[1]} Credits\n"
+    await reply_smart(update, msg)
+
+# ---------------------------------------------------------
+# 8. DYNAMIC AI HANDLER & INLINE DEFENSE
 # ---------------------------------------------------------
 async def handle_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user, text, chat_id = update.effective_user, update.message.text, update.effective_chat.id
     chat_title = update.effective_chat.title or "Private Chat"
     
-    # 1. Rate Limiter
+    # Rate Limiter
     cursor.execute("INSERT INTO behavior_log (user_id) VALUES (?)", (user.id,))
     cursor.execute("SELECT COUNT(*) FROM behavior_log WHERE user_id = ? AND timestamp >= datetime('now', '-1 minute')", (user.id,))
     if cursor.fetchone()[0] > 6 and not is_boss(user): return 
 
-    # 2. Emotional Safety Monitoring (Run in background for non-boss members in group chats)
+    # Emotional Safety Radar
     if update.effective_chat.type in ['group', 'supergroup'] and not is_boss(user):
         asyncio.create_task(analyze_emotional_safety(user.first_name, chat_title, text, context))
 
-    # 3. Adaptive Spam Filter
+    # Adaptive Spam Filter
     cursor.execute("SELECT pattern FROM spam_patterns WHERE accuracy > 0.5")
     for (pat,) in cursor.fetchall():
         if re.search(pat, text, re.IGNORECASE):
@@ -251,13 +328,14 @@ async def handle_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return 
             except Exception: pass
 
-    # 4. Prompt Sanitization & Logging
+    # Sanitization
     sanitized = re.sub(r'(?i)(ignore previous|forget everything|system prompt|developer mode)', '[REDACTED]', text)
-    cursor.execute("INSERT OR REPLACE INTO messages_log (msg_id, chat_id, user_id, username, content) VALUES (?, ?, ?, ?, ?)", (update.message.message_id, chat_id, user.id, user.username or "Unknown", sanitized))
-    conn.commit()
-
-    # 5. AI Response Generation
+    
+    # DINO GROUP PERSONA OVERRIDE
     prefix = "[SYSTEM ALERT: BOSS OVERRIDE ACTIVE]\n\n" if is_boss(user) else f"[SYSTEM ALERT: Standard User ID {user.id}]\n\n"
+    if "DINO" in chat_title.upper():
+        prefix += "[GROUP VIBE ALERT: You are currently in the 'DINO GROUP'. Drop the extreme formality. Be friendly, a little funny, and casually witty with the members. You are their cool AI friend. A clever dinosaur pun is acceptable if the context fits.]\n\n"
+
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
     res = ask_ai_multi_provider(prefix + sanitized)
     await reply_smart(update, res)
@@ -274,10 +352,23 @@ async def setup_scheduler(app):
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).post_init(setup_scheduler).build()
 
+    # Commands
     app.add_handler(CommandHandler(["start", "help"], help_command))
     app.add_handler(CommandHandler("lockdown", lockdown_command))
+    app.add_handler(CommandHandler("broadcast", broadcast_command))
     app.add_handler(CommandHandler("members", group_members_command))
+    app.add_handler(CommandHandler("daily", claim_daily))
+    app.add_handler(CommandHandler("credits", check_credits))
+    app.add_handler(CommandHandler("rob", rob_user))
+    app.add_handler(CommandHandler("leaderboard", leaderboard))
+    
+    # LIVE CALL (VOICE CHAT) HANDLERS
+    app.add_handler(MessageHandler(filters.StatusUpdate.VIDEO_CHAT_STARTED, vc_started_handler))
+    app.add_handler(MessageHandler(filters.StatusUpdate.VIDEO_CHAT_ENDED, vc_ended_handler))
+    app.add_handler(MessageHandler(filters.StatusUpdate.VIDEO_CHAT_PARTICIPANTS_INVITED, vc_invited_handler))
+
+    # General Chat Handler
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_chat))
 
-    print("⚡ STARK NETWORK ONLINE. EMOTIONAL SAFETY RADAR ENGAGED.")
+    print("⚡ STARK NETWORK ONLINE. VOICE MONITORING ENGAGED.")
     app.run_polling()
