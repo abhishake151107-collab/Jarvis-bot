@@ -298,8 +298,14 @@ async def handle_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------------------------------------------------------
 # 8. LAUNCH
 # ---------------------------------------------------------
-async def cleanup_logs(): cursor.execute("DELETE FROM behavior_log WHERE timestamp < datetime('now', '-10 minutes')"); conn.commit()
-async def setup_scheduler(app): AsyncIOScheduler().add_job(cleanup_logs, 'interval', minutes=10).start()
+async def cleanup_logs(): 
+    cursor.execute("DELETE FROM behavior_log WHERE timestamp < datetime('now', '-10 minutes')")
+    conn.commit()
+
+async def setup_scheduler(app): 
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(cleanup_logs, 'interval', minutes=10)
+    scheduler.start()
 
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).post_init(setup_scheduler).build()
