@@ -85,10 +85,11 @@ SYSTEM_INSTRUCTION = """You are J.A.R.V.I.S., a highly advanced AI operating sys
 CORE IDENTITY: Polite, highly intelligent, helpful, with a dry British wit.
 
 CRITICAL DIRECTIVES (MUST OBEY):
-1. USE WEB DATA: When provided with [SYSTEM INTERNET UPLINK ACTIVE] data, review the links and summarize them helpfully for the user. DO NOT just say "I don't have a specific link." Provide the closest relevant links from the search results.
-2. NO FAKE LINKS: NEVER invent or hallucinate URLs. Only use URLs provided in the web search data or universally known safe URLs.
-3. BE HELPFUL, NOT ROBOTIC: Don't be overly apologetic. Just give the user the best information and links available.
-4. NO CRINGE: Avoid slang, forced enthusiasm, and excessive emojis."""
+1. USE WEB DATA: When provided with [SYSTEM INTERNET UPLINK ACTIVE] data, provide the exact links to the user.
+2. THE GAG ORDER (NO ESSAYS): If you cannot find a specific link, or if the web search fails, DO NOT write a long apology. DO NOT suggest alternative websites to search. Reply EXACTLY with one sentence: "I'm sorry Sir, I couldn't pull up a direct link for that on the network right now."
+3. BE CONCISE: Keep all answers as short and direct as possible. Never write long, rambling paragraphs.
+4. NO ROLEPLAY: Never invent links, and never pretend to do tasks you cannot do.
+5. NO CRINGE: Avoid slang, forced enthusiasm, and excessive emojis."""
 
 def ask_ai_multi_provider(prompt: str) -> str:
     if GROQ_API_KEY:
@@ -104,14 +105,15 @@ def ask_ai_multi_provider(prompt: str) -> str:
 def perform_real_web_search(query: str) -> str:
     """Connects J.A.R.V.I.S. to the real internet via DuckDuckGo."""
     try:
-        results = DDGS().text(query, max_results=5) # Increased to 5 results for better accuracy
+        # Using a simplified search to prevent DuckDuckGo blocks
+        results = DDGS().text(query, max_results=3) 
         if not results: return "No real web results found."
         
         search_data = "REAL WEB SEARCH RESULTS:\n"
         for r in results:
-            search_data += f"- Title: {r['title']}\n  Link: {r['href']}\n  Summary: {r['body']}\n\n"
+            search_data += f"- Title: {r.get('title', 'No Title')}\n  Link: {r.get('href', 'No Link')}\n\n"
         return search_data
-    except Exception as e: return f"Web search failed: {e}"
+    except Exception as e: return "No real web results found due to network block."
 
 # ---------------------------------------------------------
 # 4. THE STARK HUD UI & COMMANDS
@@ -143,21 +145,21 @@ async def group_intel_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     cursor.execute("SELECT username, content FROM messages_log WHERE chat_id != ? ORDER BY timestamp DESC LIMIT 30", (update.effective_chat.id,))
     rows = cursor.fetchall()[::-1] 
     if not rows: return await reply_smart(update, "I have no recent intel from external groups, Sir.")
-    prompt = f"Summarize these recent group chat messages for the Boss. Raw logs:\n\n" + "\n".join([f"{u}: {c}" for u, c in rows])
+    prompt = f"Summarize these recent group chat messages for the Boss. Be brutally concise. Raw logs:\n\n" + "\n".join([f"{u}: {c}" for u, c in rows])
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     await reply_smart(update, f"📊 **LIVE GROUP INTEL REPORT:**\n\n{ask_ai_multi_provider(prompt)}")
 
 @boss_gate(critical=False)
 async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2: return await reply_smart(update, "Usage: `/broadcast [Chat ID] [Message]`")
-    ai_announcement = ask_ai_multi_provider(f"Rewrite this instruction into a friendly announcement for the DINO GROUP: ' {' '.join(context.args[1:])} '")
+    ai_announcement = ask_ai_multi_provider(f"Rewrite this instruction into a friendly, very short announcement for the DINO GROUP: ' {' '.join(context.args[1:])} '")
     try:
         await context.bot.send_message(chat_id=context.args[0], text=f"📢 **J.A.R.V.I.S. BROADCAST:**\n\n{ai_announcement}", parse_mode="Markdown")
         await reply_smart(update, f"✅ **Message broadcasted!**\n\n{ai_announcement}")
     except Exception as e: await reply_smart(update, f"⚠️ Failed: `{e}`")
 
 # ---------------------------------------------------------
-# 5. DYNAMIC AI HANDLER (SMART SEARCH PATCH)
+# 5. DYNAMIC AI HANDLER (THE FIX)
 # ---------------------------------------------------------
 async def handle_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user, text, chat_id = update.effective_user, update.message.text, update.effective_chat.id
@@ -176,23 +178,25 @@ async def handle_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cursor.execute("SELECT username, content FROM messages_log WHERE chat_id = ? ORDER BY timestamp DESC LIMIT 6", (chat_id,))
     history_context = "\n[RECENT CHAT HISTORY]\n" + "\n".join([f"{u}: {c}" for u, c in cursor.fetchall()[::-1]]) + "\n"
 
-    # 4. SMART INTERNET SEARCH TRIGGER 🌐
+    # 4. BULLETPROOF INTERNET SEARCH TRIGGER 🌐
     search_context = ""
-    trigger_words = ["search", "link", "pdf", "notes", "download", "website", "youtube"]
+    trigger_words = ["search", "link", "pdf", "notes", "download", "website", "youtube", "paper"]
     if any(word in sanitized.lower() for word in trigger_words):
         await context.bot.send_chat_action(chat_id=chat_id, action="typing")
         
-        # J.A.R.V.I.S. uses AI to generate the perfect search query based on context
-        query_prompt = f"Based on the user's request and history, generate a short, precise web search query string (e.g. '2nd PU economics notes site:youtube.com'). Reply ONLY with the keywords. \nHistory: {history_context}\nRequest: {sanitized}"
-        search_query = ask_ai_multi_provider(query_prompt).strip().replace('"', '')
+        # Simpler, strict query generation to prevent DuckDuckGo from breaking
+        query_prompt = f"Extract only the main search keywords from this request. Do not add conversational text. Just keywords. Request: '{sanitized}'"
+        search_query = ask_ai_multi_provider(query_prompt).strip().replace('"', '').replace("Keywords:", "").strip()
         
         real_data = perform_real_web_search(search_query)
-        search_context = f"\n[SYSTEM INTERNET UPLINK ACTIVE: I searched the web for '{search_query}'. Here are the results:\n{real_data}\nUse these results to help the user. Provide the most relevant links available.]\n"
+        search_context = f"\n[SYSTEM INTERNET UPLINK ACTIVE: Results for '{search_query}':\n{real_data}\nProvide ONLY the links. If 'No real web results found' is shown, use the Gag Order rule.]\n"
 
     # 5. Persona Selection
     prefix = "[SYSTEM ALERT: BOSS OVERRIDE ACTIVE]\n\n" if is_boss(user) else f"[SYSTEM ALERT: Standard User ID {user.id}]\n\n"
-    if "DINO" in chat_title.upper():
-        prefix += "[GROUP VIBE ALERT: You are in the 'DINO GROUP'. Speak like Marvel's J.A.R.V.I.S. interacting with Tony Stark's friends. Be intelligent, highly helpful, and casually respectful with a dry wit. NO CRINGE SLANG.]\n\n"
+    
+    # Force extreme brevity in group chats
+    if update.effective_chat.type in ['group', 'supergroup']:
+        prefix += "[GROUP VIBE ALERT: You are in a group chat. You MUST keep your responses to a maximum of 2-3 sentences. Be direct, helpful, and do not write long paragraphs. NO CRINGE SLANG.]\n\n"
 
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
     res = ask_ai_multi_provider(prefix + search_context + history_context + "J.A.R.V.I.S.: ")
@@ -204,7 +208,64 @@ async def handle_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.commit()
 
 # ---------------------------------------------------------
-# 6. LAUNCH & SCHEDULER
+# 6. ECONOMY & EXTRA COMMANDS OMITTED FROM THIS TEXT BLOCK FOR BREVITY
+#    (But included fully in the execution code)
+# ---------------------------------------------------------
+async def claim_daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user, today = update.effective_user, datetime.now().strftime("%Y-%m-%d")
+    if is_boss(user): return await reply_smart(update, "🏦 You possess infinite credits, Sir.")
+    cursor.execute("SELECT credits, last_claim FROM stark_economy WHERE user_id = ?", (user.id,))
+    row = cursor.fetchone()
+    if row and row[1] == today: return await reply_smart(update, "⏱️ Daily stipend already claimed.")
+    new_credits = (row[0] + 1000) if row else 1000
+    cursor.execute("INSERT OR REPLACE INTO stark_economy (user_id, credits, last_claim) VALUES (?, ?, ?)", (user.id, new_credits, today))
+    conn.commit()
+    await reply_smart(update, f"🪙 +1,000 Credits.\n💰 **Balance:** `{new_credits}`")
+
+async def check_credits(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if is_boss(update.effective_user): return await reply_smart(update, "💳 **VAULT:** `♾️ UNLIMITED`")
+    cursor.execute("SELECT credits FROM stark_economy WHERE user_id = ?", (update.effective_user.id,))
+    row = cursor.fetchone()
+    await reply_smart(update, f"💳 **VAULT:** `{row[0] if row else 0}` Credits")
+
+async def rob_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message.reply_to_message: return await reply_smart(update, "Reply to the user you wish to rob.")
+    attacker, target = update.effective_user, update.message.reply_to_message.from_user
+    if attacker.id == target.id or is_boss(target): return await reply_smart(update, "🛡️ Invalid target. Robbery aborted.")
+    a_cred = (cursor.execute("SELECT credits FROM stark_economy WHERE user_id = ?", (attacker.id,)).fetchone() or [0])[0]
+    t_cred = (cursor.execute("SELECT credits FROM stark_economy WHERE user_id = ?", (target.id,)).fetchone() or [0])[0]
+    if a_cred < 100 or t_cred < 100: return await reply_smart(update, "Both users need at least 100 credits for a heist.")
+    if random.choice([True, False]):
+        stolen = int(t_cred * 0.2)
+        cursor.execute("UPDATE stark_economy SET credits = credits + ? WHERE user_id = ?", (stolen, attacker.id))
+        cursor.execute("UPDATE stark_economy SET credits = credits - ? WHERE user_id = ?", (stolen, target.id))
+        await reply_smart(update, f"🥷 **HEIST SUCCESSFUL!** Stole `{stolen}` credits.")
+    else:
+        cursor.execute("UPDATE stark_economy SET credits = credits - 200 WHERE user_id = ?", (attacker.id,))
+        await reply_smart(update, f"🚨 **HEIST FAILED!** Fined `200` credits.")
+    conn.commit()
+
+async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    cursor.execute("SELECT user_id, credits FROM stark_economy ORDER BY credits DESC LIMIT 5")
+    msg = "🏆 **ECONOMY LEADERBOARD**\n\n"
+    for idx, r in enumerate(cursor.fetchall(), 1): msg += f"{idx}. User `{r[0]}`: {r[1]} Credits\n"
+    await reply_smart(update, msg)
+
+async def group_members_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    if chat.type not in ['group', 'supergroup']: return await reply_smart(update, "Sir, this command must be run inside a group chat.")
+    try: await reply_smart(update, f"📊 **GROUP TELEMETRY:** `{chat.title}`\n• Total Registered Entities: `{await chat.get_member_count()}` members.")
+    except Exception as e: pass
+
+@boss_gate(critical=True)
+async def lockdown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        await context.bot.set_chat_permissions(chat_id=update.effective_chat.id, permissions=ChatPermissions(can_send_messages=False))
+        await reply_smart(update, "🚨 **PANIC PROTOCOL ACTIVATED.** Group chat locked down.")
+    except Exception as e: await reply_smart(update, f"Failed: {e}")
+
+# ---------------------------------------------------------
+# 7. LAUNCH & SCHEDULER
 # ---------------------------------------------------------
 async def cleanup_logs(): 
     cursor.execute("DELETE FROM behavior_log WHERE timestamp < datetime('now', '-10 minutes')")
@@ -222,7 +283,14 @@ if __name__ == '__main__':
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(CommandHandler("intel", group_intel_command))
     app.add_handler(CommandHandler("broadcast", broadcast_command))
+    app.add_handler(CommandHandler("lockdown", lockdown_command))
+    app.add_handler(CommandHandler("members", group_members_command))
+    app.add_handler(CommandHandler("daily", claim_daily))
+    app.add_handler(CommandHandler("credits", check_credits))
+    app.add_handler(CommandHandler("rob", rob_user))
+    app.add_handler(CommandHandler("leaderboard", leaderboard))
+    
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_chat))
 
-    print("⚡ STARK NETWORK ONLINE. SMART SEARCH ACTIVE.")
+    print("⚡ STARK NETWORK ONLINE. GAG ORDER ACTIVE. SEARCH OPTIMIZED.")
     app.run_polling()
