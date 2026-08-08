@@ -1,10 +1,5 @@
 python-telegram-bot
-APScheduler
-groq
+apscheduler
+flask
 google-genai
-edge-tts
-requests
-duckduckgo-search
-pypdf
-Pillow
-qrcode
+groq
