@@ -213,7 +213,7 @@ STARK_WEB_OS = """
         // --- 2. TEXT-TO-SPEECH (BRITISH BUTLER VOICE) ---
         function speak(text) {
             if ('speechSynthesis' in window) {
-                const utterance = new SpeechSynthesisUtterance(text.replace(/[\u{1F600}-\u{1F64F}]/gu, '')); // Strip emojis for clean audio
+                const utterance = new SpeechSynthesisUtterance(text);
                 const voices = window.speechSynthesis.getVoices();
                 const britishVoice = voices.find(v => v.lang.includes('en-GB') || v.name.includes('UK') || v.name.includes('Oliver'));
                 if (britishVoice) utterance.voice = britishVoice;
