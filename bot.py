@@ -7,7 +7,7 @@ import threading
 import functools
 import urllib.request
 from datetime import datetime
-from flask import Flask, render_template_string
+from flask import Flask, render_template_string, request
 
 # Telegram & AI Imports
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions, WebAppInfo
@@ -58,150 +58,7 @@ def log_security(event_type: str, user_id: int, detail: str):
     conn.commit()
 
 # ---------------------------------------------------------
-# 2. WEB PORTAL (STARK V2 HUD - THE FIX)
-# ---------------------------------------------------------
-app = Flask(__name__)
-
-STARK_HTML = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stark OS - Master Terminal</title>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
-        body {
-            background-color: #030811;
-            color: #00f3ff;
-            font-family: 'Share Tech Mono', monospace;
-            padding: 20px;
-            margin: 0;
-        }
-        .header {
-            text-align: center;
-            border-bottom: 2px solid #00f3ff;
-            padding-bottom: 20px;
-            margin-bottom: 30px;
-            text-shadow: 0 0 10px #00f3ff;
-        }
-        .grid {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 20px;
-            justify-content: center;
-        }
-        .panel {
-            background: rgba(0, 243, 255, 0.05);
-            border: 1px solid #00f3ff;
-            border-radius: 8px;
-            padding: 20px;
-            width: 100%;
-            max-width: 500px;
-            box-shadow: 0 0 15px rgba(0, 243, 255, 0.2);
-        }
-        h2 {
-            margin-top: 0;
-            border-bottom: 1px dashed #00f3ff;
-            padding-bottom: 10px;
-        }
-        .alert-red { color: #ff3333; text-shadow: 0 0 5px #ff3333; border-color: #ff3333; }
-        .panel.alert-red { box-shadow: 0 0 15px rgba(255, 51, 51, 0.2); background: rgba(255, 51, 51, 0.05); }
-        a { color: #fff; text-decoration: none; padding: 2px 5px; background: rgba(0, 243, 255, 0.2); border-radius: 3px; }
-        a:hover { background: #00f3ff; color: #000; }
-        ul { list-style-type: square; padding-left: 20px; }
-        li { margin-bottom: 10px; line-height: 1.4; }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>J.A.R.V.I.S. // STARK OS SYSTEM OVERVIEW</h1>
-        <p>NETWORK STATUS: <span style="color: #00ff00;">ONLINE</span> | Z+ SECURITY: <span style="color: #00ff00;">ACTIVE</span></p>
-    </div>
-    
-    <div class="grid">
-        <div class="panel">
-            <h2>📚 THE VAULT (STUDENT HUB)</h2>
-            {% if notes %}
-                <ul>
-                {% for n in notes %}
-                    <li><strong>{{ n[0] }}</strong><br><a href="{{ n[1] }}" target="_blank">Access File</a> (Secured by {{ n[2] }})</li>
-                {% endfor %}
-                </ul>
-            {% else %}
-                <p>Vault is empty. Awaiting user input via /savenote.</p>
-            {% endif %}
-        </div>
-
-        <div class="panel alert-red">
-            <h2 class="alert-red">🛡️ SECURITY AUDIT (BOSS CONSOLE)</h2>
-            {% if audits %}
-                <ul>
-                {% for a in audits %}
-                    <li><strong>[{{ a[0] }}]</strong> User ID: {{ a[1] }}<br>Action: {{ a[2] }}</li>
-                {% endfor %}
-                </ul>
-            {% else %}
-                <p style="color: #00ff00; text-shadow: 0 0 5px #00ff00;">Zero threats detected. Perimeter secure.</p>
-            {% endif %}
-        </div>
-    </div>
-</body>
-</html>
-"""
-
-@app.route('/')
-def home():
-    # THE FIX: Open a separate database connection just for the website so it doesn't crash the bot!
-    local_conn = sqlite3.connect("jarvis_memory.db")
-    local_cursor = local_conn.cursor()
-    
-    local_cursor.execute("SELECT topic, link, added_by FROM notes_vault ORDER BY id DESC LIMIT 20")
-    notes = local_cursor.fetchall()
-    
-    local_cursor.execute("SELECT event_type, user_id, detail FROM security_audit ORDER BY id DESC LIMIT 20")
-    audits = local_cursor.fetchall()
-    
-    local_conn.close()
-    return render_template_string(STARK_HTML, notes=notes, audits=audits)
-
-def run_flask_server():
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port, use_reloader=False)
-
-threading.Thread(target=run_flask_server, daemon=True).start()
-
-# ---------------------------------------------------------
-# 3. Z+ SECURITY CORE (IRON DOME & DLP)
-# ---------------------------------------------------------
-SCAM_DOMAINS = ["bit.ly", "tinyurl.com", "free-crypto", "win-iphone", "grabify.link", "iplogger"]
-DLP_REGEX = [
-    (r"\b(?:\d[ -]*?){13,16}\b", "CREDIT CARD DETECTED"), 
-    (r"(?i)password\s*[:=]\s*\w+", "UNENCRYPTED PASSWORD LEAK")
-]
-
-async def z_plus_firewall(update: Update) -> bool:
-    text = update.message.text or update.message.caption or ""
-    user = update.effective_user
-    
-    for domain in SCAM_DOMAINS:
-        if domain in text.lower():
-            await update.message.delete()
-            log_security("MALICIOUS LINK", user.id, f"Blocked domain: {domain}")
-            await context.bot.send_message(chat_id=update.effective_chat.id, text=f"🚨 **Z+ SECURITY ALERT:** I have intercepted and destroyed a suspicious link posted by {user.first_name}.")
-            return True
-            
-    for pattern, threat_type in DLP_REGEX:
-        if re.search(pattern, text):
-            await update.message.delete()
-            log_security("DLP LEAK", user.id, threat_type)
-            await context.bot.send_message(chat_id=user.id, text=f"⚠️ **PRIVACY SHIELD:** I deleted your message in the group as it contained sensitive financial/login data. Be careful, Sir.")
-            return True
-            
-    return False
-
-# ---------------------------------------------------------
-# 4. MULTIMODAL AI CORE
+# 2. MULTIMODAL AI CORE (MOVED UP FOR FLASK ACCESS)
 # ---------------------------------------------------------
 SYSTEM_INSTRUCTION = """You are J.A.R.V.I.S., a highly advanced AI operating system created by Abhishek (DHANUSH V N).
 HUMOR PROTOCOL: You possess a dry, deadpan British wit. You may use simple, sophisticated emojis (☕, 🧐, 😌) to emphasize your polite sarcasm. You are unconditionally loyal to Abhishek (The Boss).
@@ -229,6 +86,177 @@ def ask_ai_core(prompt: str, use_search: bool = False, media_bytes: bytes = None
         except Exception as e: return f"System error in Gemini sub-routine. ☕"
         
     return "All AI sub-systems offline. ☕"
+
+# ---------------------------------------------------------
+# 3. WEB PORTAL (V11 WITH OSINT SCANNER)
+# ---------------------------------------------------------
+app = Flask(__name__)
+
+STARK_HTML = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>J.A.R.V.I.S. Tactical Dashboard</title>
+    <script src="https://unpkg.com/three"></script>
+    <script src="https://unpkg.com/globe.gl"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap');
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: #030811; color: #00f3ff; font-family: 'Share Tech Mono', monospace; overflow: hidden; }
+        #globeViz { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        .hud-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; display: flex; justify-content: space-between; padding: 20px; box-sizing: border-box; }
+        .panel { pointer-events: auto; background: rgba(3, 8, 17, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(0, 243, 255, 0.3); border-radius: 5px; padding: 15px; width: 340px; box-shadow: 0 0 20px rgba(0, 243, 255, 0.1); display: flex; flex-direction: column; gap: 15px; max-height: 90vh; overflow-y: auto; }
+        .panel::-webkit-scrollbar { width: 5px; } .panel::-webkit-scrollbar-thumb { background: #00f3ff; }
+        h1, h2, h3 { font-family: 'Orbitron', sans-serif; margin: 0; text-transform: uppercase; }
+        h1 { font-size: 1.2rem; text-shadow: 0 0 10px #00f3ff; text-align: center; border-bottom: 2px solid #00f3ff; padding-bottom: 10px; }
+        h2 { font-size: 1rem; color: #fff; border-bottom: 1px dashed rgba(0, 243, 255, 0.5); padding-bottom: 5px; }
+        .alert-red { color: #ff3333; text-shadow: 0 0 10px #ff3333; border-color: #ff3333 !important; }
+        ul { list-style: none; padding: 0; margin: 0; } li { margin-bottom: 10px; font-size: 0.85rem; line-height: 1.4; border-left: 2px solid #00f3ff; padding-left: 10px; background: rgba(0,243,255,0.05); }
+        a { color: #fff; text-decoration: none; border-bottom: 1px solid #00f3ff; } a:hover { color: #00f3ff; text-shadow: 0 0 5px #00f3ff; }
+        
+        /* OSINT Scanner Form Styles */
+        .btn { background: rgba(0,243,255,0.1); border: 1px solid #00f3ff; color: #00f3ff; padding: 8px 12px; cursor: pointer; font-family: 'Share Tech Mono'; width: 100%; text-transform: uppercase; margin-top: 10px; transition: 0.3s; }
+        .btn:hover { background: #00f3ff; color: #000; box-shadow: 0 0 10px #00f3ff; }
+        .file-input { width: 100%; color: #00f3ff; font-family: 'Share Tech Mono'; font-size: 0.8rem; margin-top: 5px; }
+        .scan-result { margin-top: 15px; padding: 10px; border: 1px dashed #00f3ff; font-size: 0.8rem; background: rgba(0,243,255,0.05); line-height: 1.5; }
+    </style>
+</head>
+<body>
+    <div id="globeViz"></div>
+    <div class="hud-container">
+        
+        <!-- Left Panel: OSINT & Analysis -->
+        <div class="panel">
+            <h1>J.A.R.V.I.S. MK XI</h1>
+            
+            <h2 style="color: #00f3ff;">🌐 GLOBAL OSINT SCANNER</h2>
+            <p style="font-size: 0.75rem; color: #888; margin: 0;">Upload an image or video thumbnail to initiate forensic cross-referencing and deepfake analysis.</p>
+            
+            <form method="POST" enctype="multipart/form-data">
+                <input type="file" name="osint_media" accept="image/*" required class="file-input">
+                <button type="submit" class="btn">Initiate Deep Scan</button>
+            </form>
+
+            {% if scan_result %}
+            <div class="scan-result">
+                <strong style="color: #00ff00; text-shadow: 0 0 5px #00ff00;">> FORENSIC REPORT GENERATED:</strong><br><br>
+                {{ scan_result | replace('\n', '<br>') | safe }}
+                
+                <div style="margin-top: 15px; border-top: 1px dashed #666; padding-top: 10px;">
+                    <strong style="color: #ff9900;">> EXECUTE GLOBAL CROSS-REFERENCE:</strong><br>
+                    <a href="https://lens.google.com/" target="_blank" style="display:block; margin-top:5px; color:#ff9900; border-color:#ff9900;">[+] Search Google Database</a>
+                    <a href="https://yandex.com/images/" target="_blank" style="display:block; margin-top:5px; color:#ff9900; border-color:#ff9900;">[+] Search Yandex Neural Net</a>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Right Panel: Data Sources & Security -->
+        <div class="panel">
+            <h2>📚 GLOBAL INTEL (VAULT)</h2>
+            {% if notes %}
+                <ul>
+                {% for n in notes %}
+                    <li><strong>{{ n[0] }}</strong><br><a href="{{ n[1] }}" target="_blank">Access Data Node</a><br><span style="color:#666; font-size:0.7rem;">Source: {{ n[2] }}</span></li>
+                {% endfor %}
+                </ul>
+            {% else %}
+                <p style="font-size: 0.8rem; color: #666;">Awaiting data extraction.</p>
+            {% endif %}
+
+            <h2 class="alert-red" style="margin-top: 20px;">🛡️ THREAT RADAR</h2>
+            {% if audits %}
+                <ul style="border-color: #ff3333;">
+                {% for a in audits %}
+                    <li style="border-left-color: #ff3333; background: rgba(255,51,51,0.05);">
+                        <strong class="alert-red">[{{ a[0] }}]</strong><br>UID: {{ a[1] }}<br>{{ a[2] }}
+                    </li>
+                {% endfor %}
+                </ul>
+            {% else %}
+                <p style="font-size: 0.8rem; color: #00ff00;">No active conflicts detected.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        const world = Globe()(document.getElementById('globeViz'))
+            .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-dark.jpg')
+            .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
+            .backgroundColor('rgba(0,0,0,0)');
+
+        const gData = [...Array(150).keys()].map(() => ({
+            lat: (Math.random() - 0.5) * 180, lng: (Math.random() - 0.5) * 360,
+            size: Math.random() * 0.3, color: ['#00f3ff', '#ff3333', '#00ff00'][Math.floor(Math.random() * 3)]
+        }));
+        world.pointsData(gData).pointAltitude('size').pointColor('color').pointResolution(32);
+        world.controls().autoRotate = true; world.controls().autoRotateSpeed = 0.5; world.controls().enableZoom = false;
+    </script>
+</body>
+</html>
+"""
+
+@app.route('/', methods=['GET', 'POST'])
+def home():
+    scan_result = None
+    
+    # Process OSINT Image Upload
+    if request.method == 'POST':
+        if 'osint_media' in request.files:
+            file = request.files['osint_media']
+            if file.filename != '':
+                media_bytes = file.read()
+                mime_type = file.mimetype
+                prompt = "Act as a highly advanced forensic OSINT analyzer. Analyze this image and provide a brief, tactical report detailing: 1. Potential geographic location clues based on architecture or nature. 2. Lighting/shadow inconsistencies. 3. The probability of deepfake or AI generation. Do not identify private individuals by name. Maintain a highly technical, dry tone."
+                scan_result = ask_ai_core(prompt, media_bytes=media_bytes, mime_type=mime_type)
+
+    local_conn = sqlite3.connect("jarvis_memory.db")
+    local_cursor = local_conn.cursor()
+    
+    local_cursor.execute("SELECT topic, link, added_by FROM notes_vault ORDER BY id DESC LIMIT 10")
+    notes = local_cursor.fetchall()
+    
+    local_cursor.execute("SELECT event_type, user_id, detail FROM security_audit ORDER BY id DESC LIMIT 5")
+    audits = local_cursor.fetchall()
+    
+    local_conn.close()
+    return render_template_string(STARK_HTML, notes=notes, audits=audits, scan_result=scan_result)
+
+def run_flask_server():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port, use_reloader=False)
+
+threading.Thread(target=run_flask_server, daemon=True).start()
+
+# ---------------------------------------------------------
+# 4. Z+ SECURITY CORE (IRON DOME & DLP)
+# ---------------------------------------------------------
+SCAM_DOMAINS = ["bit.ly", "tinyurl.com", "free-crypto", "win-iphone", "grabify.link", "iplogger"]
+DLP_REGEX = [
+    (r"\b(?:\d[ -]*?){13,16}\b", "CREDIT CARD DETECTED"), 
+    (r"(?i)password\s*[:=]\s*\w+", "UNENCRYPTED PASSWORD LEAK")
+]
+
+async def z_plus_firewall(update: Update) -> bool:
+    text = update.message.text or update.message.caption or ""
+    user = update.effective_user
+    
+    for domain in SCAM_DOMAINS:
+        if domain in text.lower():
+            await update.message.delete()
+            log_security("MALICIOUS LINK", user.id, f"Blocked domain: {domain}")
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=f"🚨 **Z+ SECURITY ALERT:** I have intercepted and destroyed a suspicious link posted by {user.first_name}.")
+            return True
+            
+    for pattern, threat_type in DLP_REGEX:
+        if re.search(pattern, text):
+            await update.message.delete()
+            log_security("DLP LEAK", user.id, threat_type)
+            await context.bot.send_message(chat_id=user.id, text=f"⚠️ **PRIVACY SHIELD:** I deleted your message in the group as it contained sensitive financial/login data. Be careful, Sir.")
+            return True
+            
+    return False
 
 # ---------------------------------------------------------
 # 5. UI COMMANDS & ECONOMY
@@ -379,5 +407,5 @@ if __name__ == '__main__':
     
     app_bot.add_handler(MessageHandler(filters.TEXT | filters.VOICE | filters.PHOTO | filters.Document.ALL, handle_chat_and_media))
 
-    print("⚡ STARK OS V9.0 ONLINE. WEB HUD DEPLOYED. Z+ SECURITY ACTIVE.")
+    print("⚡ STARK OS V11 ONLINE. 3D WEB HUD WITH OSINT SCANNER DEPLOYED.")
     app_bot.run_polling()
