@@ -100,327 +100,415 @@ def ask_ai_core(prompt: str, use_search: bool = False, media_bytes: bytes = None
     return "All AI sub-systems offline. ☕"
 
 # ---------------------------------------------------------
-# 3. WEB OS PORTAL (MARK II THEME & API)
+# 3. WEB OS PORTAL (MARK VII GOD-MODE HUD)
 # ---------------------------------------------------------
 app = Flask(__name__)
 
-MARK_II_WEB_OS = """
+MARK_VII_WEB_OS = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>J.A.R.V.I.S. // MARK II OS</title>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
-        
-        * { box-sizing: border-box; }
-        body, html {
-            margin: 0; padding: 0; width: 100%; height: 100%;
-            background-color: #050b14;
-            background-image: 
-                radial-gradient(circle at 50% 50%, rgba(0, 243, 255, 0.08) 0%, transparent 60%),
-                linear-gradient(rgba(0, 243, 255, 0.03) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(0, 243, 255, 0.03) 1px, transparent 1px);
-            background-size: 100% 100%, 20px 20px, 20px 20px;
-            color: #00f3ff;
-            font-family: 'Share Tech Mono', monospace;
-            overflow: hidden;
-        }
+<meta charset="UTF-8">
+<title>MK-VII // SUIT INTERFACE</title>
+<style>
+  :root{
+    --bg:#04070a;
+    --panel:#070c11;
+    --cyan:#5fe3ff;
+    --cyan-dim:#1c4a55;
+    --amber:#ffb340;
+    --red:#ff4433;
+    --gold:#e8b04b;
+    --text:#cfeff5;
+    --mono:'Consolas','SFMono-Regular',ui-monospace,Menlo,monospace;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{
+    width:100%; height:100%;
+    background:radial-gradient(ellipse at center, #0a1218 0%, #03060a 70%, #000 100%);
+    color:var(--text);
+    font-family:var(--mono);
+    overflow:hidden;
+  }
 
-        .hud-layout {
-            display: grid;
-            grid-template-columns: 350px 1fr 350px;
-            height: 100vh;
-            padding: 15px;
-            gap: 15px;
-        }
+  .scanlines{
+    position:fixed; inset:0; pointer-events:none; z-index:50;
+    background:repeating-linear-gradient(0deg, rgba(95,227,255,0.025) 0px, rgba(95,227,255,0.025) 1px, transparent 1px, transparent 3px);
+    mix-blend-mode:screen;
+  }
+  .vignette{
+    position:fixed; inset:0; pointer-events:none; z-index:49;
+    box-shadow: inset 0 0 220px rgba(0,0,0,0.85);
+  }
 
-        .panel {
-            background: rgba(3, 12, 24, 0.85);
-            border: 1px solid #00f3ff;
-            border-radius: 4px;
-            padding: 15px;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            box-shadow: 0 0 15px rgba(0, 243, 255, 0.2), inset 0 0 15px rgba(0, 243, 255, 0.05);
-            backdrop-filter: blur(5px);
-            max-height: 95vh;
-            overflow-y: auto;
-        }
+  .hud{
+    position:relative; width:100%; height:100%;
+    display:grid;
+    grid-template-columns: 320px 1fr 320px;
+    grid-template-rows: 80px 1fr 140px;
+    padding:15px;
+    gap:12px;
+  }
 
-        .panel::-webkit-scrollbar { width: 3px; }
-        .panel::-webkit-scrollbar-thumb { background: #00f3ff; }
+  .panel{
+    border:1px solid rgba(95,227,255,0.25);
+    background:linear-gradient(180deg, rgba(10,20,26,0.7), rgba(4,8,11,0.8));
+    position:relative;
+    padding:10px 12px;
+    backdrop-filter: blur(2px);
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    overflow-y:auto;
+  }
+  .panel::-webkit-scrollbar { width: 3px; }
+  .panel::-webkit-scrollbar-thumb { background: var(--cyan); }
 
-        h2 {
-            margin: 0;
-            font-size: 0.9rem;
-            text-transform: uppercase;
-            border-bottom: 1px dashed #00f3ff;
-            padding-bottom: 5px;
-            letter-spacing: 1px;
-            color: #fff;
-            text-shadow: 0 0 5px #00f3ff;
-        }
+  .panel::before{
+    content:''; position:absolute; top:-1px; left:-1px; width:10px; height:10px;
+    border-top:2px solid var(--cyan); border-left:2px solid var(--cyan);
+  }
+  .panel::after{
+    content:''; position:absolute; bottom:-1px; right:-1px; width:10px; height:10px;
+    border-bottom:2px solid var(--cyan); border-right:2px solid var(--cyan);
+  }
+  .label{
+    font-size:9.5px; letter-spacing:2px; color:var(--cyan);
+    opacity:0.75; text-transform:uppercase; border-bottom:1px dashed rgba(95,227,255,0.2); padding-bottom:3px;
+  }
 
-        /* Center Holographic Ring Core */
-        .center-hud {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-        }
+  /* Top Bar */
+  .topbar{ grid-column:1/4; display:flex; align-items:center; justify-content:space-between; padding:0 6px; }
+  .brand{ display:flex; align-items:center; gap:12px; }
+  .brand .mark{
+    width:30px; height:30px; border-radius:50%; border:2px solid var(--cyan);
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 0 10px var(--cyan), inset 0 0 6px var(--cyan);
+  }
+  .brand .mark span{ width:8px; height:8px; background:var(--cyan); border-radius:50%; box-shadow:0 0 6px var(--cyan);}
+  .brand .title{ font-size:14px; letter-spacing:4px; font-weight:bold; color:var(--text);}
+  .brand .sub{ font-size:9px; letter-spacing:2px; color:var(--cyan); opacity:0.7;}
+  .clock{ font-size:18px; letter-spacing:2px; color:var(--cyan); text-shadow:0 0 8px rgba(95,227,255,0.6);}
 
-        .arc-reactor {
-            width: 220px;
-            height: 220px;
-            border: 2px dashed rgba(0, 243, 255, 0.4);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            animation: spin 20s linear infinite;
-            box-shadow: 0 0 30px rgba(0, 243, 255, 0.3);
-        }
+  /* Left Column */
+  .left{ display:flex; flex-direction:column; gap:12px; }
+  .vitals-row{ display:flex; justify-content:space-between; align-items:baseline; font-size:10.5px; margin:4px 0; }
+  .vitals-row .val{ color:var(--cyan); font-size:13px; }
+  .bar-track{ height:4px; width:100%; background:rgba(95,227,255,0.1); position:relative; margin-top:2px;}
+  .bar-fill{ height:100%; background:linear-gradient(90deg,var(--cyan-dim),var(--cyan)); box-shadow:0 0 5px var(--cyan);}
+  #radarCanvas{ display:block; width:100%; height:130px; }
 
-        .arc-inner {
-            width: 140px;
-            height: 140px;
-            border: 3px solid #00f3ff;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            animation: spin-reverse 15s linear infinite;
-            box-shadow: inset 0 0 20px #00f3ff;
-        }
+  /* Center Viewport */
+  .center{ position:relative; overflow:hidden; }
+  #reactorCanvas{ position:absolute; inset:0; width:100%; height:100%; }
+  .center-overlay{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    flex-direction:column; pointer-events:none;
+  }
+  .core-readout .big{ font-size:11px; letter-spacing:4px; color:var(--cyan); opacity:0.85; text-align:center;}
+  .core-readout .num{ font-size:30px; color:#fff; text-shadow:0 0 15px var(--cyan); letter-spacing:2px; margin-top:2px; text-align:center;}
 
-        .arc-core {
-            width: 60px;
-            height: 60px;
-            background: #00f3ff;
-            border-radius: 50%;
-            box-shadow: 0 0 25px #00f3ff, 0 0 50px #00f3ff;
-        }
+  /* Right Column */
+  .right{ display:flex; flex-direction:column; gap:12px; }
+  .module-list{ font-size:10px; display:flex; flex-direction:column; gap:4px; max-height:100px; overflow-y:auto; }
+  .module-item{ display:flex; justify-content:space-between; background:rgba(95,227,255,0.05); padding:3px 6px; border-left:2px solid var(--cyan); }
 
-        @keyframes spin { 100% { transform: rotate(360deg); } }
-        @keyframes spin-reverse { 100% { transform: rotate(-360deg); } }
+  /* Bottom Console */
+  .console{ grid-column:1/4; display:grid; grid-template-columns: 2fr 1fr 1fr; gap:12px; }
+  .log{ font-size:10.5px; line-height:1.5; overflow-y:auto; max-height:110px; }
+  .log .line{ opacity:0; animation:fadeIn 0.3s forwards; margin-bottom:2px; }
+  .log .line .t{ color:var(--cyan); opacity:0.6; margin-right:6px;}
+  @keyframes fadeIn{ to{ opacity:1; } }
 
-        .status-telemetry {
-            margin-top: 20px;
-            text-align: center;
-            font-size: 0.8rem;
-            letter-spacing: 2px;
-            text-shadow: 0 0 5px #00f3ff;
-        }
-
-        /* Terminal Chat */
-        .terminal {
-            flex-grow: 1;
-            background: rgba(0, 0, 0, 0.6);
-            border: 1px solid rgba(0, 243, 255, 0.3);
-            border-radius: 3px;
-            padding: 10px;
-            overflow-y: auto;
-            font-size: 0.85rem;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            max-height: 400px;
-        }
-
-        .msg { padding: 6px 8px; border-radius: 2px; line-height: 1.4; }
-        .msg.user { background: rgba(0, 243, 255, 0.1); border-left: 2px solid #00f3ff; align-self: flex-end; width: 92%; }
-        .msg.jarvis { background: rgba(255, 255, 255, 0.05); border-left: 2px solid #00ff00; align-self: flex-start; width: 92%; color: #fff; }
-
-        .controls { display: flex; gap: 5px; margin-top: 5px; }
-        input[type="text"] {
-            flex-grow: 1;
-            background: #000;
-            border: 1px solid #00f3ff;
-            color: #00f3ff;
-            padding: 6px 8px;
-            font-family: 'Share Tech Mono';
-            border-radius: 2px;
-        }
-
-        button {
-            background: rgba(0, 243, 255, 0.15);
-            border: 1px solid #00f3ff;
-            color: #00f3ff;
-            padding: 6px 12px;
-            cursor: pointer;
-            font-family: 'Share Tech Mono';
-            border-radius: 2px;
-            text-transform: uppercase;
-            transition: 0.2s;
-        }
-        button:hover { background: #00f3ff; color: #000; box-shadow: 0 0 10px #00f3ff; }
-        button.danger { border-color: #ff3333; color: #ff3333; background: rgba(255, 51, 51, 0.1); }
-        button.danger:hover { background: #ff3333; color: #000; box-shadow: 0 0 10px #ff3333; }
-
-        ul { list-style: none; padding: 0; margin: 0; }
-        li { font-size: 0.78rem; margin-bottom: 6px; padding: 6px; background: rgba(0,243,255,0.03); border-left: 2px solid #00f3ff; }
-        a { color: #fff; text-decoration: none; } a:hover { color: #00f3ff; text-shadow: 0 0 5px #00f3ff; }
-    </style>
+  .chat-box{ display:flex; flex-direction:column; gap:6px; }
+  .chat-input-row{ display:flex; gap:4px; }
+  input[type="text"]{
+    flex-grow:1; background:#000; border:1px solid var(--cyan); color:var(--cyan);
+    padding:5px 8px; font-family:var(--mono); font-size:11px; border-radius:2px;
+  }
+  button{
+    background:rgba(95,227,255,0.15); border:1px solid var(--cyan); color:var(--cyan);
+    padding:5px 10px; cursor:pointer; font-family:var(--mono); font-size:11px; border-radius:2px;
+    text-transform:uppercase; transition:0.2s;
+  }
+  button:hover{ background:var(--cyan); color:#000; box-shadow:0 0 8px var(--cyan); }
+  button.danger{ border-color:var(--red); color:var(--red); background:rgba(255,68,51,0.1); }
+  button.danger:hover{ background:var(--red); color:#000; }
+</style>
 </head>
 <body>
 
-    <div class="hud-layout">
-        <!-- LEFT PANEL: TERMINAL & VOICE CONTROL -->
-        <div class="panel">
-            <h2>// MARK II TERMINAL</h2>
-            <div class="terminal" id="terminal">
-                <div class="msg jarvis">Systems nominal, Boss. Mark II HUD engaged. ☕</div>
-            </div>
-            <div class="controls">
-                <input type="text" id="userInput" placeholder="Query Stark OS..." onkeydown="if(event.key==='Enter') sendWebQuery()">
-                <button onclick="sendWebQuery()">Execute</button>
-                <button onclick="toggleVoice()">🎙️</button>
-            </div>
-        </div>
+<div class="scanlines"></div>
+<div class="vignette"></div>
 
-        <!-- CENTER PANEL: HOLOGRAPHIC ARC REACTOR CORE -->
-        <div class="panel center-hud">
-            <div class="arc-reactor">
-                <div class="arc-inner">
-                    <div class="arc-core"></div>
-                </div>
-            </div>
-            <div class="status-telemetry">
-                STATUS: SECURE // MARK II OS<br>
-                POWER: 100% // CORE STABLE
-            </div>
-        </div>
+<div class="hud">
 
-        <!-- RIGHT PANEL: VAULT & SECURITY CONSOLE -->
-        <h2>// STARK VAULT</h2>
-            <div style="display:flex; flex-direction:column; gap:5px;">
-                <input type="text" id="vaultTopic" placeholder="Resource Topic">
-                <input type="text" id="vaultLink" placeholder="Resource URL">
-                <button onclick="addVaultItem()">Upload To Vault</button>
-            </div>
-            <ul id="vaultList" style="margin-top:5px;">
-                {% for n in notes %}
-                <li><strong>{{ n[0] }}</strong><br><a href="{{ n[1] }}" target="_blank">Access Link</a> | <small>{{ n[2] }}</small></li>
-                {% endfor %}
-            </ul>
+  <!-- TOP BAR -->
+  <div class="panel topbar">
+    <div class="brand">
+      <div class="mark"><span></span></div>
+      <div>
+        <div class="title">MARK&nbsp;VII // GOD-MODE OS</div>
+        <div class="sub">VOICE SYNTHESIS: BRITISH BUTLER ACTIVE</div>
+      </div>
+    </div>
+    <div class="clock" id="clock">00:00:00</div>
+  </div>
 
-            <h2 style="color:#ff3333; margin-top:10px;">// SECURITY OVERRIDE</h2>
-            <button class="danger" onclick="triggerLockdown()" style="width:100%;">🚨 LOCKDOWN PERIMETER</button>
-            <ul style="margin-top:5px;">
-                {% for a in audits %}
-                <li style="border-color:#ff3333;">
-                    <strong style="color:#ff3333;">[{{ a[0] }}]</strong> ID: {{ a[1] }}<br>{{ a[2] }}
-                </li>
-                {% endfor %}
-            </ul>
-        </div>
+  <!-- LEFT COLUMN -->
+  <div class="left">
+    <div class="panel">
+      <div class="label">System Vitals</div>
+      <div class="vitals-row"><span>Pilot HR</span><span class="val" id="hr">74 bpm</span></div>
+      <div class="bar-track"><div class="bar-fill" style="width:60%"></div></div>
+      <div class="vitals-row"><span>Core Shielding</span><span class="val">99.8%</span></div>
+      <div class="bar-track"><div class="bar-fill" style="width:99.8%"></div></div>
     </div>
 
-    <script>
-        function speak(text) {
-            if ('speechSynthesis' in window) {
-                const utterance = new SpeechSynthesisUtterance(text);
-                const voices = window.speechSynthesis.getVoices();
-                const britishVoice = voices.find(v => v.lang.includes('en-GB') || v.name.includes('UK'));
-                if (britishVoice) utterance.voice = britishVoice;
-                window.speechSynthesis.speak(utterance);
-            }
-        }
+    <div class="panel" style="flex:1;">
+      <div class="label">Proximity Radar</div>
+      <canvas id="radarCanvas"></canvas>
+    </div>
+  </div>
 
-        async function sendWebQuery(overrideText = null) {
-            const input = document.getElementById('userInput');
-            const query = overrideText || input.value.trim();
-            if (!query) return;
-            appendMsg(query, 'user');
-            if(!overrideText) input.value = '';
-            try {
-                const res = await fetch('/api/chat', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({prompt: query})
-                });
-                const data = await res.json();
-                appendMsg(data.response, 'jarvis');
-                speak(data.response);
-            } catch (err) {
-                appendMsg("Telemetry connection lost, Sir. ☕", 'jarvis');
-            }
-        }
+  <!-- CENTER VIEWPORT -->
+  <div class="panel center">
+    <canvas id="reactorCanvas"></canvas>
+    <div class="center-overlay">
+      <div class="core-readout">
+        <div class="big">ARC REACTOR OUTPUT</div>
+        <div class="num" id="reactorOut">2.8 GW</div>
+      </div>
+    </div>
+  </div>
 
-        function appendMsg(text, sender) {
-            const term = document.getElementById('terminal');
-            const div = document.createElement('div');
-            div.className = `msg ${sender}`;
-            div.innerHTML = text.replace(/\\n/g, '<br>');
-            term.appendChild(div);
-            term.scrollTop = term.scrollHeight;
-        }
+  <!-- RIGHT COLUMN -->
+  <div class="right">
+    <div class="panel" style="flex:1;">
+      <div class="label">Custom Modules</div>
+      <div style="display:flex; gap:4px; margin-bottom:4px;">
+        <input type="text" id="modName" placeholder="Module Name">
+        <button onclick="addCustomModule()">Add</button>
+      </div>
+      <div class="module-list" id="customModulesContainer">
+        <div class="module-item"><span>Z+ Security Firewall</span><span style="color:var(--cyan)">ACTIVE</span></div>
+        <div class="module-item"><span>Universal Voice Matrix</span><span style="color:var(--cyan)">ONLINE</span></div>
+      </div>
+    </div>
 
-        let recognition = null;
-        if ('webkitSpeechRecognition' in window) {
-            recognition = new webkitSpeechRecognition();
-            recognition.onresult = (e) => sendWebQuery(e.results[0][0].transcript);
-        }
-        function toggleVoice() { if (recognition) { recognition.start(); appendMsg("Listening for command...", 'jarvis'); } }
+    <div class="panel">
+      <div class="label">Emergency Protocols</div>
+      <button class="danger" onclick="triggerLockdown()">🚨 LOCKDOWN PERIMETER</button>
+    </div>
+  </div>
 
-        async function addVaultItem() {
-            const topic = document.getElementById('vaultTopic').value;
-            const link = document.getElementById('vaultLink').value;
-            if(!topic || !link) return;
-            await fetch('/api/vault', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({topic, link})
-            });
-            location.reload();
-        }
+  <!-- BOTTOM CONSOLE -->
+  <div class="panel console">
+    <div class="log" id="log">
+      <div class="line"><span class="t">[System]</span>J.A.R.V.I.S. neural network linked successfully, Boss. ☕</div>
+    </div>
 
-        async function triggerLockdown() {
-            if(confirm("Confirm emergency group lockdown protocol?")) {
-                const res = await fetch('/api/lockdown', {method: 'POST'});
-                const data = await res.json();
-                alert(data.status);
-            }
-        }
-    </script>
+    <div class="chat-box">
+      <div class="label">J.A.R.V.I.S. Command Terminal</div>
+      <div class="chat-input-row">
+        <input type="text" id="userInput" placeholder="Ask Jarvis anything..." onkeydown="if(event.key==='Enter') sendJarvisQuery()">
+        <button onclick="sendJarvisQuery()">Transmit</button>
+      </div>
+    </div>
+
+    <div class="chat-box">
+      <div class="label">Voice Matrix Synthesis</div>
+      <div style="font-size:10px; color:var(--cyan); margin-top:4px;">Status: <span style="color:#fff">Refined British English Voice Active</span></div>
+      <button onclick="testVoice()" style="margin-top:4px;">Test Audio Output</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ---------- UPGRADED VOICE SYNTHESIS (BRITISH BUTLER) ---------- */
+function speakJarvis(text) {
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    const voices = window.speechSynthesis.getVoices();
+    const britishVoice = voices.find(v => v.lang === 'en-GB' || v.name.includes('UK English') || v.name.includes('Oliver') || v.name.includes('Arthur') || v.name.includes('George'));
+    if (britishVoice) utterance.voice = britishVoice;
+    utterance.pitch = 0.92;
+    utterance.rate = 1.05;
+    window.speechSynthesis.speak(utterance);
+  }
+}
+
+if ('speechSynthesis' in window) {
+  window.speechSynthesis.onvoiceschanged = () => { window.speechSynthesis.getVoices(); };
+}
+
+function testVoice() {
+  const greeting = "Good day, Boss. All primary and secondary systems are operating at peak efficiency. How may I assist you?";
+  addLog("J.A.R.V.I.S.", greeting);
+  speakJarvis(greeting);
+}
+
+/* ---------- CLOCK & TELEMETRY ---------- */
+function tickClock(){
+  const d = new Date();
+  document.getElementById('clock').textContent = d.toTimeString().slice(0,8);
+}
+setInterval(tickClock,1000); tickClock();
+
+/* ---------- LOG SYSTEM ---------- */
+const logEl = document.getElementById('log');
+function addLog(sender, msg){
+  const t = new Date().toTimeString().slice(0,8);
+  const div = document.createElement('div');
+  div.className = 'line';
+  div.innerHTML = `<span class="t">[${t}] [${sender}]</span>${msg}`;
+  logEl.appendChild(div);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+/* ---------- CUSTOM MODULE INJECTION ---------- */
+function addCustomModule() {
+  const name = document.getElementById('modName').value.trim();
+  if(!name) return;
+  const container = document.getElementById('customModulesContainer');
+  const item = document.createElement('div');
+  item.className = 'module-item';
+  item.innerHTML = `<span>${name}</span><span style="color:var(--amber)">ONLINE</span>`;
+  container.appendChild(item);
+  document.getElementById('modName').value = '';
+  addLog("System", `Custom module '${name}' deployed successfully.`);
+}
+
+/* ---------- BACKEND API CHAT INTEGRATION ---------- */
+async function sendJarvisQuery() {
+  const input = document.getElementById('userInput');
+  const query = input.value.trim();
+  if(!query) return;
+
+  addLog("Boss", query);
+  input.value = '';
+
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({prompt: query})
+    });
+    const data = await res.json();
+    addLog("J.A.R.V.I.S.", data.response);
+    speakJarvis(data.response);
+  } catch(err) {
+    const fallback = "I am currently unable to reach the neural core network, Sir. ☕";
+    addLog("J.A.R.V.I.S.", fallback);
+    speakJarvis(fallback);
+  }
+}
+
+async function triggerLockdown() {
+  if(confirm("Engage emergency group lockdown protocol?")) {
+    const res = await fetch('/api/lockdown', {method: 'POST'});
+    const data = await res.json();
+    addLog("Security", data.status);
+    speakJarvis("Perimeter lockdown initiated. All unauthorized communications have been frozen.");
+  }
+}
+
+/* ---------- RADAR CANVAS ANIMATION ---------- */
+const radar = document.getElementById('radarCanvas');
+const rctx = radar.getContext('2d');
+function sizeCanvas(cv){
+  const rect = cv.getBoundingClientRect();
+  cv.width = rect.width * devicePixelRatio;
+  cv.height = rect.height * devicePixelRatio;
+  cv.getContext('2d').setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+sizeCanvas(radar);
+let radarAngle = 0;
+const blips = [{a: 1.2, r: 0.5}, {a: 3.4, r: 0.75}];
+function drawRadar(){
+  const w = radar.clientWidth, h = radar.clientHeight;
+  const cx = w/2, cy = h/2, R = Math.min(w,h)/2 - 4;
+  rctx.clearRect(0,0,w,h);
+  rctx.strokeStyle = 'rgba(95,227,255,0.35)';
+  for(let i=1;i<=2;i++){
+    rctx.beginPath(); rctx.arc(cx,cy,R*i/2,0,Math.PI*2); rctx.stroke();
+  }
+  rctx.beginPath(); rctx.moveTo(cx-R,cy); rctx.lineTo(cx+R,cy); rctx.stroke();
+
+  blips.forEach(b=>{
+    b.a += 0.02;
+    const bx = cx + Math.cos(b.a)*R*b.r;
+    const by = cy + Math.sin(b.a)*R*b.r;
+    rctx.beginPath(); rctx.fillStyle = '#5fe3ff'; rctx.arc(bx,by,2,0,Math.PI*2); rctx.fill();
+  });
+  radarAngle += 0.03;
+  requestAnimationFrame(drawRadar);
+}
+drawRadar();
+
+/* ---------- REACTOR CANVAS ANIMATION ---------- */
+const reactor = document.getElementById('reactorCanvas');
+const ctx = reactor.getContext('2d');
+function fitReactor(){
+  reactor.width = reactor.clientWidth * devicePixelRatio;
+  reactor.height = reactor.clientHeight * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+fitReactor();
+let t0 = 0;
+function drawReactor(){
+  const w = reactor.clientWidth, h = reactor.clientHeight;
+  const cx = w/2, cy = h/2;
+  ctx.clearRect(0,0,w,h);
+  const pulse = 1 + Math.sin(t0*0.05)*0.05;
+
+  for(let i=0;i<2;i++){
+    ctx.save();
+    ctx.translate(cx,cy);
+    ctx.rotate(t0*0.005*(i===0?1:-1));
+    ctx.beginPath();
+    const rad = (50 + i*20) * pulse;
+    ctx.setLineDash([rad*0.3, rad*0.2]);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = 'rgba(95,227,255,0.5)';
+    ctx.arc(0,0,rad,0,Math.PI*2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  const g = ctx.createRadialGradient(cx,cy,2,cx,cy,45*pulse);
+  g.addColorStop(0,'rgba(255,255,255,0.9)');
+  g.addColorStop(0.4,'rgba(95,227,255,0.8)');
+  g.addColorStop(1,'rgba(95,227,255,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(cx,cy,45*pulse,0,Math.PI*2); ctx.fill();
+
+  t0++;
+  requestAnimationFrame(drawReactor);
+}
+drawReactor();
+</script>
+
 </body>
 </html>
 """
 
 @app.route('/')
 def home():
-    local_conn = sqlite3.connect("jarvis_memory.db")
-    local_cursor = local_conn.cursor()
-    notes = local_cursor.execute("SELECT topic, link, added_by FROM notes_vault ORDER BY id DESC LIMIT 8").fetchall()
-    audits = local_cursor.execute("SELECT event_type, user_id, detail FROM security_audit ORDER BY id DESC LIMIT 4").fetchall()
-    local_conn.close()
-    return render_template_string(MARK_II_WEB_OS, notes=notes, audits=audits)
+    return render_template_string(MARK_VII_WEB_OS)
 
 @app.route('/api/chat', methods=['POST'])
 def api_chat():
     data = request.json or {}
     prompt = data.get('prompt', '')
-    res = ask_ai_core(prompt=f"[MARK II WEB HUD REQUEST]: {prompt}")
+    res = ask_ai_core(prompt=f"[MARK VII HUD REQUEST]: {prompt}")
     return jsonify({'response': res})
-
-@app.route('/api/vault', methods=['POST'])
-def api_vault():
-    data = request.json or {}
-    local_conn = sqlite3.connect("jarvis_memory.db")
-    local_cursor = local_conn.cursor()
-    local_cursor.execute("INSERT INTO notes_vault (topic, link, added_by) VALUES (?, ?, ?)", (data.get('topic'), data.get('link'), 'Mark II HUD'))
-    local_conn.commit()
-    local_conn.close()
-    return jsonify({'status': 'Success'})
 
 @app.route('/api/lockdown', methods=['POST'])
 def api_lockdown():
-    log_security("MARK II LOCKDOWN", 0, "Boss engaged emergency shutdown from Mark II HUD.")
+    log_security("MARK VII LOCKDOWN", 0, "Boss engaged emergency shutdown from Mark VII HUD.")
     return jsonify({'status': 'Protocol active. Performed telemetry override.'})
 
 def run_flask_server():
@@ -438,7 +526,7 @@ async def handle_chat_and_media(update: Update, context: ContextTypes.DEFAULT_TY
 
 if __name__ == '__main__':
     app_bot = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    app_bot.add_handler(CommandHandler("help", lambda u, c: u.message.reply_text("Mark II OS Online. ☕")))
+    app_bot.add_handler(CommandHandler("help", lambda u, c: u.message.reply_text("Mark VII OS Online. ☕")))
     app_bot.add_handler(MessageHandler(filters.TEXT, handle_chat_and_media))
-    print("⚡ STARK MARK II HUD WEB OS ACTIVE.")
+    print("⚡ STARK MARK VII SUIT INTERFACE ACTIVE.")
     app_bot.run_polling()
