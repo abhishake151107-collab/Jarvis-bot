@@ -28,7 +28,6 @@ if not TELEGRAM_TOKEN:
 
 conn = sqlite3.connect("jarvis_memory.db", check_same_thread=False)
 cursor = conn.cursor()
-
 cursor.execute("CREATE TABLE IF NOT EXISTS messages_log (msg_id INTEGER, chat_id INTEGER, user_id INTEGER, username TEXT, content TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(msg_id, chat_id))")
 conn.commit()
 
@@ -75,272 +74,269 @@ def ask_ai_core(prompt: str) -> str:
     return "All AI sub-systems offline. ☕"
 
 # ---------------------------------------------------------
-# 3. WEB OS PORTAL (ULTIMATE 100-FEATURE DASHBOARD)
+# 3. WEB OS PORTAL (MOBILE OPTIMIZED ENGINE)
 # ---------------------------------------------------------
 app = Flask(__name__)
 
-STARK_ULTIMATE_OS = """
+STARK_MOBILE_OS = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>STARK OS // OMNI-MONITOR</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>STARK OS // MOBILE COMMAND</title>
 <style>
   :root{
-    --cyan:#00f3ff; --cyan-dim:rgba(0, 243, 255, 0.15); --cyan-glow:rgba(0, 243, 255, 0.4);
-    --amber:#ffb340; --red:#ff3333; --green:#00ffcc; --bg:rgba(4, 12, 22, 0.65);
+    --cyan:#00f3ff; --cyan-dim:rgba(0, 243, 255, 0.15); --cyan-glow:rgba(0, 243, 255, 0.3);
+    --amber:#ffb340; --red:#ff3333; --green:#00ffcc; --bg:rgba(4, 12, 22, 0.85);
     --mono:'Share Tech Mono', monospace;
   }
   @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
   
-  *{box-sizing:border-box; margin:0; padding:0; user-select:none;}
-  html,body{ width:100%; height:100%; background:#010408; color:#e0fbfc; font-family:var(--mono); overflow:hidden; }
+  *{box-sizing:border-box; margin:0; padding:0; user-select:none; -webkit-tap-highlight-color: transparent;}
+  html,body{ width:100%; height:100%; background:#010306; color:#e0fbfc; font-family:var(--mono); overflow:hidden; }
 
-  /* Environmental Overlays */
-  .scanlines{ position:fixed; inset:0; pointer-events:none; z-index:100; background:repeating-linear-gradient(0deg, rgba(0,243,255,0.02) 0px, rgba(0,243,255,0.02) 1px, transparent 1px, transparent 3px); }
-  .vignette{ position:fixed; inset:0; pointer-events:none; z-index:99; box-shadow: inset 0 0 250px rgba(0,0,0,0.95); }
-  .grid-bg{ position:fixed; inset:0; pointer-events:none; z-index:1; opacity:0.07; background-image: linear-gradient(var(--cyan) 1px, transparent 1px), linear-gradient(90deg, var(--cyan) 1px, transparent 1px); background-size: 30px 30px; }
-  
-  /* Global Radar Sweep */
-  .radar-sweep {
-    position: fixed; top: 50%; left: 50%; width: 200vw; height: 200vw; transform: translate(-50%, -50%);
-    background: conic-gradient(from 0deg, transparent 70%, rgba(0, 243, 255, 0.1) 100%);
-    border-radius: 50%; pointer-events: none; z-index: 2; animation: sweep 8s linear infinite;
-  }
-  @keyframes sweep { to { transform: translate(-50%, -50%) rotate(360deg); } }
+  /* Optimized Backgrounds */
+  .grid-bg{ position:fixed; inset:0; pointer-events:none; z-index:1; opacity:0.05; background-image: linear-gradient(var(--cyan) 1px, transparent 1px), linear-gradient(90deg, var(--cyan) 1px, transparent 1px); background-size: 30px 30px; }
+  .vignette{ position:fixed; inset:0; pointer-events:none; z-index:99; box-shadow: inset 0 0 150px rgba(0,0,0,0.9); }
 
   .desktop { position: relative; width: 100vw; height: 100vh; z-index: 10; }
 
-  /* Top Bar Matrix */
+  /* Top Bar */
   .top-strip {
     position: absolute; top: 10px; left: 10px; right: 10px; z-index: 50; display: flex; justify-content: space-between; align-items: center;
-    background: rgba(2, 6, 12, 0.8); border: 1px solid var(--cyan); padding: 8px 15px; border-radius: 3px; box-shadow: 0 0 15px var(--cyan-dim);
-    backdrop-filter: blur(5px);
+    background: rgba(2, 6, 12, 0.9); border: 1px solid var(--cyan); padding: 8px 10px; border-radius: 3px; box-shadow: 0 0 10px var(--cyan-dim);
   }
-  .brand-title { font-size: 15px; letter-spacing: 4px; font-weight: bold; text-shadow: 0 0 10px var(--cyan); }
-  .time-zones { display: flex; gap: 15px; font-size: 9px; color: var(--cyan); letter-spacing: 1px; }
+  .brand-title { font-size: 12px; letter-spacing: 2px; font-weight: bold; text-shadow: 0 0 8px var(--cyan); }
+  
+  /* Bottom Launcher (Scrollable on Mobile) */
+  .launcher-bar {
+    position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%); z-index: 60;
+    display: flex; gap: 8px; background: rgba(0,0,0,0.9); border: 1px solid var(--cyan); padding: 8px; border-radius: 6px; 
+    box-shadow: 0 0 15px var(--cyan-dim); width: 95%; max-width: 500px; overflow-x: auto; white-space: nowrap;
+  }
+  .launcher-bar::-webkit-scrollbar { display: none; }
+  .launcher-btn {
+    background: rgba(0, 243, 255, 0.1); border: 1px solid var(--cyan); color: var(--cyan); padding: 8px 12px; font-family: var(--mono); font-size: 10px;
+    text-transform: uppercase; cursor: pointer; transition: 0.2s; flex-shrink: 0;
+  }
+  .launcher-btn:active { background: var(--cyan); color: #000; }
 
   /* Holographic Core */
-  .center-core { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 500px; height: 500px; pointer-events: none; z-index: 5; }
+  .center-core { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 100%; max-width: 400px; aspect-ratio: 1/1; pointer-events: none; z-index: 5; }
   #holocanvas { width: 100%; height: 100%; }
 
-  /* Master Draggable Glass Windows */
+  /* Mobile Optimized Windows */
   .window {
-    position: absolute; background: var(--bg); border: 1px solid rgba(0, 243, 255, 0.3); border-radius: 4px;
-    box-shadow: 0 0 25px rgba(0,0,0,0.8), inset 0 0 15px var(--cyan-dim); backdrop-filter: blur(8px);
-    display: flex; flex-direction: column; z-index: 20; transition: box-shadow 0.2s, background 0.2s;
+    position: absolute; background: var(--bg); border: 1px solid rgba(0, 243, 255, 0.5); border-radius: 4px;
+    box-shadow: 0 0 15px rgba(0,0,0,0.9); backdrop-filter: blur(4px); /* Reduced blur for mobile GPU */
+    display: flex; flex-direction: column; z-index: 20; min-width: 300px;
   }
-  .window:hover { background: rgba(4, 15, 30, 0.75); box-shadow: 0 0 30px var(--cyan-glow), inset 0 0 20px var(--cyan-dim); border-color: var(--cyan); }
   .win-header {
-    background: rgba(0, 243, 255, 0.1); border-bottom: 1px solid rgba(0, 243, 255, 0.4);
-    padding: 6px 12px; font-size: 10px; letter-spacing: 2px; color: var(--cyan); cursor: grab; display: flex; justify-content: space-between; align-items: center;
+    background: rgba(0, 243, 255, 0.15); border-bottom: 1px solid var(--cyan);
+    padding: 8px 10px; font-size: 11px; letter-spacing: 1px; color: var(--cyan); cursor: grab; display: flex; justify-content: space-between; align-items: center; text-transform: uppercase;
   }
-  .win-header:active { cursor: grabbing; }
-  .win-body { padding: 10px; flex-grow: 1; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
-  .win-body::-webkit-scrollbar { width: 3px; } .win-body::-webkit-scrollbar-thumb { background: var(--cyan); }
-
-  /* Utility Classes */
-  .metric-row { display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 2px; }
-  .bar-bg { width: 100%; height: 3px; background: rgba(0, 243, 255, 0.1); margin-bottom: 8px; }
-  .bar-fill { height: 100%; background: var(--cyan); box-shadow: 0 0 5px var(--cyan); }
-  .term-box { background: rgba(0,0,0,0.6); border: 1px solid var(--cyan-dim); padding: 8px; font-size: 10px; color: #a5f3fc; overflow-y: auto; flex-grow: 1; }
-  .term-box div { margin-bottom: 4px; }
-  iframe { border: none; width: 100%; height: 100%; opacity: 0.8; }
-  .invert { filter: invert(0.9) hue-rotate(180deg) brightness(1.2); }
+  .close-btn { cursor: pointer; color: var(--cyan); padding: 0 8px; font-size: 14px; font-weight: bold; }
+  .win-body { padding: 8px; flex-grow: 1; display: flex; flex-direction: column; gap: 6px; overflow-y: auto; max-height: 45vh; }
   
-  input[type="text"] { flex-grow: 1; background: rgba(0,0,0,0.7); border: 1px solid var(--cyan); color: var(--cyan); padding: 6px; font-family: var(--mono); font-size: 11px; outline: none; }
-  button { background: rgba(0,243,255,0.15); border: 1px solid var(--cyan); color: var(--cyan); padding: 6px 10px; cursor: pointer; font-family: var(--mono); font-size: 9px; text-transform: uppercase; transition: 0.2s; }
-  button:hover { background: var(--cyan); color: #000; box-shadow: 0 0 10px var(--cyan); }
-  .btn-row { display: flex; gap: 4px; }
+  /* Module Grids */
+  .module-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 200; display: none; align-items: center; justify-content: center; }
+  .module-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; width: 95%; max-width: 600px; max-height: 85vh; overflow-y: auto; padding-bottom:20px; }
+  .mod-card { background: rgba(0, 243, 255, 0.05); border: 1px solid var(--cyan); padding: 12px; text-align: center; cursor: pointer; border-radius: 4px; }
+  .mod-card:active { background: rgba(0, 243, 255, 0.3); }
+  .mod-icon { font-size: 20px; margin-bottom: 5px; }
+  .mod-title { font-size: 10px; color: var(--cyan); text-transform: uppercase; }
 
-  /* Window Placements */
-  #win-map { width: 340px; height: 280px; top: 60px; left: 15px; }
-  #win-cyber { width: 340px; height: 240px; top: 350px; left: 15px; }
-  #win-markets { width: 340px; height: 280px; top: 60px; right: 15px; }
-  #win-surv { width: 340px; height: 240px; top: 350px; right: 15px; }
-  #win-chat { width: 500px; height: 320px; top: calc(50% - 140px); left: calc(50% - 250px); z-index: 30; }
-
+  /* Elements */
+  .term-box { background: rgba(0,0,0,0.8); border: 1px solid var(--cyan-dim); padding: 8px; font-size: 11px; color: #a5f3fc; overflow-y: auto; flex-grow: 1; }
+  input[type="text"] { background: rgba(0,0,0,0.9); border: 1px solid var(--cyan); color: var(--cyan); padding: 8px; font-family: var(--mono); font-size: 12px; outline: none; flex-grow:1; width: 100%; }
+  button { background: rgba(0,243,255,0.15); border: 1px solid var(--cyan); color: var(--cyan); padding: 8px 12px; font-family: var(--mono); font-size: 11px; text-transform: uppercase; flex-shrink:0;}
+  iframe { border: none; width: 100%; height: 220px; filter: invert(0.9) hue-rotate(180deg) brightness(1.2); opacity: 0.9; }
+  
+  /* --- STRICT MOBILE OVERRIDES --- */
+  @media (max-width: 768px) {
+    .window {
+      width: 95% !important; 
+      left: 2.5% !important; 
+      min-width: auto;
+    }
+  }
 </style>
 </head>
 <body>
 
-<div class="scanlines"></div><div class="grid-bg"></div><div class="vignette"></div><div class="radar-sweep"></div>
+<div class="grid-bg"></div><div class="vignette"></div>
 
-<div class="desktop">
-  <!-- TOP STRIP -->
+<div class="desktop" id="desktop">
   <div class="top-strip">
-    <div class="brand-title">OMNI-MONITOR // GOD-MODE OS</div>
-    <div class="time-zones">
-      NYC: <span id="tz-nyc">00:00</span> | LDN: <span id="tz-ldn">00:00</span> | TYO: <span id="tz-tyo">00:00</span>
-    </div>
-    <div style="font-size:10px; color:var(--green); letter-spacing:2px;">DEFCON 5 // SYSTEM STABLE</div>
+    <div class="brand-title">STARK OS // MOBILE</div>
+    <div id="clock" style="font-size:12px; color:var(--cyan);">00:00:00</div>
   </div>
 
-  <!-- HOLOGRAPHIC CORE -->
   <div class="center-core"><canvas id="holocanvas"></canvas></div>
 
-  <!-- 1. GLOBAL TACTICAL MAP -->
-  <div class="window" id="win-map">
-    <div class="win-header" onmousedown="drag(event, 'win-map')"><span>// Tactical Geospatial Map</span></div>
-    <div class="win-body" style="padding:0; position:relative;">
-      <iframe class="invert" src="https://www.openstreetmap.org/export/embed.html?bbox=-180,-90,180,90&layer=mapnik" scrolling="no"></iframe>
-      <div style="position:absolute; bottom:5px; left:5px; background:rgba(0,0,0,0.8); border:1px solid var(--cyan); padding:4px; font-size:9px; color:var(--cyan);">
-        LAT/LON: <span id="gps-coords">Syncing...</span><br>ALT: 412m | SAT: 12 Locked
-      </div>
-    </div>
+  <div class="launcher-bar">
+    <button class="launcher-btn" onclick="document.getElementById('module-menu').style.display='flex'">+ Deploy Modules</button>
+    <button class="launcher-btn" onclick="spawnChat()">J.A.R.V.I.S.</button>
+    <button class="launcher-btn" style="border-color:var(--red); color:var(--red);" onclick="clearDesktop()">Purge RAM</button>
   </div>
+</div>
 
-  <!-- 2. CYBER & NET-OPS -->
-  <div class="window" id="win-cyber">
-    <div class="win-header" onmousedown="drag(event, 'win-cyber')"><span>// NetOps & Cyber-Defense</span></div>
-    <div class="win-body">
-      <div class="metric-row"><span>Matrix Packet Sniffer</span><span style="color:var(--green)">SECURE</span></div>
-      <div class="metric-row"><span>DDoS Mitigation</span><span style="color:var(--amber)">STANDBY</span></div>
-      <div class="metric-row"><span>VPN Geo-Hopper Node</span><span style="color:var(--cyan)">ZURICH-04</span></div>
-      <div class="term-box" id="cyber-log"></div>
-      <div class="btn-row">
-        <button style="flex:1" onclick="runMacro('Ping Sweep')">Ping Sweep</button>
-        <button style="flex:1" onclick="runMacro('Port Scan')">Port Scan</button>
-      </div>
-    </div>
+<!-- MODULE SELECTION -->
+<div class="module-overlay" id="module-menu">
+  <div style="position:absolute; top:15px; right:20px; font-size:20px; color:var(--cyan); padding:10px;" onclick="document.getElementById('module-menu').style.display='none'">[ X ] Close</div>
+  <div class="module-grid" id="modGrid" style="margin-top: 50px;">
+    <!-- Populated by JS -->
   </div>
-
-  <!-- 3. FINANCIAL MARKETS -->
-  <div class="window" id="win-markets">
-    <div class="win-header" onmousedown="drag(event, 'win-markets')"><span>// Global Finance & Crypto</span></div>
-    <div class="win-body" style="padding:0;">
-      <iframe src="https://s.tradingview.com/embed-widget/ticker-tape/?locale=en&theme=dark" scrolling="no" style="height:44px;"></iframe>
-      <iframe src="https://s.tradingview.com/embed-widget/market-overview/?locale=en&theme=dark" scrolling="no" style="flex-grow:1;"></iframe>
-    </div>
-  </div>
-
-  <!-- 4. SURVEILLANCE & SPACE TELEMETRY -->
-  <div class="window" id="win-surv">
-    <div class="win-header" onmousedown="drag(event, 'win-surv')"><span>// Space & Reconnaissance</span></div>
-    <div class="win-body">
-      <div class="metric-row"><span>LEO Satellites Tracking</span><span style="color:var(--cyan)">84 ACTIVE</span></div>
-      <div class="metric-row"><span>Solar Flare Radiation</span><span style="color:var(--amber)">NOMINAL</span></div>
-      <div class="metric-row"><span>Drone Telemetry Uplink</span><span style="color:var(--green)">ENCRYPTED</span></div>
-      <div class="term-box" id="space-log"></div>
-      <div class="btn-row">
-        <button style="flex:1" onclick="runMacro('Sat-Align')">Align Sats</button>
-        <button style="flex:1" onclick="runMacro('Thermal')">Toggle Thermal</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 5. CENTRAL AI CORE -->
-  <div class="window" id="win-chat">
-    <div class="win-header" onmousedown="drag(event, 'win-chat')"><span>// J.A.R.V.I.S. Neural Command [Uncensored]</span></div>
-    <div class="win-body">
-      <div class="term-box" id="ai-log" style="font-size:11px;">
-        <div><span style="color:var(--cyan)">[System]</span> Omni-Monitor loaded. 100+ simulated & live modules active. Waiting on your command, Boss. ☕</div>
-      </div>
-      <div class="btn-row" style="margin-bottom:4px;">
-        <button onclick="document.getElementById('userInput').value='/full_scan'">/full_scan</button>
-        <button onclick="document.getElementById('userInput').value='/threat_matrix'">/threat_matrix</button>
-        <button onclick="document.getElementById('userInput').value='/compile_brief'">/compile_brief</button>
-      </div>
-      <div class="btn-row">
-        <input type="text" id="userInput" placeholder="Command AI..." onkeydown="if(event.key==='Enter') sendAI()">
-        <button onclick="sendAI()">Execute</button>
-      </div>
-    </div>
-  </div>
-
 </div>
 
 <script>
-/* --- DRAG ENGINE --- */
-function drag(e, id) {
-  e.preventDefault(); const elm = document.getElementById(id); elm.style.zIndex = 1000;
-  document.querySelectorAll('.window').forEach(w => { if(w.id !== id) w.style.zIndex = 20; });
-  if(id==='win-chat') elm.style.zIndex = 30;
-  let p3 = e.clientX, p4 = e.clientY;
-  document.onmouseup = () => { document.onmouseup = null; document.onmousemove = null; };
-  document.onmousemove = (ev) => {
+/* --- DYNAMIC MODULE DATABASE --- */
+const modules = [
+  { id: 'map', icon: '🌍', title: 'Global Map', content: '<iframe src="https://www.openstreetmap.org/export/embed.html?bbox=-180,-90,180,90&layer=mapnik" scrolling="no"></iframe>' },
+  { id: 'fin', icon: '📈', title: 'Markets', content: '<iframe src="https://s.tradingview.com/embed-widget/market-overview/?locale=en&theme=dark" style="filter:none;" scrolling="no"></iframe>' },
+  { id: 'cctv', icon: '📷', title: 'CCTV Grid', content: '<div class="term-box"><div>[CAM 01] Node Active</div><div>[CAM 02] Clear</div></div>' },
+  { id: 'sat', icon: '🛰️', title: 'Telemetry', content: '<div class="term-box">LEO Satellites: 84<br>Latency: 14ms<br>Status: Nominal</div>' },
+  { id: 'net', icon: '🛡️', title: 'NetOps', content: '<div class="term-box">Firewall: SECURE<br>VPN: Zurich Node</div>' },
+  { id: 'def', icon: '⚠️', title: 'DEFCON', content: '<div style="text-align:center; font-size:24px; color:#00ffcc; padding:10px;">DEFCON 5</div>' },
+  { id: 'wpn', icon: '⚔️', title: 'Armory', content: '<div class="term-box">Repulsors: 100%<br>Missiles: ARMED</div>' },
+  { id: 'bio', icon: '🫀', title: 'Vitals', content: '<div class="term-box">HR: 74 BPM<br>Tox: 24% Stable</div>' }
+];
+
+const grid = document.getElementById('modGrid');
+modules.forEach(m => {
+  grid.innerHTML += `<div class="mod-card" onclick="spawnWindow('${m.id}', '${m.title}', \`${m.content}\`)"><div class="mod-icon">${m.icon}</div><div class="mod-title">${m.title}</div></div>`;
+});
+
+/* --- WINDOW ENGINE & RAM LIMITER --- */
+let winZ = 20;
+function spawnWindow(id, title, content) {
+  document.getElementById('module-menu').style.display = 'none';
+  if(document.getElementById(`win-${id}`)) return; 
+  
+  // Mobile RAM Safeguard: Max 3 Windows
+  const openWindows = document.querySelectorAll('.window');
+  if(openWindows.length >= 3) {
+    alert("[SYSTEM ALERT] Memory limit reached. Close a module to deploy a new one.");
+    return;
+  }
+
+  const win = document.createElement('div');
+  win.className = 'window'; win.id = `win-${id}`;
+  
+  // Staggered Y position, forced X position via CSS media query
+  const topPos = Math.floor(Math.random() * 20) + 15;
+  win.style.top = `${topPos}%`; win.style.zIndex = ++winZ;
+
+  win.innerHTML = `
+    <div class="win-header" ontouchstart="dragStart(event, 'win-${id}')" onmousedown="dragStart(event, 'win-${id}')">
+      <span>// ${title}</span>
+      <span class="close-btn" onclick="this.parentElement.parentElement.remove()" ontouchstart="this.parentElement.parentElement.remove()">X</span>
+    </div>
+    <div class="win-body">${content}</div>
+  `;
+  document.getElementById('desktop').appendChild(win);
+}
+
+function spawnChat() {
+  if(document.getElementById('win-chat')) return;
+  const content = `
+    <div class="term-box" id="ai-log" style="height:120px;">
+      <div><span style="color:var(--cyan)">[System]</span> Mobile Core online. Ready. ☕</div>
+    </div>
+    <div style="display:flex; gap:5px; margin-top:5px;">
+      <input type="text" id="aiInput" placeholder="Command..." onkeydown="if(event.key==='Enter') sendAI()">
+      <button onclick="sendAI()">Send</button>
+    </div>
+  `;
+  spawnWindow('chat', 'J.A.R.V.I.S.', content);
+}
+
+function clearDesktop() { document.querySelectorAll('.window').forEach(w => w.remove()); }
+
+/* --- UNIFIED DRAG ENGINE (TOUCH & MOUSE) --- */
+function dragStart(e, id) {
+  if(e.target.classList.contains('close-btn')) return;
+  e.preventDefault(); 
+  const elm = document.getElementById(id); elm.style.zIndex = ++winZ;
+  
+  const isTouch = e.type === 'touchstart';
+  let p3 = isTouch ? e.touches[0].clientX : e.clientX;
+  let p4 = isTouch ? e.touches[0].clientY : e.clientY;
+
+  const moveEvent = isTouch ? 'touchmove' : 'mousemove';
+  const upEvent = isTouch ? 'touchend' : 'mouseup';
+
+  const moveHandler = (ev) => {
     ev.preventDefault();
-    elm.style.top = (elm.offsetTop - (p4 - ev.clientY)) + "px";
-    elm.style.left = (elm.offsetLeft - (p3 - ev.clientX)) + "px";
-    p3 = ev.clientX; p4 = ev.clientY;
+    const clientX = isTouch ? ev.touches[0].clientX : ev.clientX;
+    const clientY = isTouch ? ev.touches[0].clientY : ev.clientY;
+    elm.style.top = (elm.offsetTop - (p4 - clientY)) + "px";
+    
+    // Only allow horizontal drag if not overridden by mobile media query
+    if (window.innerWidth > 768) {
+      elm.style.left = (elm.offsetLeft - (p3 - clientX)) + "px";
+    }
+    p3 = clientX; p4 = clientY;
   };
+
+  const upHandler = () => {
+    document.removeEventListener(moveEvent, moveHandler);
+    document.removeEventListener(upEvent, upHandler);
+  };
+
+  document.addEventListener(moveEvent, moveHandler, {passive: false});
+  document.addEventListener(upEvent, upHandler);
 }
 
-/* --- CLOCKS & GPS --- */
-setInterval(() => {
-  const d = new Date();
-  document.getElementById('tz-nyc').textContent = d.toLocaleTimeString('en-US', {timeZone: 'America/New_York', hour12:false}).slice(0,5);
-  document.getElementById('tz-ldn').textContent = d.toLocaleTimeString('en-US', {timeZone: 'Europe/London', hour12:false}).slice(0,5);
-  document.getElementById('tz-tyo').textContent = d.toLocaleTimeString('en-US', {timeZone: 'Asia/Tokyo', hour12:false}).slice(0,5);
-}, 1000);
-
-if(navigator.geolocation) {
-  navigator.geolocation.getCurrentPosition(p => {
-    document.getElementById('gps-coords').textContent = `${p.coords.latitude.toFixed(4)}, ${p.coords.longitude.toFixed(4)}`;
-  });
-}
-
-/* --- SIMULATED DATA STREAMS --- */
-const cyberLog = document.getElementById('cyber-log');
-const spaceLog = document.getElementById('space-log');
-const cyberEvents = ["[Firewall] Packet dropped from 192.168.x.x", "[NetOps] Key exchange verified.", "[Sniffer] Encrypted tunnel active.", "[System] Port 443 scanning..."];
-const spaceEvents = ["[Orbital] Satellite STARK-04 passing overhead.", "[Telemetry] Deep space receiver ping: 14ms.", "[Debris] Trajectory clear.", "[Aero] Flight paths nominal."];
-
-function streamData(el, arr) {
-  setInterval(() => {
-    const msg = arr[Math.floor(Math.random() * arr.length)];
-    const div = document.createElement('div'); div.innerHTML = `<span style="color:var(--cyan)">[${new Date().getSeconds()}s]</span> ${msg}`;
-    el.appendChild(div); if(el.childElementCount > 10) el.removeChild(el.firstChild); el.scrollTop = el.scrollHeight;
-  }, 2500 + Math.random() * 2000);
-}
-streamData(cyberLog, cyberEvents);
-streamData(spaceLog, spaceEvents);
-
-/* --- AI CORE --- */
-const aiLog = document.getElementById('ai-log');
-function runMacro(name) {
-  const div = document.createElement('div'); div.innerHTML = `<span style="color:var(--amber)">[Macro]</span> Executing ${name} sequence...`;
-  aiLog.appendChild(div); aiLog.scrollTop = aiLog.scrollHeight;
-}
+/* --- CLOCK & AI --- */
+setInterval(() => { document.getElementById('clock').textContent = new Date().toTimeString().slice(0,8); }, 1000);
 
 async function sendAI() {
-  const inp = document.getElementById('userInput'); const q = inp.value.trim(); if(!q) return;
+  const inp = document.getElementById('aiInput'); const q = inp.value.trim(); if(!q) return;
+  const log = document.getElementById('ai-log');
   inp.value = '';
-  const d1 = document.createElement('div'); d1.innerHTML = `<span style="color:var(--amber)">[Boss]</span> ${q}`; aiLog.appendChild(d1);
+  log.innerHTML += `<div><span style="color:var(--amber)">[Boss]</span> ${q}</div>`; log.scrollTop = log.scrollHeight;
   try {
     const res = await fetch('/api/chat', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({prompt: q}) });
     const data = await res.json();
-    const d2 = document.createElement('div'); d2.innerHTML = `<span style="color:var(--cyan)">[J.A.R.V.I.S.]</span> ${data.response}`;
-    aiLog.appendChild(d2);
+    log.innerHTML += `<div><span style="color:var(--cyan)">[J.A.R.V.I.S.]</span> ${data.response}</div>`;
   } catch(e) {
-    const d3 = document.createElement('div'); d3.innerHTML = `<span style="color:var(--red)">[Error]</span> Uplink failed.`; aiLog.appendChild(d3);
+    log.innerHTML += `<div><span style="color:var(--red)">[Error]</span> Uplink failed.</div>`;
   }
-  aiLog.scrollTop = aiLog.scrollHeight;
+  log.scrollTop = log.scrollHeight;
 }
 
-/* --- 3D HOLOGRAPHIC CORE --- */
+/* --- 3D HOLOGRAPHIC CORE (30 FPS CAPPED) --- */
 const canvas = document.getElementById('holocanvas'); const ctx = canvas.getContext('2d');
 function resize() { canvas.width = canvas.clientWidth * devicePixelRatio; canvas.height = canvas.clientHeight * devicePixelRatio; ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0); }
 window.addEventListener('resize', resize); resize();
 
 let angle = 0;
-function drawCore() {
+let lastDrawTime = 0;
+const fpsInterval = 1000 / 30; // 30 FPS Cap for mobile thermal efficiency
+
+function drawCore(timestamp) {
+  requestAnimationFrame(drawCore);
+  const elapsed = timestamp - lastDrawTime;
+  if (elapsed < fpsInterval) return;
+  lastDrawTime = timestamp - (elapsed % fpsInterval);
+
   const w = canvas.clientWidth, h = canvas.clientHeight, cx = w/2, cy = h/2;
   ctx.clearRect(0,0,w,h);
-  const pulse = 1 + Math.sin(angle * 0.05) * 0.06;
-  for (let i = 0; i < 6; i++) {
-    ctx.save(); ctx.translate(cx, cy); ctx.rotate(angle * 0.005 * (i%2===0?1:-1) + (i*0.5)); ctx.beginPath();
-    const rad = (40 + i*35) * pulse;
-    ctx.setLineDash([rad*0.3, rad*0.1]); ctx.lineWidth = 1.5; ctx.strokeStyle = `rgba(0, 243, 255, ${0.7 - i*0.1})`;
+  const pulse = 1 + Math.sin(angle * 0.05) * 0.05;
+  for (let i = 0; i < 4; i++) { // Reduced ring count for mobile GPU
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(angle * 0.01 * (i%2===0?1:-1) + (i*0.5)); ctx.beginPath();
+    const rad = (30 + i*40) * pulse;
+    ctx.setLineDash([rad*0.4, rad*0.1]); ctx.lineWidth = 2; ctx.strokeStyle = `rgba(0, 243, 255, ${0.5 - i*0.1})`;
     ctx.arc(0, 0, rad, 0, Math.PI*2); ctx.stroke(); ctx.restore();
   }
-  const grad = ctx.createRadialGradient(cx,cy,5,cx,cy,35*pulse);
-  grad.addColorStop(0, '#fff'); grad.addColorStop(0.2, 'rgba(0,243,255,0.9)'); grad.addColorStop(1, 'transparent');
-  ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(cx,cy,35*pulse,0,Math.PI*2); ctx.fill();
-  angle++; requestAnimationFrame(drawCore);
+  const grad = ctx.createRadialGradient(cx,cy,5,cx,cy,25*pulse);
+  grad.addColorStop(0, 'rgba(255,255,255,0.8)'); grad.addColorStop(0.3, 'rgba(0,243,255,0.6)'); grad.addColorStop(1, 'transparent');
+  ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(cx,cy,25*pulse,0,Math.PI*2); ctx.fill();
+  angle++; 
 }
-drawCore();
+requestAnimationFrame(drawCore);
 </script>
 </body>
 </html>
@@ -348,7 +344,7 @@ drawCore();
 
 @app.route('/')
 def home():
-    return render_template_string(STARK_ULTIMATE_OS)
+    return render_template_string(STARK_MOBILE_OS)
 
 @app.route('/api/chat', methods=['POST'])
 def api_chat():
@@ -370,7 +366,7 @@ async def handle_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 if __name__ == '__main__':
     app_bot = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    app_bot.add_handler(CommandHandler("start", lambda u, c: u.message.reply_text("Omni-Monitor OS Online. ☕")))
+    app_bot.add_handler(CommandHandler("start", lambda u, c: u.message.reply_text("Mobile Omni-Monitor OS Online. ☕")))
     app_bot.add_handler(MessageHandler(filters.TEXT, handle_chat))
-    print("⚡ STARK OMNI-MONITOR OS ACTIVE.")
+    print("⚡ STARK MOBILE OMNI-MONITOR OS ACTIVE.")
     app_bot.run_polling()
