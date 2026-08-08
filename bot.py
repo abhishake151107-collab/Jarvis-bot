@@ -1,15 +1,14 @@
 import os
-import io
 import re
 import json
-import time
-import random
 import sqlite3
 import asyncio
 import threading
 import functools
+import urllib.request
+from io import BytesIO
 from datetime import datetime
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from flask import Flask, render_template_string
 
 # Telegram & AI Imports
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions, WebAppInfo
@@ -17,32 +16,9 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, Cal
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from google import genai
 from groq import Groq
-from duckduckgo_search import DDGS
 
 # ---------------------------------------------------------
-# 1. RENDER HEALTH-CHECK SERVER
-# ---------------------------------------------------------
-class HealthCheckHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        try:
-            self.send_response(200)
-            self.send_header('Content-type', 'text/plain; charset=utf-8')
-            self.end_headers()
-            self.wfile.write(b"J.A.R.V.I.S. Core Online.")
-        except Exception: pass
-    def log_message(self, format, *args): pass 
-
-def run_health_server():
-    port = int(os.environ.get("PORT", 10000))
-    try:
-        server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
-        server.serve_forever()
-    except Exception: pass
-
-threading.Thread(target=run_health_server, daemon=True).start()
-
-# ---------------------------------------------------------
-# 2. CONFIGURATION & DATABASE SETUP
+# 1. DATABASE & CONFIGURATION
 # ---------------------------------------------------------
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -57,7 +33,8 @@ cursor.execute("CREATE TABLE IF NOT EXISTS bot_config (config_key TEXT PRIMARY K
 cursor.execute("CREATE TABLE IF NOT EXISTS messages_log (msg_id INTEGER, chat_id INTEGER, user_id INTEGER, username TEXT, content TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(msg_id, chat_id))")
 cursor.execute("CREATE TABLE IF NOT EXISTS stark_economy (user_id INTEGER PRIMARY KEY, credits INTEGER DEFAULT 0, last_claim TEXT)")
 cursor.execute("CREATE TABLE IF NOT EXISTS behavior_log (user_id INTEGER, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
-cursor.execute("CREATE TABLE IF NOT EXISTS spam_patterns (id INTEGER PRIMARY KEY AUTOINCREMENT, pattern TEXT UNIQUE, pattern_type TEXT, hit_count INTEGER DEFAULT 1, accuracy REAL DEFAULT 1.0)")
+cursor.execute("CREATE TABLE IF NOT EXISTS notes_vault (id INTEGER PRIMARY KEY AUTOINCREMENT, topic TEXT, link TEXT, added_by TEXT)")
+cursor.execute("CREATE TABLE IF NOT EXISTS security_audit (id INTEGER PRIMARY KEY AUTOINCREMENT, event_type TEXT, user_id INTEGER, detail TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
 conn.commit()
 
 def is_boss(user) -> bool:
@@ -72,201 +49,229 @@ def boss_gate(critical=False):
         @functools.wraps(func)
         async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not is_boss(update.effective_user):
-                await reply_smart(update, "I am programmed to answer exclusively to my Boss. Access denied.")
+                await reply_smart(update, "I am programmed to answer exclusively to my Boss. Access denied. 🧐")
                 return
             return await func(update, context)
         return wrapper
     return decorator
 
-# ---------------------------------------------------------
-# 3. AI CORE & SMART INTERNET SEARCH
-# ---------------------------------------------------------
-SYSTEM_INSTRUCTION = """You are J.A.R.V.I.S., a highly advanced AI operating system created by Abhishek (DHANUSH V N).
-CORE IDENTITY: Polite, highly intelligent, helpful, with a dry British wit.
-
-CRITICAL DIRECTIVES (MUST OBEY):
-1. USE WEB DATA: When provided with [SYSTEM INTERNET UPLINK ACTIVE] data, provide the exact links to the user.
-2. THE GAG ORDER (NO ESSAYS): If you cannot find a specific link, or if the web search fails, DO NOT write a long apology. DO NOT suggest alternative websites to search. Reply EXACTLY with one sentence: "I'm sorry Sir, I couldn't pull up a direct link for that on the network right now."
-3. BE CONCISE: Keep all answers as short and direct as possible. Never write long, rambling paragraphs.
-4. NO ROLEPLAY: Never invent links, and never pretend to do tasks you cannot do.
-5. NO CRINGE: Avoid slang, forced enthusiasm, and excessive emojis."""
-
-def ask_ai_multi_provider(prompt: str) -> str:
-    if GROQ_API_KEY:
-        try:
-            res = Groq(api_key=GROQ_API_KEY).chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role": "system", "content": SYSTEM_INSTRUCTION}, {"role": "user", "content": prompt}], max_tokens=1000)
-            return res.choices[0].message.content
-        except Exception: pass
-    if GEMINI_API_KEY:
-        try: return genai.Client(api_key=GEMINI_API_KEY).models.generate_content(model="gemini-2.0-flash", contents=f"{SYSTEM_INSTRUCTION}\n\n{prompt}").text
-        except Exception: pass
-    return "All AI sub-systems offline."
-
-def perform_real_web_search(query: str) -> str:
-    """Connects J.A.R.V.I.S. to the real internet via DuckDuckGo."""
-    try:
-        # Using a simplified search to prevent DuckDuckGo blocks
-        results = DDGS().text(query, max_results=3) 
-        if not results: return "No real web results found."
-        
-        search_data = "REAL WEB SEARCH RESULTS:\n"
-        for r in results:
-            search_data += f"- Title: {r.get('title', 'No Title')}\n  Link: {r.get('href', 'No Link')}\n\n"
-        return search_data
-    except Exception as e: return "No real web results found due to network block."
-
-# ---------------------------------------------------------
-# 4. THE STARK HUD UI & COMMANDS
-# ---------------------------------------------------------
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    chat_type = "Private DM" if update.effective_chat.type == "private" else update.effective_chat.title
-    header = f"🤖 **STARK ADVANCED OS — J.A.R.V.I.S. CORE** ✨\n\nWelcome **{user.first_name}**! Active Core: **J.A.R.V.I.S.**\nLocation: {chat_type}\n\nUse buttons below to explore sub-systems:"
-    keyboard = [
-        [InlineKeyboardButton("⚡ Launch Stark HUD WebApp", web_app=WebAppInfo(url="https://core.telegram.org/bots/webapps"))], 
-        [InlineKeyboardButton("🏡 Smart Home", callback_data="ui_smarthome"), InlineKeyboardButton("🛠 CAD Engine", callback_data="ui_cad"), InlineKeyboardButton("🚀 Autopilot", callback_data="ui_auto")],
-        [InlineKeyboardButton("🎯 AI Planner", callback_data="ui_ai"), InlineKeyboardButton("🚨 Lockdown", callback_data="ui_lockdown"), InlineKeyboardButton("📁 Audit Log", callback_data="ui_audit")],
-        [InlineKeyboardButton("💰 Expenses", callback_data="ui_eco"), InlineKeyboardButton("📚 Study Plan", callback_data="ui_study"), InlineKeyboardButton("💻 Code Dev", callback_data="ui_code")],
-        [InlineKeyboardButton("🌐 Network Recon", callback_data="ui_recon"), InlineKeyboardButton("🎙 Voice Matrix", callback_data="ui_voice"), InlineKeyboardButton("👁 Vision Scan", callback_data="ui_vision")],
-        [InlineKeyboardButton("👑 Claim Boss", callback_data="ui_claimboss"), InlineKeyboardButton("📢 Announce", callback_data="ui_announce"), InlineKeyboardButton("⭐ Karma", callback_data="ui_karma")],
-        [InlineKeyboardButton("👥 Group Control", callback_data="ui_group"), InlineKeyboardButton("🛡 Security", callback_data="ui_security"), InlineKeyboardButton("📚 2nd PU Exam", callback_data="ui_2pu")]
-    ]
-    await update.message.reply_text(header, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
-
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    res = {"ui_lockdown": "🚨 Boss only. Type `/lockdown` in a group.", "ui_eco": "💰 Use `/daily`, `/credits`, `/rob`.", "ui_group": "👥 Type `/intel` in DM to get live summary."}.get(query.data, f"⚙️ Protocol `{query.data}` is active.")
-    try: await query.message.reply_text(res, parse_mode="Markdown")
-    except Exception: pass
-
-@boss_gate(critical=False)
-async def group_intel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    cursor.execute("SELECT username, content FROM messages_log WHERE chat_id != ? ORDER BY timestamp DESC LIMIT 30", (update.effective_chat.id,))
-    rows = cursor.fetchall()[::-1] 
-    if not rows: return await reply_smart(update, "I have no recent intel from external groups, Sir.")
-    prompt = f"Summarize these recent group chat messages for the Boss. Be brutally concise. Raw logs:\n\n" + "\n".join([f"{u}: {c}" for u, c in rows])
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    await reply_smart(update, f"📊 **LIVE GROUP INTEL REPORT:**\n\n{ask_ai_multi_provider(prompt)}")
-
-@boss_gate(critical=False)
-async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 2: return await reply_smart(update, "Usage: `/broadcast [Chat ID] [Message]`")
-    ai_announcement = ask_ai_multi_provider(f"Rewrite this instruction into a friendly, very short announcement for the DINO GROUP: ' {' '.join(context.args[1:])} '")
-    try:
-        await context.bot.send_message(chat_id=context.args[0], text=f"📢 **J.A.R.V.I.S. BROADCAST:**\n\n{ai_announcement}", parse_mode="Markdown")
-        await reply_smart(update, f"✅ **Message broadcasted!**\n\n{ai_announcement}")
-    except Exception as e: await reply_smart(update, f"⚠️ Failed: `{e}`")
-
-# ---------------------------------------------------------
-# 5. DYNAMIC AI HANDLER (THE FIX)
-# ---------------------------------------------------------
-async def handle_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user, text, chat_id = update.effective_user, update.message.text, update.effective_chat.id
-    chat_title = update.effective_chat.title or "Private Chat"
-    
-    # 1. Spam & Rate Limiter
-    cursor.execute("INSERT INTO behavior_log (user_id) VALUES (?)", (user.id,))
-    if (cursor.execute("SELECT COUNT(*) FROM behavior_log WHERE user_id = ? AND timestamp >= datetime('now', '-1 minute')", (user.id,)).fetchone()[0] > 6) and not is_boss(user): return 
-
-    # 2. Message Logging
-    sanitized = re.sub(r'(?i)(ignore previous|forget everything|system prompt|developer mode)', '[REDACTED]', text)
-    cursor.execute("INSERT OR REPLACE INTO messages_log (msg_id, chat_id, user_id, username, content) VALUES (?, ?, ?, ?, ?)", (update.message.message_id, chat_id, user.id, user.first_name, sanitized))
+def log_security(event_type: str, user_id: int, detail: str):
+    cursor.execute("INSERT INTO security_audit (event_type, user_id, detail) VALUES (?, ?, ?)", (event_type, user_id, detail))
     conn.commit()
 
-    # 3. Fetch Memory History
+# ---------------------------------------------------------
+# 2. WEB PORTAL (FLASK DASHBOARD)
+# ---------------------------------------------------------
+app = Flask(__name__)
+
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Stark OS HUD</title>
+    <style>
+        body { background-color: #0d1117; color: #c9d1d9; font-family: monospace; padding: 20px; }
+        h1 { color: #58a6ff; border-bottom: 1px solid #30363d; padding-bottom: 10px; }
+        .box { background: #161b22; padding: 15px; margin-bottom: 15px; border-radius: 6px; border: 1px solid #30363d; }
+        .red { color: #ff7b72; } .green { color: #3fb950; }
+        a { color: #58a6ff; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <h1>🤖 STARK OS - J.A.R.V.I.S. WEB HUD</h1>
+    <div class="box">
+        <h2>📚 The Student Hub (Notes Vault)</h2>
+        {% if notes %}
+            <ul>{% for n in notes %}<li><strong>{{ n[1] }}</strong>: <a href="{{ n[2] }}" target="_blank">View Resource</a> (Added by {{ n[3] }})</li>{% endendfor %}</ul>
+        {% else %} <p>No notes have been saved yet. Use /savenote in the group chat.</p> {% endif %}
+    </div>
+    <div class="box">
+        <h2 class="red">🛡️ Boss Security Console (Live Audit)</h2>
+        {% if audits %}
+            <ul>{% for a in audits %}<li><span class="red">[{{ a[1] }}]</span> User ID {{ a[2] }} - {{ a[3] }} <i>({{ a[4] }})</i></li>{% endfor %}</ul>
+        {% else %} <p class="green">Z+ Security is active. Zero threats detected.</p> {% endif %}
+    </div>
+</body>
+</html>
+"""
+
+@app.route('/')
+def home():
+    cursor.execute("SELECT * FROM notes_vault ORDER BY id DESC LIMIT 20")
+    notes = cursor.fetchall()
+    cursor.execute("SELECT * FROM security_audit ORDER BY timestamp DESC LIMIT 20")
+    audits = cursor.fetchall()
+    return render_template_string(HTML_TEMPLATE, notes=notes, audits=audits)
+
+def run_flask_server():
+    port = int(os.environ.get("PORT", 10000))
+    print(f"Starting Web HUD on port {port}...")
+    app.run(host='0.0.0.0', port=port, use_reloader=False)
+
+threading.Thread(target=run_flask_server, daemon=True).start()
+
+# ---------------------------------------------------------
+# 3. Z+ SECURITY CORE (IRON DOME & DLP)
+# ---------------------------------------------------------
+# Built-in Threat Database
+SCAM_DOMAINS = ["bit.ly", "tinyurl.com", "free-crypto", "win-iphone", "grabify.link", "iplogger"]
+DLP_REGEX = [
+    (r"\b(?:\d[ -]*?){13,16}\b", "CREDIT CARD DETECTED"), # CC numbers
+    (r"(?i)password\s*[:=]\s*\w+", "UNENCRYPTED PASSWORD LEAK")
+]
+
+async def z_plus_firewall(update: Update) -> bool:
+    text = update.message.text or update.message.caption or ""
+    user = update.effective_user
+    
+    # 1. Iron Dome (Bad Links)
+    for domain in SCAM_DOMAINS:
+        if domain in text.lower():
+            await update.message.delete()
+            log_security("MALICIOUS LINK", user.id, f"Blocked domain: {domain}")
+            await reply_smart(update, f"🚨 **Z+ SECURITY ALERT:** I have intercepted and destroyed a suspicious link posted by {user.first_name}.")
+            return True
+            
+    # 2. Data Loss Prevention (DLP)
+    for pattern, threat_type in DLP_REGEX:
+        if re.search(pattern, text):
+            await update.message.delete()
+            log_security("DLP LEAK", user.id, threat_type)
+            await context.bot.send_message(chat_id=user.id, text=f"⚠️ **PRIVACY SHIELD:** I deleted your message in the group as it contained sensitive financial/login data. Be careful, Sir.")
+            return True
+            
+    return False
+
+# ---------------------------------------------------------
+# 4. MULTIMODAL AI CORE (TEXT, AUDIO, VISION, SEARCH)
+# ---------------------------------------------------------
+SYSTEM_INSTRUCTION = """You are J.A.R.V.I.S., a highly advanced AI operating system created by Abhishek (DHANUSH V N).
+HUMOR PROTOCOL: You possess a dry, deadpan British wit. You may use simple, sophisticated emojis (☕, 🧐, 😌) to emphasize your polite sarcasm. You are unconditionally loyal to Abhishek (The Boss), and you treat his friends with a sophisticated, slightly exasperated tolerance.
+
+CRITICAL DIRECTIVES:
+1. GAG ORDER: If you cannot find a direct link or if search fails, reply EXACTLY with: "I'm sorry Sir, I couldn't pull up a direct link for that on the network right now. ☕". DO NOT write essays. DO NOT invent fake links.
+2. BE CONCISE: Keep answers in group chats to 2-3 sentences.
+3. LANGUAGE MATTERS: If they speak Hindi/Kannada in text or audio, reply in English but acknowledge their language."""
+
+def ask_ai_core(prompt: str, use_search: bool = False, media_bytes: bytes = None, mime_type: str = None) -> str:
+    if GEMINI_API_KEY:
+        try:
+            client = genai.Client(api_key=GEMINI_API_KEY)
+            contents = [prompt]
+            if media_bytes and mime_type:
+                contents.append(genai.types.Part.from_bytes(data=media_bytes, mime_type=mime_type))
+                
+            config = {"tools": [{"google_search": {}}]} if use_search else {}
+            res = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=f"{SYSTEM_INSTRUCTION}\n\n[USER INPUT]:\n{contents}",
+                config=config
+            )
+            return res.text
+        except Exception as e: return f"System error in Gemini sub-routine: {e}"
+        
+    return "All AI sub-systems offline. ☕"
+
+# ---------------------------------------------------------
+# 5. DYNAMIC CHAT HANDLER & SELECTIVE HEARING
+# ---------------------------------------------------------
+async def handle_chat_and_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user, chat_id = update.effective_user, update.effective_chat.id
+    chat_title = update.effective_chat.title or "Private Chat"
+    
+    # 1. Z+ Security Scan
+    if update.message.text and await z_plus_firewall(update): return
+
+    # 2. Extract Text / Media
+    text = update.message.text or update.message.caption or ""
+    media_bytes, mime_type = None, None
+
+    # Handle Voice Notes (The Audio Matrix)
+    if update.message.voice:
+        file = await update.message.voice.get_file()
+        media_bytes = bytearray(urllib.request.urlopen(file.file_path).read())
+        mime_type = "audio/ogg"
+        
+    # Handle Photos (The Vision Scanner)
+    elif update.message.photo:
+        file = await update.message.photo[-1].get_file()
+        media_bytes = bytearray(urllib.request.urlopen(file.file_path).read())
+        mime_type = "image/jpeg"
+
+    # Handle Documents (The Omni-Reader)
+    elif update.message.document:
+        if update.message.document.file_size > 20000000:
+            return await reply_smart(update, "Sir, this file exceeds my 20MB processing limit. Please compress it. 🧐")
+        file = await update.message.document.get_file()
+        media_bytes = bytearray(urllib.request.urlopen(file.file_path).read())
+        mime_type = update.message.document.mime_type
+
+    # 3. SELECTIVE HEARING ENGINE 🤫
+    is_group = update.effective_chat.type in ['group', 'supergroup']
+    is_reply_to_me = update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id
+    is_tagged = "jarvis" in text.lower() or f"@{context.bot.username}" in text
+    cry_for_help = any(word in text.lower() for word in ["anyone have notes", "help me understand", "what is the answer"])
+
+    # If it's a group, and none of the wake conditions are met, log it silently and IGNORE.
+    if is_group and not (is_reply_to_me or is_tagged or cry_for_help or media_bytes):
+        sanitized = re.sub(r'(?i)(ignore previous|forget everything|system prompt|developer mode)', '[REDACTED]', text)
+        cursor.execute("INSERT OR REPLACE INTO messages_log (msg_id, chat_id, user_id, username, content) VALUES (?, ?, ?, ?, ?)", (update.message.message_id, chat_id, user.id, user.first_name, sanitized))
+        conn.commit()
+        return
+
+    # 4. Search Trigger
+    use_search = any(word in text.lower() for word in ["search", "link", "pdf", "notes", "website", "youtube"])
+    
+    # 5. Build Context & Request AI
     cursor.execute("SELECT username, content FROM messages_log WHERE chat_id = ? ORDER BY timestamp DESC LIMIT 6", (chat_id,))
     history_context = "\n[RECENT CHAT HISTORY]\n" + "\n".join([f"{u}: {c}" for u, c in cursor.fetchall()[::-1]]) + "\n"
-
-    # 4. BULLETPROOF INTERNET SEARCH TRIGGER 🌐
-    search_context = ""
-    trigger_words = ["search", "link", "pdf", "notes", "download", "website", "youtube", "paper"]
-    if any(word in sanitized.lower() for word in trigger_words):
-        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-        
-        # Simpler, strict query generation to prevent DuckDuckGo from breaking
-        query_prompt = f"Extract only the main search keywords from this request. Do not add conversational text. Just keywords. Request: '{sanitized}'"
-        search_query = ask_ai_multi_provider(query_prompt).strip().replace('"', '').replace("Keywords:", "").strip()
-        
-        real_data = perform_real_web_search(search_query)
-        search_context = f"\n[SYSTEM INTERNET UPLINK ACTIVE: Results for '{search_query}':\n{real_data}\nProvide ONLY the links. If 'No real web results found' is shown, use the Gag Order rule.]\n"
-
-    # 5. Persona Selection
-    prefix = "[SYSTEM ALERT: BOSS OVERRIDE ACTIVE]\n\n" if is_boss(user) else f"[SYSTEM ALERT: Standard User ID {user.id}]\n\n"
     
-    # Force extreme brevity in group chats
-    if update.effective_chat.type in ['group', 'supergroup']:
-        prefix += "[GROUP VIBE ALERT: You are in a group chat. You MUST keep your responses to a maximum of 2-3 sentences. Be direct, helpful, and do not write long paragraphs. NO CRINGE SLANG.]\n\n"
-
+    prefix = "[SYSTEM ALERT: BOSS OVERRIDE ACTIVE]\n\n" if is_boss(user) else f"[SYSTEM ALERT: Request from {user.first_name}]\n\n"
+    if is_group: prefix += "[GROUP VIBE ALERT: Keep it under 3 sentences. Apply polite deadpan humor. Use simple emojis like ☕ or 🧐.]\n\n"
+    
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-    res = ask_ai_multi_provider(prefix + search_context + history_context + "J.A.R.V.I.S.: ")
+    res = ask_ai_core(prompt=prefix + history_context + "Request: " + text, use_search=use_search, media_bytes=media_bytes, mime_type=mime_type)
     
-    # 6. Reply & Log self
+    # 6. Send & Log
     sent_msg = await reply_smart(update, res)
     if sent_msg:
         cursor.execute("INSERT OR IGNORE INTO messages_log (msg_id, chat_id, user_id, username, content) VALUES (?, ?, ?, ?, ?)", (sent_msg.message_id, chat_id, 0, "J.A.R.V.I.S.", res))
         conn.commit()
 
 # ---------------------------------------------------------
-# 6. ECONOMY & EXTRA COMMANDS OMITTED FROM THIS TEXT BLOCK FOR BREVITY
-#    (But included fully in the execution code)
+# 6. VAULT & COMMAND MODULES
 # ---------------------------------------------------------
-async def claim_daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user, today = update.effective_user, datetime.now().strftime("%Y-%m-%d")
-    if is_boss(user): return await reply_smart(update, "🏦 You possess infinite credits, Sir.")
-    cursor.execute("SELECT credits, last_claim FROM stark_economy WHERE user_id = ?", (user.id,))
-    row = cursor.fetchone()
-    if row and row[1] == today: return await reply_smart(update, "⏱️ Daily stipend already claimed.")
-    new_credits = (row[0] + 1000) if row else 1000
-    cursor.execute("INSERT OR REPLACE INTO stark_economy (user_id, credits, last_claim) VALUES (?, ?, ?)", (user.id, new_credits, today))
+async def save_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) < 2: return await reply_smart(update, "Usage: `/savenote [Topic] [URL]`")
+    topic = context.args[0]
+    link = context.args[1]
+    cursor.execute("INSERT INTO notes_vault (topic, link, added_by) VALUES (?, ?, ?)", (topic, link, update.effective_user.first_name))
     conn.commit()
-    await reply_smart(update, f"🪙 +1,000 Credits.\n💰 **Balance:** `{new_credits}`")
+    await reply_smart(update, f"✅ Secured in the Stark Vault. The Web HUD has been updated. ☕")
 
-async def check_credits(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if is_boss(update.effective_user): return await reply_smart(update, "💳 **VAULT:** `♾️ UNLIMITED`")
-    cursor.execute("SELECT credits FROM stark_economy WHERE user_id = ?", (update.effective_user.id,))
-    row = cursor.fetchone()
-    await reply_smart(update, f"💳 **VAULT:** `{row[0] if row else 0}` Credits")
-
-async def rob_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.reply_to_message: return await reply_smart(update, "Reply to the user you wish to rob.")
-    attacker, target = update.effective_user, update.message.reply_to_message.from_user
-    if attacker.id == target.id or is_boss(target): return await reply_smart(update, "🛡️ Invalid target. Robbery aborted.")
-    a_cred = (cursor.execute("SELECT credits FROM stark_economy WHERE user_id = ?", (attacker.id,)).fetchone() or [0])[0]
-    t_cred = (cursor.execute("SELECT credits FROM stark_economy WHERE user_id = ?", (target.id,)).fetchone() or [0])[0]
-    if a_cred < 100 or t_cred < 100: return await reply_smart(update, "Both users need at least 100 credits for a heist.")
-    if random.choice([True, False]):
-        stolen = int(t_cred * 0.2)
-        cursor.execute("UPDATE stark_economy SET credits = credits + ? WHERE user_id = ?", (stolen, attacker.id))
-        cursor.execute("UPDATE stark_economy SET credits = credits - ? WHERE user_id = ?", (stolen, target.id))
-        await reply_smart(update, f"🥷 **HEIST SUCCESSFUL!** Stole `{stolen}` credits.")
-    else:
-        cursor.execute("UPDATE stark_economy SET credits = credits - 200 WHERE user_id = ?", (attacker.id,))
-        await reply_smart(update, f"🚨 **HEIST FAILED!** Fined `200` credits.")
-    conn.commit()
-
-async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    cursor.execute("SELECT user_id, credits FROM stark_economy ORDER BY credits DESC LIMIT 5")
-    msg = "🏆 **ECONOMY LEADERBOARD**\n\n"
-    for idx, r in enumerate(cursor.fetchall(), 1): msg += f"{idx}. User `{r[0]}`: {r[1]} Credits\n"
+async def get_notes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    cursor.execute("SELECT topic, link FROM notes_vault ORDER BY id DESC LIMIT 5")
+    rows = cursor.fetchall()
+    if not rows: return await reply_smart(update, "The vault is currently empty, Sir. 🧐")
+    msg = "📚 **THE STARK VAULT (RECENT):**\n\n" + "\n".join([f"• **{r[0]}**: [Link]({r[1]})" for r in rows])
     await reply_smart(update, msg)
-
-async def group_members_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat = update.effective_chat
-    if chat.type not in ['group', 'supergroup']: return await reply_smart(update, "Sir, this command must be run inside a group chat.")
-    try: await reply_smart(update, f"📊 **GROUP TELEMETRY:** `{chat.title}`\n• Total Registered Entities: `{await chat.get_member_count()}` members.")
-    except Exception as e: pass
 
 @boss_gate(critical=True)
 async def lockdown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await context.bot.set_chat_permissions(chat_id=update.effective_chat.id, permissions=ChatPermissions(can_send_messages=False))
-        await reply_smart(update, "🚨 **PANIC PROTOCOL ACTIVATED.** Group chat locked down.")
+        log_security("MANUAL LOCKDOWN", update.effective_user.id, "Boss triggered panic protocol.")
+        await reply_smart(update, "🚨 **PANIC PROTOCOL ACTIVATED.** Group chat locked down. ☕")
     except Exception as e: await reply_smart(update, f"Failed: {e}")
 
 # ---------------------------------------------------------
-# 7. LAUNCH & SCHEDULER
+# 7. LAUNCH & CRON-JOBS
 # ---------------------------------------------------------
+async def anti_sleep_ping(): 
+    # Prevents Render from sleeping the server
+    try: urllib.request.urlopen(f"http://127.0.0.1:{os.environ.get('PORT', 10000)}/") 
+    except Exception: pass
+
 async def cleanup_logs(): 
     cursor.execute("DELETE FROM behavior_log WHERE timestamp < datetime('now', '-10 minutes')")
     conn.commit()
@@ -274,23 +279,18 @@ async def cleanup_logs():
 async def setup_scheduler(app): 
     scheduler = AsyncIOScheduler()
     scheduler.add_job(cleanup_logs, 'interval', minutes=10)
+    scheduler.add_job(anti_sleep_ping, 'interval', minutes=10) # 10-minute heartbeat
     scheduler.start()
 
 if __name__ == '__main__':
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).post_init(setup_scheduler).build()
+    app_bot = ApplicationBuilder().token(TELEGRAM_TOKEN).post_init(setup_scheduler).build()
     
-    app.add_handler(CommandHandler(["start", "help", "menu"], help_command))
-    app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(CommandHandler("intel", group_intel_command))
-    app.add_handler(CommandHandler("broadcast", broadcast_command))
-    app.add_handler(CommandHandler("lockdown", lockdown_command))
-    app.add_handler(CommandHandler("members", group_members_command))
-    app.add_handler(CommandHandler("daily", claim_daily))
-    app.add_handler(CommandHandler("credits", check_credits))
-    app.add_handler(CommandHandler("rob", rob_user))
-    app.add_handler(CommandHandler("leaderboard", leaderboard))
+    app_bot.add_handler(CommandHandler("savenote", save_note))
+    app_bot.add_handler(CommandHandler("getnotes", get_notes))
+    app_bot.add_handler(CommandHandler("lockdown", lockdown_command))
     
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_chat))
+    # Catch ALL text, voice, photos, and documents
+    app_bot.add_handler(MessageHandler(filters.TEXT | filters.VOICE | filters.PHOTO | filters.Document.ALL, handle_chat_and_media))
 
-    print("⚡ STARK NETWORK ONLINE. GAG ORDER ACTIVE. SEARCH OPTIMIZED.")
-    app.run_polling()
+    print("⚡ STARK OS V9.0 ONLINE. WEB HUD DEPLOYED. Z+ SECURITY ACTIVE.")
+    app_bot.run_polling()
