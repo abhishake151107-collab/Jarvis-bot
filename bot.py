@@ -109,7 +109,7 @@ MARK_VII_WEB_OS = """
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>MK-VII // SUIT INTERFACE</title>
+<title>MK-VII // GOD-MODE SUIT INTERFACE</title>
 <style>
   :root{
     --bg:#04070a;
@@ -131,138 +131,177 @@ MARK_VII_WEB_OS = """
     overflow:hidden;
   }
 
+  /* Scanlines & Holographic Depth */
   .scanlines{
     position:fixed; inset:0; pointer-events:none; z-index:50;
     background:repeating-linear-gradient(0deg, rgba(95,227,255,0.025) 0px, rgba(95,227,255,0.025) 1px, transparent 1px, transparent 3px);
     mix-blend-mode:screen;
   }
+  .hex-grid{
+    position:fixed; inset:0; pointer-events:none; z-index:1; opacity:0.12;
+    background-image: radial-gradient(rgba(95,227,255,0.4) 1px, transparent 0);
+    background-size: 30px 30px;
+    animation: gridPulse 4s ease-in-out infinite alternate;
+  }
+  @keyframes gridPulse { 0% { opacity: 0.08; } 100% { opacity: 0.18; } }
+
   .vignette{
     position:fixed; inset:0; pointer-events:none; z-index:49;
     box-shadow: inset 0 0 220px rgba(0,0,0,0.85);
   }
 
+  /* Main Grid Layout matching all 12 missing systems */
   .hud{
-    position:relative; width:100%; height:100%;
+    position:relative; width:100%; height:100%; z-index:10;
     display:grid;
-    grid-template-columns: 320px 1fr 320px;
-    grid-template-rows: 80px 1fr 140px;
-    padding:15px;
-    gap:12px;
+    grid-template-columns: 310px 1fr 310px;
+    grid-template-rows: 75px 1fr 135px;
+    padding:12px;
+    gap:10px;
   }
 
   .panel{
     border:1px solid rgba(95,227,255,0.25);
-    background:linear-gradient(180deg, rgba(10,20,26,0.7), rgba(4,8,11,0.8));
+    background:linear-gradient(180deg, rgba(10,20,26,0.75), rgba(4,8,11,0.85));
     position:relative;
-    padding:10px 12px;
+    padding:8px 10px;
     backdrop-filter: blur(2px);
     display:flex;
     flex-direction:column;
-    gap:8px;
+    gap:6px;
     overflow-y:auto;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .panel:hover {
+    border-color: rgba(95,227,255,0.5);
+    box-shadow: 0 0 15px rgba(95,227,255,0.15);
   }
   .panel::-webkit-scrollbar { width: 3px; }
   .panel::-webkit-scrollbar-thumb { background: var(--cyan); }
 
   .panel::before{
-    content:''; position:absolute; top:-1px; left:-1px; width:10px; height:10px;
+    content:''; position:absolute; top:-1px; left:-1px; width:8px; height:8px;
     border-top:2px solid var(--cyan); border-left:2px solid var(--cyan);
   }
   .panel::after{
-    content:''; position:absolute; bottom:-1px; right:-1px; width:10px; height:10px;
+    content:''; position:absolute; bottom:-1px; right:-1px; width:8px; height:8px;
     border-bottom:2px solid var(--cyan); border-right:2px solid var(--cyan);
   }
   .label{
-    font-size:9.5px; letter-spacing:2px; color:var(--cyan);
-    opacity:0.75; text-transform:uppercase; border-bottom:1px dashed rgba(95,227,255,0.2); padding-bottom:3px;
+    font-size:9px; letter-spacing:2px; color:var(--cyan);
+    opacity:0.75; text-transform:uppercase; border-bottom:1px dashed rgba(95,227,255,0.2); padding-bottom:2px;
   }
 
   /* Top Bar */
   .topbar{ grid-column:1/4; display:flex; align-items:center; justify-content:space-between; padding:0 6px; }
-  .brand{ display:flex; align-items:center; gap:12px; }
+  .brand{ display:flex; align-items:center; gap:10px; }
   .brand .mark{
-    width:30px; height:30px; border-radius:50%; border:2px solid var(--cyan);
+    width:28px; height:28px; border-radius:50%; border:2px solid var(--cyan);
     display:flex; align-items:center; justify-content:center;
     box-shadow:0 0 10px var(--cyan), inset 0 0 6px var(--cyan);
+    animation: pulseRing 2s infinite;
   }
-  .brand .mark span{ width:8px; height:8px; background:var(--cyan); border-radius:50%; box-shadow:0 0 6px var(--cyan);}
-  .brand .title{ font-size:14px; letter-spacing:4px; font-weight:bold; color:var(--text);}
-  .brand .sub{ font-size:9px; letter-spacing:2px; color:var(--cyan); opacity:0.7;}
-  .clock{ font-size:18px; letter-spacing:2px; color:var(--cyan); text-shadow:0 0 8px rgba(95,227,255,0.6);}
+  @keyframes pulseRing { 0%,100%{box-shadow:0 0 5px var(--cyan);} 50%{box-shadow:0 0 15px var(--cyan);} }
+  .brand .mark span{ width:7px; height:7px; background:var(--cyan); border-radius:50%; box-shadow:0 0 6px var(--cyan);}
+  .brand .title{ font-size:13px; letter-spacing:3px; font-weight:bold; color:var(--text);}
+  .brand .sub{ font-size:8.5px; letter-spacing:2px; color:var(--cyan); opacity:0.7;}
+  .clock{ font-size:16px; letter-spacing:2px; color:var(--cyan); text-shadow:0 0 8px rgba(95,227,255,0.6);}
 
   /* Left Column */
-  .left{ display:flex; flex-direction:column; gap:12px; }
-  .vitals-row{ display:flex; justify-content:space-between; align-items:baseline; font-size:10.5px; margin:4px 0; }
-  .vitals-row .val{ color:var(--cyan); font-size:13px; }
-  .bar-track{ height:4px; width:100%; background:rgba(95,227,255,0.1); position:relative; margin-top:2px;}
-  .bar-fill{ height:100%; background:linear-gradient(90deg,var(--cyan-dim),var(--cyan)); box-shadow:0 0 5px var(--cyan);}
-  #radarCanvas{ display:block; width:100%; height:130px; }
+  .left{ display:flex; flex-direction:column; gap:10px; }
+  .vitals-row{ display:flex; justify-content:space-between; align-items:baseline; font-size:10px; margin:2px 0; }
+  .vitals-row .val{ color:var(--cyan); font-size:12px; }
+  .bar-track{ height:3px; width:100%; background:rgba(95,227,255,0.1); position:relative; margin-top:2px;}
+  .bar-fill{ height:100%; background:linear-gradient(90deg,var(--cyan-dim),var(--cyan)); box-shadow:0 0 5px var(--cyan); transition: width 0.5s ease;}
+  #radarCanvas{ display:block; width:100%; height:110px; }
 
-  /* Center Viewport */
-  .center{ position:relative; overflow:hidden; }
+  /* Center Viewport & Lock-on Targeting */
+  .center{ position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center; }
   #reactorCanvas{ position:absolute; inset:0; width:100%; height:100%; }
-  .center-overlay{
-    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-    flex-direction:column; pointer-events:none;
+  
+  /* Advanced Targeting Brackets */
+  .target-box {
+    position: absolute; width: 60px; height: 60px; border: 1px dashed var(--red);
+    animation: targetPulse 1.5s infinite alternate; pointer-events: none;
+    display: flex; align-items: flex-start; justify-content: flex-end; padding: 2px;
   }
-  .core-readout .big{ font-size:11px; letter-spacing:4px; color:var(--cyan); opacity:0.85; text-align:center;}
-  .core-readout .num{ font-size:30px; color:#fff; text-shadow:0 0 15px var(--cyan); letter-spacing:2px; margin-top:2px; text-align:center;}
+  .target-box::before { content:''; position:absolute; top:-2px; left:-2px; width:6px; height:6px; border-top:2px solid var(--red); border-left:2px solid var(--red); }
+  .target-box::after { content:''; position:absolute; bottom:-2px; right:-2px; width:6px; height:6px; border-bottom:2px solid var(--red); border-right:2px solid var(--red); }
+  .target-label { font-size: 8px; color: var(--red); background: rgba(255,68,51,0.15); padding: 1px 3px; }
+  @keyframes targetPulse { 0%{ transform: scale(0.95); opacity:0.6; } 100%{ transform: scale(1.05); opacity:1; } }
+
+  /* Center HUD Info */
+  .center-overlay{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; pointer-events:none; }
+  .core-readout .big{ font-size:10px; letter-spacing:3px; color:var(--cyan); opacity:0.85; text-align:center;}
+  .core-readout .num{ font-size:26px; color:#fff; text-shadow:0 0 12px var(--cyan); letter-spacing:2px; text-align:center;}
 
   /* Right Column */
-  .right{ display:flex; flex-direction:column; gap:12px; }
-  .module-list{ font-size:10px; display:flex; flex-direction:column; gap:4px; max-height:100px; overflow-y:auto; }
-  .module-item{ display:flex; justify-content:space-between; background:rgba(95,227,255,0.05); padding:3px 6px; border-left:2px solid var(--cyan); }
+  .right{ display:flex; flex-direction:column; gap:10px; }
+  .weap-item{ display:flex; justify-content:space-between; align-items:center; font-size:10px; padding:3px 0; border-bottom:1px dashed rgba(95,227,255,0.15);}
+  .weap-item .dot{ width:6px; height:6px; border-radius:50%; background:var(--cyan); box-shadow:0 0 6px var(--cyan); margin-right:6px; display:inline-block;}
+  .weap-item.armed .dot{ background:var(--red); box-shadow:0 0 8px var(--red); animation: blinkDot 0.8s infinite; }
+  @keyframes blinkDot { 0%,100%{ opacity:1; } 50%{ opacity:0.3; } }
 
   /* Bottom Console */
-  .console{ grid-column:1/4; display:grid; grid-template-columns: 2fr 1fr 1fr; gap:12px; }
-  .log{ font-size:10.5px; line-height:1.5; overflow-y:auto; max-height:110px; }
+  .console{ grid-column:1/4; display:grid; grid-template-columns: 2fr 1fr 1fr; gap:10px; }
+  .log{ font-size:10px; line-height:1.4; overflow-y:auto; max-height:100px; }
   .log .line{ opacity:0; animation:fadeIn 0.3s forwards; margin-bottom:2px; }
   .log .line .t{ color:var(--cyan); opacity:0.6; margin-right:6px;}
   @keyframes fadeIn{ to{ opacity:1; } }
 
-  .chat-box{ display:flex; flex-direction:column; gap:6px; }
+  .chat-box{ display:flex; flex-direction:column; gap:4px; }
   .chat-input-row{ display:flex; gap:4px; }
   input[type="text"]{
     flex-grow:1; background:#000; border:1px solid var(--cyan); color:var(--cyan);
-    padding:5px 8px; font-family:var(--mono); font-size:11px; border-radius:2px;
+    padding:4px 6px; font-family:var(--mono); font-size:10.5px; border-radius:2px;
   }
   button{
     background:rgba(95,227,255,0.15); border:1px solid var(--cyan); color:var(--cyan);
-    padding:5px 10px; cursor:pointer; font-family:var(--mono); font-size:11px; border-radius:2px;
+    padding:4px 8px; cursor:pointer; font-family:var(--mono); font-size:10px; border-radius:2px;
     text-transform:uppercase; transition:0.2s;
   }
   button:hover{ background:var(--cyan); color:#000; box-shadow:0 0 8px var(--cyan); }
   button.danger{ border-color:var(--red); color:var(--red); background:rgba(255,68,51,0.1); }
   button.danger:hover{ background:var(--red); color:#000; }
+  
+  /* Vision Mode Flash Effect */
+  .vision-overlay { position: fixed; inset: 0; pointer-events: none; z-index: 40; transition: background 0.5s ease; mix-blend-mode: overlay; }
+  .mode-thermal { background: rgba(255, 68, 51, 0.2); }
+  .mode-xray { background: rgba(95, 227, 255, 0.25); filter: invert(0.8); }
 </style>
 </head>
 <body>
 
 <div class="scanlines"></div>
+<div class="hex-grid"></div>
 <div class="vignette"></div>
+<div id="visionMode" class="vision-overlay"></div>
 
 <div class="hud">
 
-  <!-- TOP BAR -->
+  <!-- TOP BAR: Flight attitude indicator & compass ring / Helmet visor frame -->
   <div class="panel topbar">
     <div class="brand">
       <div class="mark"><span></span></div>
       <div>
-        <div class="title">MARK&nbsp;VII // GOD-MODE OS</div>
-        <div class="sub">VOICE SYNTHESIS: BRITISH BUTLER ACTIVE</div>
+        <div class="title">MARK&nbsp;VII // HUD SYSTEM</div>
+        <div class="sub">VISOR FRAME: ACTIVE // COMPASS HDG: <span id="hdg">047</span>&deg;</div>
       </div>
+    </div>
+    <div style="font-size:10px; letter-spacing:1px; color:var(--cyan);">
+      ATTITUDE: <span style="color:#fff">LEVEL</span> | G-FORCE: <span id="gforce" style="color:var(--amber)">1.2G</span>
     </div>
     <div class="clock" id="clock">00:00:00</div>
   </div>
 
-  <!-- LEFT COLUMN -->
+  <!-- LEFT COLUMN: Vitals, Toxicity & Power -->
   <div class="left">
     <div class="panel">
-      <div class="label">System Vitals</div>
+      <div class="label">Biometrics & Palladium Toxicity</div>
       <div class="vitals-row"><span>Pilot HR</span><span class="val" id="hr">74 bpm</span></div>
       <div class="bar-track"><div class="bar-fill" style="width:60%"></div></div>
-      <div class="vitals-row"><span>Core Shielding</span><span class="val">99.8%</span></div>
-      <div class="bar-track"><div class="bar-fill" style="width:99.8%"></div></div>
+      <div class="vitals-row"><span>Blood Toxicity</span><span class="val" style="color:var(--red)">24% (Stable)</span></div>
+      <div class="bar-track"><div class="bar-fill" style="width:24%; background:var(--red)"></div></div>
     </div>
 
     <div class="panel" style="flex:1;">
@@ -271,9 +310,18 @@ MARK_VII_WEB_OS = """
     </div>
   </div>
 
-  <!-- CENTER VIEWPORT -->
-  <div class="panel center">
+  <!-- CENTER VIEWPORT: Arc Reactor, Holographic Depth & Advanced Targeting -->
+  <div class="panel center" id="viewport">
     <canvas id="reactorCanvas"></canvas>
+    
+    <!-- Dynamic Lock-on Target Brackets -->
+    <div class="target-box" style="top: 25%; left: 30%;">
+      <span class="target-label">HOSTILE // 840m</span>
+    </div>
+    <div class="target-box" style="top: 60%; left: 70%; border-color:var(--cyan);">
+      <span class="target-label" style="color:var(--cyan); background:rgba(95,227,255,0.15)">FRIENDLY // STARK JET</span>
+    </div>
+
     <div class="center-overlay">
       <div class="core-readout">
         <div class="big">ARC REACTOR OUTPUT</div>
@@ -282,44 +330,50 @@ MARK_VII_WEB_OS = """
     </div>
   </div>
 
-  <!-- RIGHT COLUMN -->
+  <!-- RIGHT COLUMN: Suit Damage Model & Weapon Charge Meters -->
   <div class="right">
-    <div class="panel" style="flex:1;">
-      <div class="label">Custom Modules</div>
-      <div style="display:flex; gap:4px; margin-bottom:4px;">
-        <input type="text" id="modName" placeholder="Module Name">
-        <button onclick="addCustomModule()">Add</button>
-      </div>
-      <div class="module-list" id="customModulesContainer">
-        <div class="module-item"><span>Z+ Security Firewall</span><span style="color:var(--cyan)">ACTIVE</span></div>
-        <div class="module-item"><span>Universal Voice Matrix</span><span style="color:var(--cyan)">ONLINE</span></div>
-      </div>
+    <div class="panel">
+      <div class="label">Suit Schematic & Integrity</div>
+      <div class="vitals-row"><span>Chest Plate</span><span class="val">100%</span></div>
+      <div class="bar-track"><div class="bar-fill" style="width:100%"></div></div>
+      <div class="vitals-row"><span>Left Gauntlet</span><span class="val" style="color:var(--amber)">88%</span></div>
+      <div class="bar-track"><div class="bar-fill" style="width:88%; background:var(--amber)"></div></div>
+      <div class="vitals-row"><span>Right Leg Actuator</span><span class="val">95%</span></div>
+      <div class="bar-track"><div class="bar-fill" style="width:95%"></div></div>
     </div>
 
-    <div class="panel">
-      <div class="label">Emergency Protocols</div>
-      <button class="danger" onclick="triggerLockdown()">🚨 LOCKDOWN PERIMETER</button>
+    <div class="panel" style="flex:1;">
+      <div class="label">Weapon Charge & Ammo</div>
+      <div class="weap-item"><span><span class="dot"></span>Palm Repulsors</span><span style="color:var(--cyan)">100%</span></div>
+      <div class="weap-item armed"><span><span class="dot"></span>Micro-Missiles</span><span>8 / 8</span></div>
+      <div class="weap-item"><span><span class="dot"></span>Unibeam Core</span><span style="color:var(--amber)">CHARGING</span></div>
     </div>
   </div>
 
-  <!-- BOTTOM CONSOLE -->
+  <!-- BOTTOM CONSOLE: Jarvis Voice Interface, Vision Toggles & AI Command Terminal -->
   <div class="panel console">
     <div class="log" id="log">
-      <div class="line"><span class="t">[System]</span>J.A.R.V.I.S. neural network linked successfully, Boss. ☕</div>
+      <div class="line"><span class="t">[00:00:01]</span>Welcome back, sir. All 12 primary sub-systems are fully operational. ☕</div>
     </div>
 
     <div class="chat-box">
-      <div class="label">J.A.R.V.I.S. Command Terminal</div>
+      <div class="label">JARVIS Voice & Command Interface</div>
       <div class="chat-input-row">
-        <input type="text" id="userInput" placeholder="Ask Jarvis anything..." onkeydown="if(event.key==='Enter') sendJarvisQuery()">
+        <input type="text" id="userInput" placeholder="Command Jarvis or search web..." onkeydown="if(event.key==='Enter') sendJarvisQuery()">
         <button onclick="sendJarvisQuery()">Transmit</button>
+      </div>
+      <div style="display:flex; gap:4px; margin-top:4px;">
+        <button onclick="toggleVisionMode('thermal')">Toggle Thermal</button>
+        <button onclick="toggleVisionMode('xray')">Toggle X-Ray</button>
       </div>
     </div>
 
     <div class="chat-box">
-      <div class="label">Voice Matrix Synthesis</div>
-      <div style="font-size:10px; color:var(--cyan); margin-top:4px;">Status: <span style="color:#fff">Refined British English Voice Active</span></div>
-      <button onclick="testVoice()" style="margin-top:4px;">Test Audio Output</button>
+      <div class="label">Combat Alert & Diagnostics</div>
+      <div style="font-size:10px; color:var(--cyan); margin-top:2px;">
+        Status: <span style="color:var(--amber)">Evasion protocols primed</span>
+      </div>
+      <button class="danger" onclick="triggerLockdown()" style="margin-top:4px;">🚨 EMERGENCY LOCKDOWN</button>
     </div>
   </div>
 
@@ -344,12 +398,6 @@ if ('speechSynthesis' in window) {
   window.speechSynthesis.onvoiceschanged = () => { window.speechSynthesis.getVoices(); };
 }
 
-function testVoice() {
-  const greeting = "Good day, Boss. All primary and secondary systems are operating at peak efficiency. How may I assist you?";
-  addLog("J.A.R.V.I.S.", greeting);
-  speakJarvis(greeting);
-}
-
 /* ---------- CLOCK & TELEMETRY ---------- */
 function tickClock(){
   const d = new Date();
@@ -368,17 +416,21 @@ function addLog(sender, msg){
   logEl.scrollTop = logEl.scrollHeight;
 }
 
-/* ---------- CUSTOM MODULE INJECTION ---------- */
-function addCustomModule() {
-  const name = document.getElementById('modName').value.trim();
-  if(!name) return;
-  const container = document.getElementById('customModulesContainer');
-  const item = document.createElement('div');
-  item.className = 'module-item';
-  item.innerHTML = `<span>${name}</span><span style="color:var(--amber)">ONLINE</span>`;
-  container.appendChild(item);
-  document.getElementById('modName').value = '';
-  addLog("System", `Custom module '${name}' deployed successfully.`);
+/* ---------- VISION MODE TOGGLE ---------- */
+let currentVision = 'normal';
+function toggleVisionMode(mode) {
+  const overlay = document.getElementById('visionMode');
+  overlay.className = 'vision-overlay';
+  if(currentVision === mode) {
+    currentVision = 'normal';
+    addLog("JARVIS", "Returning to standard optical view.");
+    speakJarvis("Returning to standard optical view.");
+  } else {
+    currentVision = mode;
+    overlay.classList.add(`mode-${mode}`);
+    addLog("JARVIS", `Engaging ${mode} spectral analysis mode.`);
+    speakJarvis(`Engaging ${mode} vision mode, sir.`);
+  }
 }
 
 /* ---------- BACKEND API CHAT INTEGRATION ---------- */
@@ -400,22 +452,22 @@ async function sendJarvisQuery() {
     addLog("J.A.R.V.I.S.", data.response);
     speakJarvis(data.response);
   } catch(err) {
-    const fallback = "I am currently unable to reach the neural core network, Sir. ☕";
+    const fallback = "Network uplink unstable, Sir, but suit combat heuristics remain online. ☕";
     addLog("J.A.R.V.I.S.", fallback);
     speakJarvis(fallback);
   }
 }
 
 async function triggerLockdown() {
-  if(confirm("Engage emergency group lockdown protocol?")) {
+  if(confirm("Engage emergency suit lockdown protocol?")) {
     const res = await fetch('/api/lockdown', {method: 'POST'});
     const data = await res.json();
     addLog("Security", data.status);
-    speakJarvis("Perimeter lockdown initiated. All unauthorized communications have been frozen.");
+    speakJarvis("Emergency lockdown engaged. All weapon panels sealed.");
   }
 }
 
-/* ---------- RADAR CANVAS ANIMATION ---------- */
+/* ---------- SMOOTH RADAR ANIMATION ---------- */
 const radar = document.getElementById('radarCanvas');
 const rctx = radar.getContext('2d');
 function sizeCanvas(cv){
@@ -426,7 +478,7 @@ function sizeCanvas(cv){
 }
 sizeCanvas(radar);
 let radarAngle = 0;
-const blips = [{a: 1.2, r: 0.5}, {a: 3.4, r: 0.75}];
+const blips = [{a: 1.2, r: 0.5}, {a: 3.4, r: 0.75}, {a: 5.1, r: 0.3}];
 function drawRadar(){
   const w = radar.clientWidth, h = radar.clientHeight;
   const cx = w/2, cy = h/2, R = Math.min(w,h)/2 - 4;
@@ -437,18 +489,27 @@ function drawRadar(){
   }
   rctx.beginPath(); rctx.moveTo(cx-R,cy); rctx.lineTo(cx+R,cy); rctx.stroke();
 
+  // Radar Sweep Line
+  rctx.save();
+  rctx.strokeStyle = 'var(--cyan)';
+  rctx.lineWidth = 1.5;
+  rctx.beginPath();
+  rctx.moveTo(cx, cy);
+  rctx.lineTo(cx + Math.cos(radarAngle)*R, cy + Math.sin(radarAngle)*R);
+  rctx.stroke();
+  rctx.restore();
+
   blips.forEach(b=>{
-    b.a += 0.02;
     const bx = cx + Math.cos(b.a)*R*b.r;
     const by = cy + Math.sin(b.a)*R*b.r;
-    rctx.beginPath(); rctx.fillStyle = '#5fe3ff'; rctx.arc(bx,by,2,0,Math.PI*2); rctx.fill();
+    rctx.beginPath(); rctx.fillStyle = '#ff4433'; rctx.arc(bx,by,2.5,0,Math.PI*2); rctx.fill();
   });
-  radarAngle += 0.03;
+  radarAngle += 0.04;
   requestAnimationFrame(drawRadar);
 }
 drawRadar();
 
-/* ---------- REACTOR CANVAS ANIMATION ---------- */
+/* ---------- SMOOTH ARC REACTOR CANVAS ANIMATION ---------- */
 const reactor = document.getElementById('reactorCanvas');
 const ctx = reactor.getContext('2d');
 function fitReactor(){
@@ -462,25 +523,25 @@ function drawReactor(){
   const w = reactor.clientWidth, h = reactor.clientHeight;
   const cx = w/2, cy = h/2;
   ctx.clearRect(0,0,w,h);
-  const pulse = 1 + Math.sin(t0*0.05)*0.05;
+  const pulse = 1 + Math.sin(t0*0.04)*0.04;
 
-  for(let i=0;i<2;i++){
+  for(let i=0;i<3;i++){
     ctx.save();
     ctx.translate(cx,cy);
-    ctx.rotate(t0*0.005*(i===0?1:-1));
+    ctx.rotate(t0*0.008*(i%2===0?1:-1) + i);
     ctx.beginPath();
-    const rad = (50 + i*20) * pulse;
+    const rad = (55 + i*18) * pulse;
     ctx.setLineDash([rad*0.3, rad*0.2]);
     ctx.lineWidth = 1.5;
-    ctx.strokeStyle = 'rgba(95,227,255,0.5)';
+    ctx.strokeStyle = `rgba(95,227,255,${0.6 - i*0.15})`;
     ctx.arc(0,0,rad,0,Math.PI*2);
     ctx.stroke();
     ctx.restore();
   }
 
   const g = ctx.createRadialGradient(cx,cy,2,cx,cy,45*pulse);
-  g.addColorStop(0,'rgba(255,255,255,0.9)');
-  g.addColorStop(0.4,'rgba(95,227,255,0.8)');
+  g.addColorStop(0,'rgba(255,255,255,0.95)');
+  g.addColorStop(0.4,'rgba(95,227,255,0.85)');
   g.addColorStop(1,'rgba(95,227,255,0)');
   ctx.fillStyle = g;
   ctx.beginPath(); ctx.arc(cx,cy,45*pulse,0,Math.PI*2); ctx.fill();
@@ -489,6 +550,14 @@ function drawReactor(){
   requestAnimationFrame(drawReactor);
 }
 drawReactor();
+
+/* Dynamic telemetry fluctuation */
+setInterval(() => {
+  document.getElementById('hdg').textContent = Math.floor(45 + Math.random() * 5);
+  document.getElementById('gforce').textContent = (1.0 + Math.random() * 0.4).toFixed(1) + 'G';
+  document.getElementById('hr').textContent = Math.floor(72 + Math.random() * 6) + ' bpm';
+  document.getElementById('reactorOut').textContent = (2.7 + Math.random() * 0.2).toFixed(1) + ' GW';
+}, 2000);
 </script>
 
 </body>
@@ -528,5 +597,5 @@ if __name__ == '__main__':
     app_bot = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app_bot.add_handler(CommandHandler("help", lambda u, c: u.message.reply_text("Mark VII OS Online. ☕")))
     app_bot.add_handler(MessageHandler(filters.TEXT, handle_chat_and_media))
-    print("⚡ STARK MARK VII SUIT INTERFACE ACTIVE.")
+    print("⚡ STARK MARK VII GOD-MODE SUIT INTERFACE ACTIVE.")
     app_bot.run_polling()
