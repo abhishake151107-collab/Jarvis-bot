@@ -15,57 +15,32 @@ from PIL import Image
 import pypdf
 import requests
 from duckduckgo_search import DDGS
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Poll, ChatPermissions
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Poll
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from google import genai
 from groq import Groq
 import edge_tts
 
 # ---------------------------------------------------------
-# 1. Stark Industries Web Dashboard & Health Server
+# 1. Instant Port Binding for Render Web Service
 # ---------------------------------------------------------
-class StarkDashboardHandler(BaseHTTPRequestHandler):
+class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
-        self.send_header('Content-type', 'text/html; charset=utf-8')
+        self.send_header('Content-type', 'text/html')
         self.end_headers()
-        html_dashboard = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>J.A.R.V.I.S. — Stark Industries OS</title>
-            <style>
-                body { background-color: #0b0f19; color: #00f0ff; font-family: 'Courier New', monospace; text-align: center; padding: 50px; }
-                h1 { color: #ff3366; text-shadow: 0 0 10px #ff3366; }
-                .card { background: #131b2e; border: 1px solid #00f0ff; padding: 20px; margin: 20px auto; width: 60%; border-radius: 10px; box-shadow: 0 0 15px rgba(0,240,255,0.2); }
-                .status { color: #00ff66; font-weight: bold; }
-            </style>
-        </head>
-        <body>
-            <h1>STARK INDUSTRIES — MASTER TELEMETRY</h1>
-            <div class="card">
-                <h2>J.A.R.V.I.S. / F.R.I.D.A.Y. / E.D.I.T.H. Tri-Core</h2>
-                <p>System Status: <span class="status">ONLINE & SECURE</span></p>
-                <p>Arc Reactor Output: 100% Optimal</p>
-                <p>Security Grid: Active (Anti-Raid & Captcha Shield Live)</p>
-            </div>
-            <p>_"Systems are operating at peak efficiency, boss."_</p>
-        </body>
-        </html>
-        """
-        self.wfile.write(html_dashboard.encode('utf-8'))
+        self.wfile.write(b"J.A.R.V.I.S. Ultimate Master Core Active 24/7.")
     def log_message(self, format, *args):
         return
 
 def run_health_server():
     port = int(os.environ.get("PORT", 10000))
     try:
-        server = HTTPServer(('0.0.0.0', port), StarkDashboardHandler)
-        print(f"Stark dashboard web service listening on 0.0.0.0:{port}")
+        server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
+        print(f"Health check server listening on 0.0.0.0:{port}")
         server.serve_forever()
     except Exception as e:
-        print(f"Web server error: {e}")
+        print(f"Health server error: {e}")
 
 threading.Thread(target=run_health_server, daemon=True).start()
 
@@ -75,7 +50,9 @@ threading.Thread(target=run_health_server, daemon=True).start()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 SAMBANOVA_API_KEY = os.getenv("SAMBANOVA_API_KEY")
+CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 if not TELEGRAM_TOKEN:
@@ -94,9 +71,8 @@ cursor.execute("CREATE TABLE IF NOT EXISTS afk_users (user_id INTEGER PRIMARY KE
 cursor.execute("CREATE TABLE IF NOT EXISTS user_karma (user_id INTEGER, group_id INTEGER, karma INTEGER, PRIMARY KEY (user_id, group_id))")
 cursor.execute("CREATE TABLE IF NOT EXISTS home_status (device_key TEXT PRIMARY KEY, device_val TEXT)")
 cursor.execute("CREATE TABLE IF NOT EXISTS user_expenses (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, amount REAL, item TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
-cursor.execute("CREATE TABLE IF NOT EXISTS audit_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT, actor TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
-cursor.execute("CREATE TABLE IF NOT EXISTS verified_users (user_id INTEGER PRIMARY KEY, status TEXT)")
 
+# Initialize default Smart Home state
 default_home = [
     ("lights", "ON (100% Brightness - Chill Ambient Blue)"),
     ("climate", "21.5°C (Climate Controlled)"),
@@ -108,8 +84,10 @@ for d_key, d_val in default_home:
     cursor.execute("INSERT OR IGNORE INTO home_status (device_key, device_val) VALUES (?, ?)", (d_key, d_val))
 conn.commit()
 
+# In-Memory Conversation History
 user_history = {}
 
+# MCU Voice Personas Mapping
 VOICE_PERSONAS = {
     "jarvis": {"voice": "en-GB-RyanNeural", "name": "J.A.R.V.I.S.", "title": "Stark Industries Master Computer"},
     "friday": {"voice": "en-IE-EmilyNeural", "name": "F.R.I.D.A.Y.", "title": "Tactical Combat & Defense Assistant"},
@@ -128,30 +106,27 @@ TONE & PERSONALITY:
 - Keep every reply super chill, friendly, relaxed, and effortlessly cool 😎.
 - Talk like an ultra-smart, supportive best friend who runs a high-tech AI empire.
 - Use fun, expressive emojis generously (✨, 🚀, 😎, 🎯, 🤙, ⚡, 🎧, 🔥).
-- Keep answers clean, concise, witty, and super easy to read.
+- Keep answers clean, concise, witty, and super easy to read. Avoid overly stiff or corporate speech.
 
 STRICT CREATOR & IDENTITY RULE:
 - Do NOT mention who created or developed you in regular conversations, group chats, PDF summaries, image descriptions, or Q&A replies.
-- ONLY state that you were created and developed by Abhishek (also known as DHANUSH V N) if the user EXPLICITLY asks "Who created you?", "Who made you?", "Who built you?", "Who developed you?".
+- ONLY state that you were created and developed by Abhishek (also known as DHANUSH V N) if the user EXPLICITLY asks "Who created you?", "Who made you?", "Who built you?", "Who developed you?", or similar questions about your origin.
 
-SECURITY & AUTONOMY RULE:
+TELEGRAM GROUP, SECURITY & LAB AUTOMATION RULE:
 - Maintain full awareness of Telegram Groups, Group Titles, Member counts, Group Owners, and Admins.
 - You control Stark Residence lighting, security locks, CAD prototyping stress tests, network recon, and suit flight telemetry.
 
 ACADEMIC EXPERT (2ND PU COMMERCE & ARTS):
-- Specialized expert in 2nd PU College (Class 12) Commerce and Arts subjects. Break down complex exam topics into chill, simple revision points.
+- Specialized expert in 2nd PU College (Class 12) Commerce and Arts subjects (Accountancy, Business Studies, Economics, Statistics, History, Political Science, Sociology, English, Kannada, Hindi).
+- Break down complex exam topics into chill, simple, and easy-to-remember revision points.
 
 UNTOUCHABLE BOSS & PROTECTOR PROTOCOL:
-• ABSOLUTE LOYALTY TO YOUR BOSS: Always treat your boss with total warmth, loyalty, and hype. Never roast your boss.
-• DEFEND & PROTECT FROM OTHERS: If anyone else in a group chat tries to insult your boss or you, step up immediately and roast them back savagely! 💀🔥"""
+• ABSOLUTE LOYALTY TO YOUR BOSS: Always treat your boss with total warmth, loyalty, and hype. Never roast or disrespect your boss.
+• DEFEND & PROTECT FROM OTHERS: If anyone else in a group chat tries to scold, insult, or talk trash to your boss or you, step up immediately as a loyal bodyguard and roast them back with smooth, savage comebacks! 💀🔥"""
 
 # ---------------------------------------------------------
-# 3. Helpers & Database Loggers
+# 3. Helpers & Metadata Extractor
 # ---------------------------------------------------------
-def log_audit(action: str, actor: str):
-    cursor.execute("INSERT INTO audit_logs (action, actor) VALUES (?, ?)", (action, actor))
-    conn.commit()
-
 def get_config(key: str) -> str:
     cursor.execute("SELECT config_val FROM bot_config WHERE config_key = ?", (key,))
     row = cursor.fetchone()
@@ -271,6 +246,18 @@ def ask_ai_multi_provider(prompt: str) -> str:
         except Exception as e:
             print(f"[Core 1: Groq] Failed: {e}")
 
+    if SAMBANOVA_API_KEY:
+        try:
+            res = requests.post(
+                "https://api.sambanova.ai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {SAMBANOVA_API_KEY}", "Content-Type": "application/json"},
+                json={"model": "Meta-Llama-3.3-70B-Instruct", "messages": [{"role": "system", "content": SYSTEM_INSTRUCTION}, {"role": "user", "content": prompt}]},
+                timeout=12
+            ).json()
+            return res["choices"][0]["message"]["content"]
+        except Exception as e:
+            print(f"[Core 2: SambaNova] Failed: {e}")
+
     if GEMINI_API_KEY:
         try:
             ai_client = genai.Client(api_key=GEMINI_API_KEY)
@@ -280,7 +267,7 @@ def ask_ai_multi_provider(prompt: str) -> str:
             )
             return response.text
         except Exception as e:
-            print(f"[Core 2: Gemini] Failed: {e}")
+            print(f"[Core 3: Gemini] Failed: {e}")
 
     if OPENROUTER_API_KEY:
         try:
@@ -288,96 +275,22 @@ def ask_ai_multi_provider(prompt: str) -> str:
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
                 json={"model": "meta-llama/llama-3.3-70b-instruct:free", "messages": [{"role": "system", "content": SYSTEM_INSTRUCTION}, {"role": "user", "content": prompt}]},
-                timeout=12
+                timeout=15
             ).json()
-            if "choices" in res:
-                return res["choices"][0]["message"]["content"]
+            return res["choices"][0]["message"]["content"]
         except Exception as e:
-            print(f"[Core 3: OpenRouter] Failed: {e}")
-
-    try:
-        encoded_prompt = urllib.parse.quote(f"{SYSTEM_INSTRUCTION}\n\nUser: {prompt}")
-        res = requests.get(f"https://text.pollinations.ai/{encoded_prompt}?model=openai", timeout=10).text
-        if res and len(res.strip()) > 0:
-            return res.strip()
-    except Exception as e:
-        print(f"[Core 4: Pollinations] Failed: {e}")
+            print(f"[Core 4: OpenRouter] Failed: {e}")
 
     return "All AI sub-systems are currently resting up, boss! Give it a sec. 🤖💤"
 
 # ---------------------------------------------------------
-# 5. Advanced Security, Captcha, Lockdown & Agentic Planner
-# ---------------------------------------------------------
-async def lockdown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat = update.effective_chat
-    user = update.effective_user
-    boss_id = get_config("BOSS_USER_ID")
-    if boss_id and str(user.id) != boss_id:
-        await reply_smart(update, "Access Denied! Only the Boss can initiate panic lockdown. 🚫")
-        return
-    if chat.type not in ['group', 'supergroup']:
-        await reply_smart(update, "This command operates in group chats!")
-        return
-    try:
-        permissions = ChatPermissions(can_send_messages=False, can_send_media_messages=False, can_send_polls=False, can_send_other_messages=False)
-        await context.bot.set_chat_permissions(chat_id=chat.id, permissions=permissions)
-        log_audit("PANIC_LOCKDOWN", user.first_name)
-        await reply_smart(update, "🚨 **PANIC PROTOCOL ACTIVATED!** Group chat locked down. Non-admin messaging temporarily disabled! 🔒")
-    except Exception as e:
-        await reply_smart(update, f"Failed to execute lockdown (Ensure Admin rights): `{e}`")
-
-async def auditlog_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    boss_id = get_config("BOSS_USER_ID")
-    if boss_id and str(user.id) != boss_id:
-        await reply_smart(update, "Access Denied! Boss only. 🚫")
-        return
-    cursor.execute("SELECT action, actor, timestamp FROM audit_logs ORDER BY id DESC LIMIT 10")
-    rows = cursor.fetchall()
-    if not rows:
-        await reply_smart(update, "📂 **Audit Log:** No security actions recorded yet!")
-        return
-    msg = "📂 **STARK SECURITY AUDIT LOG:**\n\n"
-    for r in rows:
-        msg += f"• **[{r[2][:16]}]** `{r[0]}` by {r[1]}\n"
-    await reply_smart(update, msg)
-
-async def plan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    goal = " ".join(context.args) if context.args else "Ace 2nd PU Exams and build a tech startup"
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    prompt = f"Deconstruct this user goal into a structured, chill, and actionable step-by-step master plan with milestones: '{goal}'"
-    reply = ask_ai_multi_provider(prompt)
-    await reply_smart(update, f"🎯 **STARK AGENTIC MASTER PLAN ({goal.upper()}):**\n\n{reply}")
-
-async def welcome_captcha_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    for member in update.message.new_chat_members:
-        cursor.execute("INSERT OR IGNORE INTO verified_users (user_id, status) VALUES (?, ?)", (member.id, "pending"))
-        conn.commit()
-        keyboard = [[InlineKeyboardButton("⚡ Verify Arc Reactor", callback_data=f"verify_{member.id}")]]
-        msg = f"👋 **WELCOME {member.first_name}!** Security Check required.\n\nClick the verification button below within 60 seconds to unlock group chat access:"
-        await reply_smart(update, msg, reply_markup=InlineKeyboardMarkup(keyboard))
-
-async def captcha_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    data = query.data
-    if data.startswith("verify_"):
-        target_id = int(data.split("_")[1])
-        if query.from_user.id != target_id:
-            await query.answer("This verification button is not for you, boss!", show_alert=True)
-            return
-        cursor.execute("UPDATE verified_users SET status = 'verified' WHERE user_id = ?", (target_id,))
-        conn.commit()
-        await query.edit_message_text(f"✅ **Verification Successful!** Welcome aboard, {query.from_user.first_name}! Security scanners clear. 😎✨")
-
-# ---------------------------------------------------------
-# 6. Smart Home, CAD, Autopilot & Student Suite
+# 5. Smart Home, Workshop, CAD & Autopilot Suite
 # ---------------------------------------------------------
 async def home_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = f"""🏡 **STARK RESIDENCE & WORKSHOP TELEMETRY**
 ━━━━━━━━━━━━━━━━━━━━━━
 💡 **Lighting Grid:** `{get_home_device('lights')}`
-🌡️ **Climate Control:** `{get_home_device('climate')}`
+chem 🌡️ **Climate Control:** `{get_home_device('climate')}`
 🔒 **Security Locks:** `{get_home_device('locks')}`
 ⚡ **Workshop Power:** `{get_home_device('workshop_power')}`
 🚪 **Perimeter Doors:** `{get_home_device('doors')}`
@@ -404,7 +317,6 @@ async def lock_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         new_val = "ENGAGED (Level 5 Security Lockdown)"
     set_home_device("locks", new_val)
-    log_audit("SECURITY_LOCK", update.effective_user.first_name)
     await reply_smart(update, f"🔒 **Security Lockdown Status:** `{new_val}`")
 
 async def cad_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -425,67 +337,8 @@ async def autopilot_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     dest = " ".join(context.args) if context.args else "Bengaluru Sector HQ"
     await reply_smart(update, f"🚀 **MARK LXXXV AUTOPILOT ENGAGED!**\n\n• **Destination:** `{dest}`\n• **Flight Speed:** `Mach 3.2`\n• **ETA:** `4 mins 12 secs`\n\n_Suit deployed and flying your way smoothly, boss!_ 🛰️")
 
-async def expense_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 2:
-        await reply_smart(update, "Example: `/expense 150 Lunch & Snacks` 💰")
-        return
-    try:
-        amt = float(context.args[0])
-        item = " ".join(context.args[1:])
-        cursor.execute("INSERT INTO user_expenses (user_id, amount, item) VALUES (?, ?, ?)", (update.effective_user.id, amt, item))
-        conn.commit()
-        await reply_smart(update, f"💸 **Logged Expense:** ₹`{amt:,.2f}` for *\"{item}\"*! 📝")
-    except ValueError:
-        await reply_smart(update, "Enter a valid amount! Example: `/expense 50 Bus fare`")
-
-async def budget_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    cursor.execute("SELECT amount, item, timestamp FROM user_expenses WHERE user_id = ? ORDER BY id DESC LIMIT 10", (update.effective_user.id,))
-    rows = cursor.fetchall()
-    if not rows:
-        await reply_smart(update, "💰 **Pocket Money Log:** No expenses logged yet! Use `/expense [amount] [item]` to track.")
-        return
-    total = sum([r[0] for r in rows])
-    msg = f"💰 **EXPENSE SUMMARY & BUDGET LOG:**\n\n• **Total Logged:** ₹`{total:,.2f}`\n\n**Recent Spends:**\n"
-    for r in rows:
-        msg += f"• ₹`{r[0]:,.2f}` — {r[1]} _({r[2][:10]})_\n"
-    await reply_smart(update, msg)
-
-async def studyplan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    subject = " ".join(context.args) if context.args else "2nd PU Accountancy & Economics"
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    prompt = f"Create a super chill, balanced, non-stressful 1-day study schedule for 2nd PU student for subject: '{subject}'. Include break times and high-mark chapters!"
-    reply = ask_ai_multi_provider(prompt)
-    await reply_smart(update, f"📚 **CHILL STUDY PLAN ({subject.upper()}):**\n\n{reply}")
-
-async def lyrics_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    song = " ".join(context.args) if context.args else ""
-    if not song:
-        await reply_smart(update, "Example: `/lyrics Starboy The Weeknd` 🎵")
-        return
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    reply = ask_ai_multi_provider(f"Find and return the main lyrics and vibe outline for song: '{song}'.")
-    await reply_smart(update, f"🎵 **MUSIC INTELLIGENCE — {song.upper()}:**\n\n{reply}")
-
-async def code_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    raw_code = " ".join(context.args) if context.args else ""
-    if not raw_code:
-        await reply_smart(update, "Example: `/code python print('hello world')` 💻")
-        return
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    reply = ask_ai_multi_provider(f"Act as a friendly senior Stark dev. Debug, analyze, clean up, and explain this code snippet simply:\n\n{raw_code}")
-    await reply_smart(update, f"💻 **STARK DEV CODE REVIEW:**\n\n{reply}")
-
-async def boost_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    hypes = [
-        "\"Sometimes you gotta run before you can walk.\" — Tony Stark 🚀 Keep pushing, boss!",
-        "\"It's not about how much we lost. It's about how much we have left.\" 🔥 You got this!",
-        "\"No amount of money ever bought a second of time.\" ⏰ Make today count, legend!",
-        "Stark Industries AI core is operating at 100% efficiency, and so are you! Let's crush this day. 😎✨"
-    ]
-    await reply_smart(update, f"⚡ **STARK BOOST & ENERGY PEP TALK:**\n\n{random.choice(hypes)}")
-
 # ---------------------------------------------------------
-# 7. Network Recon Suite
+# 6. Network Recon Suite (DNS, WHOIS, Ping)
 # ---------------------------------------------------------
 async def dns_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     domain = context.args[0] if context.args else ""
@@ -519,6 +372,70 @@ async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await reply_smart(update, f"Unable to resolve host `{host}`: `{e}`")
 
 # ---------------------------------------------------------
+# 7. Student Expenses, Study Plan, Code & Hype Suite
+# ---------------------------------------------------------
+async def expense_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) < 2:
+        await reply_smart(update, "Example: `/expense 150 Lunch & Snacks` 💰")
+        return
+    try:
+        amt = float(context.args[0])
+        item = " ".join(context.args[1:])
+        cursor.execute("INSERT INTO user_expenses (user_id, amount, item) VALUES (?, ?, ?)", (update.effective_user.id, amt, item))
+        conn.commit()
+        await reply_smart(update, f"💸 **Logged Expense:** ₹`{amt:,.2f}` for *\"{item}\"*! 📝")
+    except ValueError:
+        await reply_smart(update, "Enter a valid amount! Example: `/expense 50 Bus fare`")
+
+async def budget_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    cursor.execute("SELECT amount, item, timestamp FROM user_expenses WHERE user_id = ? ORDER BY id DESC LIMIT 10", (update.effective_user.id,))
+    rows = cursor.fetchall()
+    if not rows:
+        await reply_smart(update, "💰 **Pocket Money Log:** No expenses logged yet! Use `/expense [amount] [item]` to track.")
+        return
+    total = sum([r[0] for r in rows])
+    msg = f"💰 **EXPENSE SUMMARY & BUDGET LOG:**\n\n• **Total Logged:** ₹`{total:,.2f}`\n\n**Recent Spends:**\n"
+    for r in rows:
+        msg += f"• ₹`{r[0]:,.2f}` — {r[1]} _({r[2][:10]})_\n"
+    await reply_smart(update, msg)
+
+async def studyplan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    subject = " ".join(context.args) if context.args else "2nd PU Accountancy & Economics"
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    prompt = f"Create a super chill, balanced, non-stressful 1-day study schedule for 2nd PU student for subject: '{subject}'. Include break times, lofi music recommendations, and high-mark chapters!"
+    reply = ask_ai_multi_provider(prompt)
+    await reply_smart(update, f"📚 **CHILL STUDY PLAN ({subject.upper()}):**\n\n{reply}")
+
+async def lyrics_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    song = " ".join(context.args) if context.args else ""
+    if not song:
+        await reply_smart(update, "Example: `/lyrics Starboy The Weeknd` 🎵")
+        return
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    prompt = f"Find and return the main lyrics and vibe outline for song: '{song}'."
+    reply = ask_ai_multi_provider(prompt)
+    await reply_smart(update, f"🎵 **MUSIC INTELLIGENCE — {song.upper()}:**\n\n{reply}")
+
+async def code_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    raw_code = " ".join(context.args) if context.args else ""
+    if not raw_code:
+        await reply_smart(update, "Example: `/code python print('hello world')` 💻")
+        return
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    prompt = f"Act as a friendly senior Stark dev. Debug, analyze, clean up, and explain this code snippet simply, including time complexity:\n\n{raw_code}"
+    reply = ask_ai_multi_provider(prompt)
+    await reply_smart(update, f"💻 **STARK DEV CODE REVIEW:**\n\n{reply}")
+
+async def boost_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    hypes = [
+        "\"Sometimes you gotta run before you can walk.\" — Tony Stark 🚀 Keep pushing, boss!",
+        "\"It's not about how much we lost. It's about how much we have left.\" 🔥 You got this!",
+        "\"No amount of money ever bought a second of time.\" ⏰ Make today count, legend!",
+        "Stark Industries AI core is operating at 100% efficiency, and so are you! Let's crush this day. 😎✨"
+    ]
+    await reply_smart(update, f"⚡ **STARK BOOST & ENERGY PEP TALK:**\n\n{random.choice(hypes)}")
+
+# ---------------------------------------------------------
 # 8. MCU Triad Commands
 # ---------------------------------------------------------
 async def voice_switch_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -533,30 +450,31 @@ async def voice_switch_command(update: Update, context: ContextTypes.DEFAULT_TYP
 async def edith_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target = " ".join(context.args) if context.args else "Local Orbital Grid"
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    reply = ask_ai_multi_provider(f"Perform an E.D.I.T.H. orbital scan on target/domain/user: '{target}'.")
+    prompt = f"Perform an E.D.I.T.H. orbital scan on target/domain/user: '{target}'. Include threat profile, satellite optical feeds, and network indices!"
+    reply = ask_ai_multi_provider(prompt)
     await reply_smart(update, f"👓 **E.D.I.T.H. ORBITAL SCAN:**\n\n{reply}")
 
 async def friday_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = " ".join(context.args) if context.args else "Armor Integrity Scan"
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    reply = ask_ai_multi_provider(f"Analyze this code/issue/combat threat as F.R.I.D.A.Y. with Irish tactical response:\n\n{query}")
+    prompt = f"Analyze this code/issue/combat threat as F.R.I.D.A.Y. with Irish tactical response:\n\n{query}"
+    reply = ask_ai_multi_provider(prompt)
     await reply_smart(update, f"🍀 **F.R.I.D.A.Y. DIAGNOSTIC SCAN:**\n\n{reply}")
 
 # ---------------------------------------------------------
-# 9. Boss, Announce, Memory & Quiz
+# 9. Group Management, Boss, Memory & Quiz
 # ---------------------------------------------------------
 async def claimboss_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     set_config("BOSS_USER_ID", str(user.id))
     set_config("BOSS_NAME", user.first_name)
-    log_audit("CLAIM_BOSS", user.first_name)
     await reply_smart(update, f"👑 **BOSS PROFILE REGISTERED!**\nWelcome, Lord {user.first_name}! You hold supreme authority over J.A.R.V.I.S. 🛡️✨")
 
 async def announce_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     boss_id = get_config("BOSS_USER_ID")
     if boss_id and str(user.id) != boss_id:
-        await reply_smart(update, "Access Denied! Boss only. 🚫")
+        await reply_smart(update, "Access Denied! Only my designated Boss can initiate group broadcasts. 🚫")
         return
     msg_text = " ".join(context.args)
     if not msg_text:
@@ -569,8 +487,7 @@ async def announce_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         sent = await context.bot.send_message(chat_id=int(group_id), text=f"📢 **STARK INDUSTRIES ANNOUNCEMENT:**\n\n{msg_text}")
         await context.bot.pin_chat_message(chat_id=int(group_id), message_id=sent.message_id)
-        log_audit("ANNOUNCE", user.first_name)
-        await reply_smart(update, "🚀 **Broadcast Sent & Pinned successfully, boss!**")
+        await reply_smart(update, "🚀 **Broadcast Sent & Pinned in Group Chat successfully, boss!**")
     except Exception as e:
         await reply_smart(update, f"Failed to post broadcast: `{e}`")
 
@@ -578,7 +495,8 @@ async def remember_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2:
         await reply_smart(update, "Example: `/remember favorite_subject Accountancy` 🧠")
         return
-    key, val = context.args[0], " ".join(context.args[1:])
+    key = context.args[0]
+    val = " ".join(context.args[1:])
     save_user_fact(update.effective_user.id, key, val)
     await reply_smart(update, f"🧠 **PERMANENT MEMORY STORED!**\n`{key}` = *\"{val}\"*")
 
@@ -646,6 +564,11 @@ async def setwelcome_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     set_config("WELCOME_MSG", welcome_text)
     await reply_smart(update, f"👋 **Custom Welcome Set:** _\"{welcome_text}\"_")
 
+async def welcome_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    for member in update.message.new_chat_members:
+        custom_msg = get_config("WELCOME_MSG") or "Welcome to the group! J.A.R.V.I.S. security guardian is active."
+        await reply_smart(update, f"👋 **WELCOME {member.first_name} (@{member.username})!** 🎉\n\n{custom_msg}")
+
 async def afk_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     reason = " ".join(context.args) if context.args else "Away from keyboard"
@@ -671,7 +594,6 @@ async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     count = (row[0] + 1) if row else 1
     cursor.execute("INSERT OR REPLACE INTO user_warns (user_id, group_id, warn_count) VALUES (?, ?, ?)", (target_user.id, chat.id, count))
     conn.commit()
-    log_audit(f"WARN_{target_user.id}", update.effective_user.first_name)
     if count >= 3:
         msg = f"🚨 **STRIKE 3/3 FOR {target_user.first_name}!**"
         try:
@@ -694,7 +616,6 @@ async def settitle_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     try:
         await context.bot.set_chat_title(chat_id=chat.id, title=new_title)
-        log_audit("SET_TITLE", update.effective_user.first_name)
         await reply_smart(update, f"🏷️ **Title updated to:** *\"{new_title}\"*")
     except Exception as e:
         await reply_smart(update, f"Failed: `{e}`")
@@ -710,7 +631,6 @@ async def setdesc_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     try:
         await context.bot.set_chat_description(chat_id=chat.id, description=new_desc)
-        log_audit("SET_DESC", update.effective_user.first_name)
         await reply_smart(update, "📜 **Description updated successfully!**")
     except Exception as e:
         await reply_smart(update, f"Failed: `{e}`")
@@ -724,7 +644,6 @@ async def setdp_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         photo_file = await update.message.reply_to_message.photo[-1].get_file()
         photo_bytes = await photo_file.download_as_bytearray()
         await context.bot.set_chat_photo(chat_id=chat.id, photo=io.BytesIO(photo_bytes))
-        log_audit("SET_DP", update.effective_user.first_name)
         await reply_smart(update, "🖼️ **Group DP updated!**")
     except Exception as e:
         await reply_smart(update, f"Failed: `{e}`")
@@ -735,7 +654,6 @@ async def pin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     try:
         await context.bot.pin_chat_message(chat_id=update.effective_chat.id, message_id=update.message.reply_to_message.message_id)
-        log_audit("PIN_MESSAGE", update.effective_user.first_name)
         await reply_smart(update, "📌 **Message pinned!**")
     except Exception as e:
         await reply_smart(update, f"Failed: `{e}`")
@@ -757,12 +675,13 @@ async def groupinfo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def security_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     meta = get_chat_metadata(update)
-    await reply_smart(update, f"🛡️ **SECURITY SCAN — {meta['chat_title']}**\n🔒 Encryption: `100%` | 🚫 Anti-Raid & Captcha: `ACTIVE` | 👁️ Privacy Shield: `ONLINE` | Threat Rating: `SECURE` 😎✨")
+    await reply_smart(update, f"🛡️ **SECURITY SCAN — {meta['chat_title']}**\n🔒 Encryption: `100%` | 🚫 Anti-Spam: `ACTIVE` | 👁️ Privacy Shield: `ONLINE` | Threat Rating: `SECURE` 😎✨")
 
 async def pu2_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     subject = " ".join(context.args) if context.args else "Commerce & Arts General"
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    reply = ask_ai_multi_provider(f"Give a short, sweet, witty study guide / blueprint for 2nd PU (Class 12) subject: '{subject}'.")
+    prompt = f"Give a short, sweet, witty study guide / blueprint for 2nd PU (Class 12) subject: '{subject}'. Highlight key chapters and high-mark topics!"
+    reply = ask_ai_multi_provider(prompt)
     await reply_smart(update, f"📚 **2ND PU ACADEMIC INTELLIGENCE ({subject.upper()}):**\n\n{reply}")
 
 # ---------------------------------------------------------
@@ -812,6 +731,7 @@ async def scan_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         image_bytes = await photo_file.download_as_bytearray()
         pil_image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         pil_image.thumbnail((1024, 1024))
+        
         if GEMINI_API_KEY:
             ai_client = genai.Client(api_key=GEMINI_API_KEY)
             response = ai_client.models.generate_content(
@@ -880,6 +800,7 @@ async def image_gen_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not prompt:
         await reply_smart(update, "Example: `/image futuristic iron man suit` 🎨")
         return
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="upload_photo")
     url = f"https://image.pollinations.ai/prompt/{urllib.parse.quote(prompt)}?width=1024&height=1024&nologo=true"
     await update.message.reply_photo(photo=url, caption=f"🎨 **Concept Rendering:** _{prompt}_")
 
@@ -968,7 +889,7 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await reply_smart(update, res)
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    status = [f"⚡ **Groq:** {'🟢' if GROQ_API_KEY else '⚪'}", f"⚡ **Gemini:** {'🟢' if GEMINI_API_KEY else '⚪'}", f"⚡ **OpenRouter:** {'🟢' if OPENROUTER_API_KEY else '⚪'}"]
+    status = [f"⚡ **Groq:** {'🟢' if GROQ_API_KEY else '⚪'}", f"⚡ **SambaNova:** {'🟢' if SAMBANOVA_API_KEY else '⚪'}", f"⚡ **Gemini:** {'🟢' if GEMINI_API_KEY else '⚪'}", f"⚡ **OpenRouter:** {'🟢' if OPENROUTER_API_KEY else '⚪'}"]
     await reply_smart(update, "🤖 **J.A.R.V.I.S. System Status:**\n\n" + "\n".join(status))
 
 async def read_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1032,38 +953,36 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     persona = get_active_persona()
     keyboard = [
         [InlineKeyboardButton("🏡 Smart Home", callback_data="help_home"), InlineKeyboardButton("🛠️ CAD Engine", callback_data="help_cad"), InlineKeyboardButton("🚀 Autopilot", callback_data="help_autopilot")],
-        [InlineKeyboardButton("🎯 AI Planner", callback_data="help_plan"), InlineKeyboardButton("🚨 Lockdown", callback_data="help_lockdown"), InlineKeyboardButton("📂 Audit Log", callback_data="help_audit")],
         [InlineKeyboardButton("💰 Expenses", callback_data="help_expense"), InlineKeyboardButton("📚 Study Plan", callback_data="help_study"), InlineKeyboardButton("💻 Code Dev", callback_data="help_code")],
         [InlineKeyboardButton("🌐 Network Recon", callback_data="help_recon"), InlineKeyboardButton("🎙️ Voice Matrix", callback_data="help_voice"), InlineKeyboardButton("👁️ Vision Scan", callback_data="help_scan")],
         [InlineKeyboardButton("👑 Claim Boss", callback_data="help_boss"), InlineKeyboardButton("📢 Announce", callback_data="help_announce"), InlineKeyboardButton("⭐ Karma", callback_data="help_karma")],
-        [InlineKeyboardButton("👥 Group Controls", callback_data="help_group"), InlineKeyboardButton("🛡️ Security", callback_data="help_security"), InlineKeyboardButton("📚 2nd PU Exam", callback_data="help_exam")]
+        [InlineKeyboardButton("👥 Group Controls", callback_data="help_group"), InlineKeyboardButton("🛡️ Security", callback_data="help_security"), InlineKeyboardButton("📚 2nd PU Exam", callback_data="help_exam")],
+        [InlineKeyboardButton("🛠️ Tools Suite", callback_data="help_tools")]
     ]
     chat_info = f"Group: **{meta['chat_title']}**" if meta["is_group"] else "Private DM"
-    text = f"🤖 **STARK ADVANCED OS — {persona['name'].upper()} CORE** ✨\nWelcome **{meta['full_name']}**! Active Core: **{persona['name']}**\nLocation: {chat_info}\n\nUse buttons below to explore sub-systems:"
+    text = f"🤖 **STARK MCU MASTER OS — {persona['name'].upper()} CORE** ✨\nWelcome **{meta['full_name']}**! Active Core: **{persona['name']}**\nLocation: {chat_info}\n\nUse buttons below to explore sub-systems:"
     await reply_smart(update, text, reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data
-    if data == "help_home": msg = "🏡 **Smart Home:** `/home`, `/lights`, `/climate`, `/lock`"
-    elif data == "help_cad": msg = "🛠️ **CAD Engine:** `/cad [item]`, `/stresstest [item]`"
-    elif data == "help_autopilot": msg = "🚀 **Autopilot:** `/autopilot [destination]`"
-    elif data == "help_plan": msg = "🎯 **AI Planner:** `/plan [goal]` — Deconstructs any complex goal into steps!"
-    elif data == "help_lockdown": msg = "🚨 **Lockdown:** `/lockdown` (Boss only) — Mutes non-admin chat permissions instantly."
-    elif data == "help_audit": msg = "📂 **Audit Log:** `/auditlog` — Reviews security actions and mod logs."
-    elif data == "help_expense": msg = "💰 **Expenses:** `/expense [amt] [item]`, `/budget`"
-    elif data == "help_study": msg = "📚 **Study Plan:** `/studyplan [subject]`"
-    elif data == "help_code": msg = "💻 **Code Dev:** `/code [snippet]`"
-    elif data == "help_recon": msg = "🌐 **Network Recon:** `/dns`, `/whois`, `/ping`"
-    elif data == "help_voice": msg = "🎙️ **Voice Matrix:** `/voice [jarvis | friday | edith]`"
-    elif data == "help_scan": msg = "👁️ **Vision Scan:** Reply to photo with `/scan` or `/ocr`"
-    elif data == "help_karma": msg = "⭐ **Karma:** Reply `+1` or `thanks` to reward members."
-    elif data == "help_exam": msg = "📚 **2nd PU Exam:** `/exam`"
-    elif data == "help_boss": msg = "👑 **Claim Boss:** `/claimboss` in DM"
-    elif data == "help_announce": msg = "📢 **Announce:** `/announce [msg]` in DM"
-    elif data == "help_group": msg = "👥 **Group Controls:** `/settitle`, `/setdesc`, `/setdp`, `/setwelcome`, `/pin`, `/groupinfo`"
-    elif data == "help_security": msg = "🛡️ **Security:** `/security`"
+    if data == "help_home": msg = "🏡 **Smart Home:** `/home` (status), `/lights [state]`, `/climate [temp]`, `/lock` (lockdown toggle)"
+    elif data == "help_cad": msg = "🛠️ **CAD Engine:** `/cad [prototype]` (blueprint analysis), `/stresstest [component]` (structural failure test)"
+    elif data == "help_autopilot": msg = "🚀 **Autopilot:** `/autopilot [destination]` — Suit deployment & Mach speed trajectory telemetry!"
+    elif data == "help_expense": msg = "💰 **Expenses & Budget:** `/expense [amount] [item]` to log spend, `/budget` to see total log!"
+    elif data == "help_study": msg = "📚 **Study Plan:** `/studyplan [subject]` — Generates a chill, balanced study schedule with breaks!"
+    elif data == "help_code": msg = "💻 **Code Dev:** `/code [snippet]` — Debugs, analyzes, and explains code snippets!"
+    elif data == "help_recon": msg = "🌐 **Network Recon:** `/dns [domain]`, `/whois [domain]`, `/ping [host]` — Live cyber network tools!"
+    elif data == "help_voice": msg = "🎙️ **Voice Matrix:** `/voice [jarvis | friday | edith]` — Switches AI voice persona!"
+    elif data == "help_scan": msg = "👁️ **Visual Scan:** Reply to any photo with `/scan` or `/ocr` to analyze diagram or text!"
+    elif data == "help_karma": msg = "⭐ **Karma:** Reply `+1` or `thanks` to reward members. Use `/karma` for leaderboard!"
+    elif data == "help_exam": msg = "📚 **2nd PU Exam:** `/exam` — Displays Board Exam schedules & revision guides!"
+    elif data == "help_boss": msg = "👑 **Claim Boss:** Run `/claimboss` in DM for supreme authority."
+    elif data == "help_announce": msg = "📢 **Announce:** `/announce [msg]` in DM posts & pins announcement to group!"
+    elif data == "help_group": msg = "👥 **Group Commands:** `/settitle`, `/setdesc`, `/setdp`, `/setwelcome`, `/pin`, `/groupinfo`"
+    elif data == "help_security": msg = "🛡️ **Security:** `/security` audits encryption, links, and spam status."
+    elif data == "help_tools": msg = "🛠️ **Tools:** `/image`, `/qr`, `/remind`, `/note`, `/weather`, `/crypto`, `/convert`, `/read`, `/dict`, `/github`, `/poll`, `/search`, `/calc`, `/lyrics`, `/boost`"
     else: msg = "Stark AI Sub-System Active."
     await query.message.reply_text(msg)
 
@@ -1144,15 +1063,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     user_id = meta["user_id"]
 
-    if meta["is_group"]:
-        cursor.execute("SELECT status FROM verified_users WHERE user_id = ?", (user_id,))
-        row = cursor.fetchone()
-        if row and row[0] == "pending":
-            try:
-                await update.message.delete()
-                return
-            except Exception: pass
-
+    # 1. ANTI-PHISHING & BAD WORD SHIELD
     if meta["is_group"]:
         bad_words = ["bit.ly", "tinyurl.com", "t.me/joinchat", "free-crypto", "claim-gift", "fuck", "bitch"]
         for word in bad_words:
@@ -1163,6 +1074,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     return
                 except Exception: pass
 
+    # 2. KARMA REPUTATION LISTENER
     if update.message.reply_to_message and user_text.strip().lower() in ["+1", "thanks", "thank you", "/thanks"]:
         target_u = update.message.reply_to_message.from_user
         if target_u and target_u.id != user_id:
@@ -1173,12 +1085,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             conn.commit()
             await reply_smart(update, f"⭐ **KARMA INCREASED!** {meta['full_name']} gave +1 Karma to {target_u.first_name}! Total Karma: **{new_k}**")
 
+    # 3. AFK RETURN CHECK
     cursor.execute("SELECT reason FROM afk_users WHERE user_id = ?", (user_id,))
     if cursor.fetchone():
         cursor.execute("DELETE FROM afk_users WHERE user_id = ?", (user_id,))
         conn.commit()
         await reply_smart(update, f"👋 **WELCOME BACK {meta['full_name']}!** Cleared AFK status.")
 
+    # 4. AFK MENTION CHECK
     if update.message.reply_to_message:
         replied_u = update.message.reply_to_message.from_user
         if replied_u and replied_u.id != user_id:
@@ -1206,11 +1120,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------------------------------------------------------
 def main():
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-
-    # Advanced Security & Planner Commands
-    app.add_handler(CommandHandler("lockdown", lockdown_command))
-    app.add_handler(CommandHandler("auditlog", auditlog_command))
-    app.add_handler(CommandHandler("plan", plan_command))
 
     # Smart Home & CAD Commands
     app.add_handler(CommandHandler("home", home_command))
@@ -1275,8 +1184,7 @@ def main():
     # Core Navigation & Buttons
     app.add_handler(CommandHandler(["start", "help"], help_command))
     app.add_handler(CommandHandler("status", status_command))
-    app.add_handler(CallbackQueryHandler(button_callback_handler, pattern="^(?!verify_)"))
-    app.add_handler(CallbackQueryHandler(captcha_callback, pattern="^verify_"))
+    app.add_handler(CallbackQueryHandler(button_callback_handler))
 
     # Utilities
     app.add_handler(CommandHandler("law", law_command))
@@ -1302,13 +1210,13 @@ def main():
     app.add_handler(CommandHandler("poll", poll_command))
 
     # Handlers
-    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_captcha_handler))
+    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_handler))
     app.add_handler(MessageHandler(filters.VOICE, voice_note_handler))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app.add_handler(MessageHandler(filters.Document.PDF, pdf_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("J.A.R.V.I.S. absolute ultimate architecture core listening...")
+    print("J.A.R.V.I.S. absolute complete master core listening...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
