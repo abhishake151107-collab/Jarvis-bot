@@ -1,5 +1,9 @@
-python-telegram-bot
-apscheduler
-flask
+python-telegram-bot==20.7
 google-genai
 groq
+pypdf
+Pillow
+requests
+duckduckgo_search
+edge-tts
+apscheduler
