@@ -12,9 +12,6 @@ Capabilities:
 - Live Web Reconnaissance (DuckDuckGo Search integration)
 - 8:00 AM IST Daily Briefings (APScheduler)
 - Keepalive HTTP Server (Prevents free-tier hosting hibernation)
-
-Requirements:
-pip install python-telegram-bot pdfplumber google-generativeai apscheduler pytz groq gTTS ddgs
 =============================================================================
 """
 
@@ -307,7 +304,7 @@ async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
     try:
-        from ddgs import DDGS
+        from duckduckgo_search import DDGS
         with DDGS() as ddgs: results = list(ddgs.text(query, max_results=3))
         if not results: return await update.message.reply_text("No external data found.")
         
