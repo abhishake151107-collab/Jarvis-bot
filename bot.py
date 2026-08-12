@@ -1,21 +1,12 @@
 """
 =============================================================================
-J.A.R.V.I.S. - MARK V (THE OMNI-ENGINE)
+J.A.R.V.I.S. - MARK V (BULLETPROOF EDITION)
 Creator: Abhishek
-=============================================================================
-Capabilities:
-- The Abhishek Lock (Zero-Trust Security for System Commands)
-- SQLite Memory Vault (Tasks, Group Analytics, Chat History)
-- The Tripwire Matrix (Passive Fact-Checking for Physics & Cybersecurity)
-- Document Intelligence (PDF Extraction & Action Item Generation)
-- Voice Integration (Groq Whisper Transcription + gTTS Audio Output)
-- Live Web Reconnaissance (DuckDuckGo Search integration)
-- 8:00 AM IST Daily Briefings (APScheduler)
-- Keepalive HTTP Server (Prevents free-tier hosting hibernation)
 =============================================================================
 """
 
 import os
+import sys
 import re
 import sqlite3
 import logging
@@ -35,30 +26,47 @@ from telegram.ext import (
 )
 
 # ---------------------------------------------------------------------------
-# I. CORE CONFIGURATION & KEYS
+# I. BULLETPROOF CONFIGURATION & KEYS
 # ---------------------------------------------------------------------------
-BOT_TOKEN = os.environ["BOT_TOKEN"]
-CREATOR_ID = int(os.environ["CREATOR_ID"])
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+logger = logging.getLogger("jarvis")
+
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
+if not BOT_TOKEN:
+    logger.critical("FATAL: BOT_TOKEN is missing from environment variables.")
+    sys.exit(1)
+
+raw_creator_id = os.environ.get("CREATOR_ID", "").strip()
+if not raw_creator_id.isdigit():
+    logger.critical(f"FATAL: CREATOR_ID must be a number. Currently set to: '{raw_creator_id}'")
+    sys.exit(1)
+CREATOR_ID = int(raw_creator_id)
+
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 PORT = int(os.environ.get("PORT", 8080))
 DB_PATH = "jarvis_vault.db"
 IST = pytz.timezone("Asia/Kolkata")
 
-logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
-logger = logging.getLogger("jarvis")
-
-# AI Setup
+# AI Setup (Failsafes added)
 if GEMINI_API_KEY:
-    import google.generativeai as genai
-    genai.configure(api_key=GEMINI_API_KEY)
-    gemini_model = genai.GenerativeModel("gemini-2.0-flash")
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=GEMINI_API_KEY)
+        gemini_model = genai.GenerativeModel("gemini-2.0-flash")
+    except Exception as e:
+        logger.error(f"Gemini init failed: {e}")
+        gemini_model = None
 else:
     gemini_model = None
 
 if GROQ_API_KEY:
-    from groq import Groq
-    groq_client = Groq(api_key=GROQ_API_KEY)
+    try:
+        from groq import Groq
+        groq_client = Groq(api_key=GROQ_API_KEY)
+    except Exception as e:
+        logger.error(f"Groq init failed: {e}")
+        groq_client = None
 else:
     groq_client = None
 
@@ -85,37 +93,43 @@ TRIPWIRE_KEYWORDS = {
 }
 
 # ---------------------------------------------------------------------------
-# III. SQLITE VAULT (TASKS, LOGS & ANALYTICS)
+# III. SQLITE VAULT
 # ---------------------------------------------------------------------------
 def db_connect():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL;")  # Ensures high concurrency in active groups
+    conn.execute("PRAGMA journal_mode=WAL;")
     return conn
 
 def db_init():
-    conn = db_connect()
-    # Task Vault
-    conn.execute("CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, description TEXT NOT NULL, done INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL)")
-    # Group Chat History Log
-    conn.execute("CREATE TABLE IF NOT EXISTS group_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER NOT NULL, user_id INTEGER NOT NULL, username TEXT, message TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
-    # Group Members Roster
-    conn.execute("CREATE TABLE IF NOT EXISTS group_members (chat_id INTEGER NOT NULL, user_id INTEGER NOT NULL, username TEXT, full_name TEXT, PRIMARY KEY(chat_id, user_id))")
-    conn.commit()
-    conn.close()
+    try:
+        conn = db_connect()
+        conn.execute("CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, description TEXT NOT NULL, done INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL)")
+        conn.execute("CREATE TABLE IF NOT EXISTS group_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER NOT NULL, user_id INTEGER NOT NULL, username TEXT, message TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
+        conn.execute("CREATE TABLE IF NOT EXISTS group_members (chat_id INTEGER NOT NULL, user_id INTEGER NOT NULL, username TEXT, full_name TEXT, PRIMARY KEY(chat_id, user_id))")
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Database Initialization Error: {e}")
 
 def log_group_message(chat_id: int, user_id: int, username: str, full_name: str, text: str):
-    conn = db_connect()
-    conn.execute("INSERT INTO group_logs (chat_id, user_id, username, message) VALUES (?, ?, ?, ?)", (chat_id, user_id, username or full_name, text))
-    conn.execute("INSERT OR REPLACE INTO group_members (chat_id, user_id, username, full_name) VALUES (?, ?, ?, ?)", (chat_id, user_id, username, full_name))
-    conn.commit()
-    conn.close()
+    try:
+        conn = db_connect()
+        conn.execute("INSERT INTO group_logs (chat_id, user_id, username, message) VALUES (?, ?, ?, ?)", (chat_id, user_id, username or full_name, text))
+        conn.execute("INSERT OR REPLACE INTO group_members (chat_id, user_id, username, full_name) VALUES (?, ?, ?, ?)", (chat_id, user_id, username, full_name))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
 
 def get_recent_group_context(chat_id: int, limit: int = 15) -> str:
-    conn = db_connect()
-    rows = conn.execute("SELECT username, message, timestamp FROM group_logs WHERE chat_id = ? ORDER BY id DESC LIMIT ?", (chat_id, limit)).fetchall()
-    conn.close()
-    return "\n".join([f"[{r['timestamp']}] {r['username']}: {r['message']}" for r in reversed(rows)]) if rows else "No prior context."
+    try:
+        conn = db_connect()
+        rows = conn.execute("SELECT username, message, timestamp FROM group_logs WHERE chat_id = ? ORDER BY id DESC LIMIT ?", (chat_id, limit)).fetchall()
+        conn.close()
+        return "\n".join([f"[{r['timestamp']}] {r['username']}: {r['message']}" for r in reversed(rows)]) if rows else "No prior context."
+    except Exception:
+        return "No prior context."
 
 def db_add_task(desc: str) -> int:
     conn = db_connect()
@@ -153,18 +167,25 @@ class _HealthHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/plain")
         self.end_headers()
-        self.wfile.write(b"J.A.R.V.I.S. mark V is operational.")
+        self.wfile.write(b"J.A.R.V.I.S. is operational.")
     def log_message(self, format, *args): pass
 
 def start_keepalive():
-    server = HTTPServer(("0.0.0.0", PORT), _HealthHandler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        server = HTTPServer(("0.0.0.0", PORT), _HealthHandler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        logger.info(f"Keepalive server bound to port {PORT}")
+    except Exception as e:
+        logger.error(f"Keepalive port bind failed (non-fatal): {e}")
 
 async def send_daily_brief(app: Application):
-    rows = db_list_tasks()
-    lines = [f"#{r['id']} — {r['description']}" for r in rows] if rows else ["Vault is empty. Suspiciously efficient."]
-    now = datetime.now(IST).strftime("%A, %d %B %Y")
-    await app.bot.send_message(CREATOR_ID, f"📰 **Morning Briefing — {now}**\n\n" + "\n".join(lines), parse_mode="Markdown")
+    try:
+        rows = db_list_tasks()
+        lines = [f"#{r['id']} — {r['description']}" for r in rows] if rows else ["Vault is empty. Suspiciously efficient."]
+        now = datetime.now(IST).strftime("%A, %d %B %Y")
+        await app.bot.send_message(CREATOR_ID, f"📰 **Morning Briefing — {now}**\n\n" + "\n".join(lines), parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Failed to send briefing: {e}")
 
 def schedule_brief(app: Application):
     scheduler = AsyncIOScheduler(timezone=IST)
@@ -182,7 +203,7 @@ def build_task_kb(tid: int) -> InlineKeyboardMarkup:
 
 @creator_only
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("J.A.R.V.I.S. Engine Online. Passive analytics and tripwires armed.")
+    await update.message.reply_text("J.A.R.V.I.S. Engine Online. All systems green.")
 
 @creator_only
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -321,17 +342,20 @@ async def _post_init(app: Application): schedule_brief(app)
 if __name__ == "__main__":
     db_init()
     start_keepalive()
-    app = Application.builder().token(BOT_TOKEN).post_init(_post_init).build()
-    
-    app.add_handler(CommandHandler("start", start_cmd))
-    app.add_handler(CommandHandler("help", help_cmd))
-    app.add_handler(CommandHandler("backup", backup_cmd))
-    app.add_handler(CommandHandler("search", search_cmd))
-    
-    app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
-    app.add_handler(MessageHandler(filters.VOICE, handle_voice))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_chat))
+    try:
+        app = Application.builder().token(BOT_TOKEN).post_init(_post_init).build()
+        
+        app.add_handler(CommandHandler("start", start_cmd))
+        app.add_handler(CommandHandler("help", help_cmd))
+        app.add_handler(CommandHandler("backup", backup_cmd))
+        app.add_handler(CommandHandler("search", search_cmd))
+        
+        app.add_handler(CallbackQueryHandler(button_handler))
+        app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+        app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_chat))
 
-    logger.info("J.A.R.V.I.S. OMNI-ENGINE ONLINE.")
-    app.run_polling()
+        logger.info("J.A.R.V.I.S. ONLINE. Polling Telegram servers...")
+        app.run_polling()
+    except Exception as e:
+        logger.critical(f"FATAL LAUNCH ERROR: {e}")
