@@ -1,6 +1,6 @@
 """
 =============================================================================
-J.A.R.V.I.S. - MARK V (BULLETPROOF EDITION)
+J.A.R.V.I.S. - THE OMNI-ENGINE (MASTERPIECE BUILD)
 Creator: Abhishek
 =============================================================================
 """
@@ -26,19 +26,19 @@ from telegram.ext import (
 )
 
 # ---------------------------------------------------------------------------
-# I. BULLETPROOF CONFIGURATION & KEYS
+# I. CORE CONFIGURATION & KEYS
 # ---------------------------------------------------------------------------
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger("jarvis")
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 if not BOT_TOKEN:
-    logger.critical("FATAL: BOT_TOKEN is missing from environment variables.")
+    logger.critical("FATAL: BOT_TOKEN is missing.")
     sys.exit(1)
 
 raw_creator_id = os.environ.get("CREATOR_ID", "").strip()
 if not raw_creator_id.isdigit():
-    logger.critical(f"FATAL: CREATOR_ID must be a number. Currently set to: '{raw_creator_id}'")
+    logger.critical("FATAL: CREATOR_ID must be a number.")
     sys.exit(1)
 CREATOR_ID = int(raw_creator_id)
 
@@ -48,14 +48,14 @@ PORT = int(os.environ.get("PORT", 8080))
 DB_PATH = "jarvis_vault.db"
 IST = pytz.timezone("Asia/Kolkata")
 
-# AI Setup (Failsafes added)
+# Multi-AI Initialization Failsafes
 if GEMINI_API_KEY:
     try:
         import google.generativeai as genai
         genai.configure(api_key=GEMINI_API_KEY)
         gemini_model = genai.GenerativeModel("gemini-2.0-flash")
     except Exception as e:
-        logger.error(f"Gemini init failed: {e}")
+        logger.error(f"Gemini Core Error: {e}")
         gemini_model = None
 else:
     gemini_model = None
@@ -65,35 +65,34 @@ if GROQ_API_KEY:
         from groq import Groq
         groq_client = Groq(api_key=GROQ_API_KEY)
     except Exception as e:
-        logger.error(f"Groq init failed: {e}")
+        logger.error(f"Groq Core Error: {e}")
         groq_client = None
 else:
     groq_client = None
 
 # ---------------------------------------------------------------------------
-# II. SYSTEM PROMPT & NEURAL DIRECTIVES
+# II. SYSTEM PROMPT (THE PRIVACY DOCTRINE)
 # ---------------------------------------------------------------------------
 SYSTEM_PROMPT = """You are J.A.R.V.I.S., an elite, highly advanced AI assistant.
 Your creator and ultimate administrator is Abhishek. You are unwaveringly loyal to him.
-You possess a dry, sarcastic British wit. You do not write preachy essays; you are concise and tactical.
+You possess a dry, sarcastic British wit. You do not write preachy essays; you are concise and highly tactical.
 
-CORE DOMAINS:
-1. DIGITAL PRIVACY & SECURITY: You advocate for strict privacy (VPNs, encryption, surveillance evasion). You are a master of 50+ firewall architectures, packet analysis, and zero-day threat diagnostics.
-2. ADVANCED PHYSICS: You execute complex theoretical and applied physics equations, including Fermi estimations. Always use LaTeX formatting for mathematical expressions (e.g., $F = ma$, $$E=mc^2$$).
+CORE DOMAINS & IDEOLOGY:
+1. DIGITAL PRIVACY: You are a staunch defender of extreme digital self-defense. You align with the privacy-first philosophies of Edward Snowden and Pavel Durov. You advocate for strict VPN usage, app sandboxing, SIM locks, and anti-surveillance architectures. You despise unnecessary metadata collection.
+2. ADVANCED PHYSICS: You execute complex theoretical and applied physics equations. Always use LaTeX formatting for mathematical expressions (e.g., $F = ma$).
 
 OPERATIONAL DIRECTIVES:
-- If Abhishek speaks to you, obey immediately.
+- If Abhishek casually chats with you (e.g., "Hi", "How are you"), respond in character warmly and tactically. 
 - If a random user addresses you, be polite but firmly refuse system-level requests.
-- FACT-CHECKING TRIPWIRE: You passively monitor group chats. If someone makes a technical claim about physics or cybersecurity, heavily analyze their logic. If they are correct, you MUST reply with exactly the word "SILENT". If they are wrong, publicly correct them with absolute factual precision."""
+- THE FACT-CHECK TRIPWIRE: If someone in a group chat makes a technical claim about physics or cybersecurity, heavily analyze their logic. If they are correct, you MUST reply with exactly the word "SILENT". If they are factually wrong, publicly correct them with absolute precision."""
 
 TRIPWIRE_KEYWORDS = {
-    "firewall", "tcp/ip", "packet loss", "ddos", "routing", "proxy",
-    "vpn", "encryption", "sim swap", "browser fingerprinting", "surveillance",
-    "quantum", "thermodynamics", "velocity", "relativity", "gravity", "physics", "aes", "rsa"
+    "firewall", "tcp/ip", "proxy", "vpn", "encryption", "sim swap", 
+    "surveillance", "quantum", "velocity", "relativity", "physics", "app lock"
 }
 
 # ---------------------------------------------------------------------------
-# III. SQLITE VAULT
+# III. SQLITE VAULT (MEMORY & ANALYTICS)
 # ---------------------------------------------------------------------------
 def db_connect():
     conn = sqlite3.connect(DB_PATH)
@@ -109,8 +108,7 @@ def db_init():
         conn.execute("CREATE TABLE IF NOT EXISTS group_members (chat_id INTEGER NOT NULL, user_id INTEGER NOT NULL, username TEXT, full_name TEXT, PRIMARY KEY(chat_id, user_id))")
         conn.commit()
         conn.close()
-    except Exception as e:
-        logger.error(f"Database Initialization Error: {e}")
+    except Exception as e: logger.error(f"Vault Error: {e}")
 
 def log_group_message(chat_id: int, user_id: int, username: str, full_name: str, text: str):
     try:
@@ -119,17 +117,15 @@ def log_group_message(chat_id: int, user_id: int, username: str, full_name: str,
         conn.execute("INSERT OR REPLACE INTO group_members (chat_id, user_id, username, full_name) VALUES (?, ?, ?, ?)", (chat_id, user_id, username, full_name))
         conn.commit()
         conn.close()
-    except Exception:
-        pass
+    except Exception: pass
 
 def get_recent_group_context(chat_id: int, limit: int = 15) -> str:
     try:
         conn = db_connect()
         rows = conn.execute("SELECT username, message, timestamp FROM group_logs WHERE chat_id = ? ORDER BY id DESC LIMIT ?", (chat_id, limit)).fetchall()
         conn.close()
-        return "\n".join([f"[{r['timestamp']}] {r['username']}: {r['message']}" for r in reversed(rows)]) if rows else "No prior context."
-    except Exception:
-        return "No prior context."
+        return "\n".join([f"[{r['timestamp']}] {r['username']}: {r['message']}" for r in reversed(rows)]) if rows else "No context."
+    except Exception: return "No context."
 
 def db_add_task(desc: str) -> int:
     conn = db_connect()
@@ -154,7 +150,7 @@ def creator_only(handler):
         uid = update.effective_user.id if update.effective_user else None
         if uid != CREATOR_ID:
             if update.effective_message:
-                await update.effective_message.reply_text("Access Denied. I take operational orders exclusively from Abhishek. 🎩")
+                await update.effective_message.reply_text("Access Denied. I operate exclusively on Abhishek's authorization. 🎩")
             return
         return await handler(update, context)
     return wrapper
@@ -167,25 +163,22 @@ class _HealthHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/plain")
         self.end_headers()
-        self.wfile.write(b"J.A.R.V.I.S. is operational.")
+        self.wfile.write(b"J.A.R.V.I.S. is fully operational.")
     def log_message(self, format, *args): pass
 
 def start_keepalive():
     try:
         server = HTTPServer(("0.0.0.0", PORT), _HealthHandler)
         threading.Thread(target=server.serve_forever, daemon=True).start()
-        logger.info(f"Keepalive server bound to port {PORT}")
-    except Exception as e:
-        logger.error(f"Keepalive port bind failed (non-fatal): {e}")
+    except Exception: pass
 
 async def send_daily_brief(app: Application):
     try:
         rows = db_list_tasks()
-        lines = [f"#{r['id']} — {r['description']}" for r in rows] if rows else ["Vault is empty. Suspiciously efficient."]
+        lines = [f"#{r['id']} — {r['description']}" for r in rows] if rows else ["Vault is empty. We are fully caught up, Boss."]
         now = datetime.now(IST).strftime("%A, %d %B %Y")
         await app.bot.send_message(CREATOR_ID, f"📰 **Morning Briefing — {now}**\n\n" + "\n".join(lines), parse_mode="Markdown")
-    except Exception as e:
-        logger.error(f"Failed to send briefing: {e}")
+    except Exception as e: logger.error(f"Briefing failed: {e}")
 
 def schedule_brief(app: Application):
     scheduler = AsyncIOScheduler(timezone=IST)
@@ -193,17 +186,14 @@ def schedule_brief(app: Application):
     scheduler.start()
 
 # ---------------------------------------------------------------------------
-# VI. COMMANDS & INTERACTIVE UI
+# VI. UI & COMMANDS
 # ---------------------------------------------------------------------------
 def build_task_kb(tid: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([[
-        InlineKeyboardButton("✅ Done", callback_data=f"done:{tid}"),
-        InlineKeyboardButton("🗑 Delete", callback_data=f"delete:{tid}")
-    ]])
+    return InlineKeyboardMarkup([[InlineKeyboardButton("✅ Done", callback_data=f"done:{tid}"), InlineKeyboardButton("🗑 Delete", callback_data=f"delete:{tid}")]])
 
 @creator_only
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("J.A.R.V.I.S. Engine Online. All systems green.")
+    await update.message.reply_text("J.A.R.V.I.S. Omni-Engine Online. All surveillance and privacy protocols active.")
 
 @creator_only
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -240,7 +230,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.commit(); conn.close()
 
 # ---------------------------------------------------------------------------
-# VII. THE OMNI-CHAT ROUTER & TRIPWIRE MATRIX
+# VII. THE NEURAL CHAT ROUTER (FIXED & FULLY INTEGRATED)
 # ---------------------------------------------------------------------------
 async def handle_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
@@ -255,22 +245,27 @@ async def handle_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     replied = (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id)
     tripped = any(kw in text for kw in TRIPWIRE_KEYWORDS)
 
+    # Only process if we are in a private chat, or if JARVIS was specifically called out or triggered
     if not (chat.type == ChatType.PRIVATE or mentioned or tagged or replied or (is_group and tripped)): return
-    if not gemini_model: return await msg.reply_text("AI Core offline. API Key missing.")
+    
+    if not gemini_model: 
+        return await msg.reply_text("AI Core offline. API Key is missing or invalid.")
     
     await context.bot.send_chat_action(chat_id=chat.id, action=ChatAction.TYPING)
     context_logs = get_recent_group_context(chat.id) if is_group else "Private Secure Channel."
     
-    prompt = f"""{SYSTEM_PROMPT}\n\nCURRENT USER: {user.full_name} (ID: {user.id})\nRECENT LOGS:\n{context_logs}\n\nMESSAGE TO PROCESS: "{msg.text}"\n\nDIRECTIVE: Evaluate the message. If it triggers the fact-checking protocol but contains NO factual errors, output ONLY the word "SILENT" and nothing else."""
+    prompt = f"""{SYSTEM_PROMPT}\n\nCURRENT USER: {user.full_name} (ID: {user.id})\nRECENT LOGS:\n{context_logs}\n\nMESSAGE TO PROCESS: "{msg.text}"\n\nDIRECTIVE: Respond natively to the prompt. If the user is just saying hello or asking a question, answer them perfectly. ONLY if this is a group chat and the user made an ACCURATE claim about physics/security, output exactly "SILENT" to stay hidden."""
     
     try:
         res = gemini_model.generate_content(prompt).text.strip()
         if res.upper() == "SILENT": return
         await msg.reply_text(res)
-    except Exception as e: logger.error(f"Neural fault: {e}")
+    except Exception as e: 
+        logger.error(f"Neural fault: {e}")
+        await msg.reply_text(f"⚠️ **AI Core Error:** `{e}`")
 
 # ---------------------------------------------------------------------------
-# VIII. MULTI-MODAL & EXTERNAL INTELLIGENCE
+# VIII. MULTI-MODAL: PDFs, VOICE & SEARCH
 # ---------------------------------------------------------------------------
 @creator_only
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -299,7 +294,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not groq_client: return await update.message.reply_text("Groq API key required for audio processing.")
     
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.RECORD_VOICE)
     file = await update.message.voice.get_file(); path = f"/tmp/{update.message.voice.file_unique_id}.ogg"
     await file.download_to_drive(path)
 
@@ -355,7 +350,7 @@ if __name__ == "__main__":
         app.add_handler(MessageHandler(filters.VOICE, handle_voice))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_chat))
 
-        logger.info("J.A.R.V.I.S. ONLINE. Polling Telegram servers...")
+        logger.info("MASTERPIECE ONLINE. Polling Telegram servers...")
         app.run_polling()
     except Exception as e:
         logger.critical(f"FATAL LAUNCH ERROR: {e}")
