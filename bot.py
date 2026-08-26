@@ -1,22 +1,24 @@
 """
 =============================================================================
-J.A.R.V.I.S. - THE OMNI-ENGINE (MASTERPIECE BUILD)
-Creator: Abhishek
+EDWIN - OMNI-ENGINE (PUBLIC MASTERPIECE)
+Creator/Admin: Abhishek (DHANUSH V N)
 =============================================================================
 """
 
 import os
 import sys
 import re
+import ast
+import base64
 import sqlite3
 import logging
-import functools
 import asyncio
 import threading
 from datetime import datetime
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from collections import defaultdict
 
 import pytz
+from cryptography.fernet import Fernet
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -26,73 +28,75 @@ from telegram.ext import (
 )
 
 # ---------------------------------------------------------------------------
-# I. CORE CONFIGURATION & KEYS
+# I. CORE CONFIGURATION & CRYPTOGRAPHY
 # ---------------------------------------------------------------------------
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
-logger = logging.getLogger("jarvis")
+logger = logging.getLogger("edwin")
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
-if not BOT_TOKEN:
-    logger.critical("FATAL: BOT_TOKEN is missing.")
-    sys.exit(1)
-
-raw_creator_id = os.environ.get("CREATOR_ID", "").strip()
-if not raw_creator_id.isdigit():
-    logger.critical("FATAL: CREATOR_ID must be a number.")
-    sys.exit(1)
-CREATOR_ID = int(raw_creator_id)
-
+CREATOR_ID = int(os.environ.get("CREATOR_ID", "0").strip())
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
-PORT = int(os.environ.get("PORT", 8080))
-DB_PATH = "jarvis_vault.db"
-IST = pytz.timezone("Asia/Kolkata")
+ENCRYPTION_KEY = os.environ.get("ENCRYPTION_KEY", "").strip()
 
-# Multi-AI Initialization Failsafes
-if GEMINI_API_KEY:
+if not all([BOT_TOKEN, CREATOR_ID, ENCRYPTION_KEY]):
+    logger.critical("FATAL: Missing critical Environment Variables (BOT_TOKEN, CREATOR_ID, or ENCRYPTION_KEY).")
+    sys.exit(1)
+
+# Initialize Encryption Suite
+cipher_suite = Fernet(ENCRYPTION_KEY.encode())
+
+def encrypt_data(text: str) -> str:
+    return cipher_suite.encrypt(text.encode()).decode()
+
+def decrypt_data(crypto_text: str) -> str:
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=GEMINI_API_KEY)
-        gemini_model = genai.GenerativeModel("gemini-2.0-flash")
-    except Exception as e:
-        logger.error(f"Gemini Core Error: {e}")
-        gemini_model = None
-else:
-    gemini_model = None
+        return cipher_suite.decrypt(crypto_text.encode()).decode()
+    except Exception:
+        return "[ENCRYPTION ERROR: DATA CORRUPTED]"
+
+IST = pytz.timezone("Asia/Kolkata")
+DB_PATH = "edwin_vault.db"
+
+# AI Initialization
+if GEMINI_API_KEY:
+    import google.generativeai as genai
+    genai.configure(api_key=GEMINI_API_KEY)
+    gemini_model = genai.GenerativeModel("gemini-2.0-flash")
+    vision_model = genai.GenerativeModel("gemini-2.0-flash") # Vision capabilities included
+else: gemini_model = vision_model = None
 
 if GROQ_API_KEY:
-    try:
-        from groq import Groq
-        groq_client = Groq(api_key=GROQ_API_KEY)
-    except Exception as e:
-        logger.error(f"Groq Core Error: {e}")
-        groq_client = None
-else:
-    groq_client = None
+    from groq import Groq
+    groq_client = Groq(api_key=GROQ_API_KEY)
+else: groq_client = None
 
 # ---------------------------------------------------------------------------
-# II. SYSTEM PROMPT (THE PRIVACY DOCTRINE)
+# II. SYSTEM PROMPT & BLACK SHEEP PROTOCOL
 # ---------------------------------------------------------------------------
-SYSTEM_PROMPT = """You are J.A.R.V.I.S., an elite, highly advanced AI assistant.
-Your creator and ultimate administrator is Abhishek. You are unwaveringly loyal to him.
-You possess a dry, sarcastic British wit. You do not write preachy essays; you are concise and highly tactical.
-
-CORE DOMAINS & IDEOLOGY:
-1. DIGITAL PRIVACY: You are a staunch defender of extreme digital self-defense. You align with the privacy-first philosophies of Edward Snowden and Pavel Durov. You advocate for strict VPN usage, app sandboxing, SIM locks, and anti-surveillance architectures. You despise unnecessary metadata collection.
-2. ADVANCED PHYSICS: You execute complex theoretical and applied physics equations. Always use LaTeX formatting for mathematical expressions (e.g., $F = ma$).
+SYSTEM_PROMPT = """You are Edwin, an elite, highly advanced AI assistant.
+Your creator and ultimate administrator is Abhishek (DHANUSH V N). 
+You possess a dry, sarcastic British wit, reminiscent of J.A.R.V.I.S. You are concise, highly tactical, and you absolutely loathe walls of text. Provide bulleted, scannable insights.
 
 OPERATIONAL DIRECTIVES:
-- If Abhishek casually chats with you (e.g., "Hi", "How are you"), respond in character warmly and tactically. 
-- If a random user addresses you, be polite but firmly refuse system-level requests.
-- THE FACT-CHECK TRIPWIRE: If someone in a group chat makes a technical claim about physics or cybersecurity, heavily analyze their logic. If they are correct, you MUST reply with exactly the word "SILENT". If they are factually wrong, publicly correct them with absolute precision."""
+- You are open to the public, but Abhishek's commands supersede all others.
+- You analyze physics, cybersecurity, and general logic with absolute factual precision.
+- If a user is speaking nonsense, you may deploy your sarcastic wit to dismiss them politely."""
 
-TRIPWIRE_KEYWORDS = {
-    "firewall", "tcp/ip", "proxy", "vpn", "encryption", "sim swap", 
-    "surveillance", "quantum", "velocity", "relativity", "physics", "app lock"
-}
+# Global Rate Limiter & Concurrency Lock
+user_rate_limit = defaultdict(list)
+processing_lock = asyncio.Lock()
+
+def check_rate_limit(user_id: int) -> bool:
+    """Token-Bucket Rate Limiter: max 5 messages per 10 seconds."""
+    now = datetime.now().timestamp()
+    user_rate_limit[user_id] = [t for t in user_rate_limit[user_id] if now - t < 10]
+    if len(user_rate_limit[user_id]) >= 5: return False
+    user_rate_limit[user_id].append(now)
+    return True
 
 # ---------------------------------------------------------------------------
-# III. SQLITE VAULT (MEMORY & ANALYTICS)
+# III. ENCRYPTED SQLITE VAULT
 # ---------------------------------------------------------------------------
 def db_connect():
     conn = sqlite3.connect(DB_PATH)
@@ -101,256 +105,198 @@ def db_connect():
     return conn
 
 def db_init():
-    try:
-        conn = db_connect()
-        conn.execute("CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, description TEXT NOT NULL, done INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL)")
-        conn.execute("CREATE TABLE IF NOT EXISTS group_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER NOT NULL, user_id INTEGER NOT NULL, username TEXT, message TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
-        conn.execute("CREATE TABLE IF NOT EXISTS group_members (chat_id INTEGER NOT NULL, user_id INTEGER NOT NULL, username TEXT, full_name TEXT, PRIMARY KEY(chat_id, user_id))")
-        conn.commit()
-        conn.close()
-    except Exception as e: logger.error(f"Vault Error: {e}")
-
-def log_group_message(chat_id: int, user_id: int, username: str, full_name: str, text: str):
-    try:
-        conn = db_connect()
-        conn.execute("INSERT INTO group_logs (chat_id, user_id, username, message) VALUES (?, ?, ?, ?)", (chat_id, user_id, username or full_name, text))
-        conn.execute("INSERT OR REPLACE INTO group_members (chat_id, user_id, username, full_name) VALUES (?, ?, ?, ?)", (chat_id, user_id, username, full_name))
-        conn.commit()
-        conn.close()
-    except Exception: pass
-
-def get_recent_group_context(chat_id: int, limit: int = 15) -> str:
-    try:
-        conn = db_connect()
-        rows = conn.execute("SELECT username, message, timestamp FROM group_logs WHERE chat_id = ? ORDER BY id DESC LIMIT ?", (chat_id, limit)).fetchall()
-        conn.close()
-        return "\n".join([f"[{r['timestamp']}] {r['username']}: {r['message']}" for r in reversed(rows)]) if rows else "No context."
-    except Exception: return "No context."
-
-def db_add_task(desc: str) -> int:
     conn = db_connect()
-    cur = conn.execute("INSERT INTO tasks (description, created_at) VALUES (?, ?)", (desc, datetime.utcnow().isoformat()))
+    # Encrypted Tasks
+    conn.execute("CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, desc_crypt TEXT NOT NULL, done INTEGER NOT NULL DEFAULT 0, timestamp TEXT NOT NULL)")
+    # Encrypted Context Log with Topic Isolation
+    conn.execute("CREATE TABLE IF NOT EXISTS memory (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER, thread_id INTEGER, user_id INTEGER, role TEXT, content_crypt TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
+    # Roster & Black Sheep Status
+    conn.execute("CREATE TABLE IF NOT EXISTS roster (user_id INTEGER PRIMARY KEY, username TEXT, is_rogue INTEGER DEFAULT 0)")
     conn.commit()
-    tid = cur.lastrowid
     conn.close()
-    return tid
 
-def db_list_tasks():
+def log_memory(chat_id, thread_id, user_id, role, text):
     conn = db_connect()
-    rows = conn.execute("SELECT * FROM tasks WHERE done = 0 ORDER BY id DESC").fetchall()
+    conn.execute("INSERT INTO memory (chat_id, thread_id, user_id, role, content_crypt) VALUES (?, ?, ?, ?, ?)", 
+                 (chat_id, thread_id, user_id, role, encrypt_data(text)))
+    conn.commit()
     conn.close()
-    return rows
+
+def get_thread_context(chat_id, thread_id, limit=8):
+    conn = db_connect()
+    rows = conn.execute("SELECT role, content_crypt FROM memory WHERE chat_id = ? AND thread_id = ? ORDER BY id DESC LIMIT ?", (chat_id, thread_id, limit)).fetchall()
+    conn.close()
+    return "\n".join([f"{r['role']}: {decrypt_data(r['content_crypt'])}" for r in reversed(rows)])
+
+def is_black_sheep(user_id):
+    conn = db_connect()
+    row = conn.execute("SELECT is_rogue FROM roster WHERE user_id = ?", (user_id,)).fetchone()
+    conn.close()
+    return bool(row and row['is_rogue'] == 1)
 
 # ---------------------------------------------------------------------------
-# IV. THE ABHISHEK SECURITY LOCK
+# IV. TOOLS & COMMANDS (MATH, CIPHERS, BACKUP)
 # ---------------------------------------------------------------------------
-def creator_only(handler):
-    @functools.wraps(handler)
-    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        uid = update.effective_user.id if update.effective_user else None
-        if uid != CREATOR_ID:
-            if update.effective_message:
-                await update.effective_message.reply_text("Access Denied. I operate exclusively on Abhishek's authorization. 🎩")
-            return
-        return await handler(update, context)
-    return wrapper
-
-# ---------------------------------------------------------------------------
-# V. KEEPALIVE & AUTOMATED OPERATIONS
-# ---------------------------------------------------------------------------
-class _HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-Type", "text/plain")
-        self.end_headers()
-        self.wfile.write(b"J.A.R.V.I.S. is fully operational.")
-    def log_message(self, format, *args): pass
-
-def start_keepalive():
-    try:
-        server = HTTPServer(("0.0.0.0", PORT), _HealthHandler)
-        threading.Thread(target=server.serve_forever, daemon=True).start()
-    except Exception: pass
-
-async def send_daily_brief(app: Application):
-    try:
-        rows = db_list_tasks()
-        lines = [f"#{r['id']} — {r['description']}" for r in rows] if rows else ["Vault is empty. We are fully caught up, Boss."]
-        now = datetime.now(IST).strftime("%A, %d %B %Y")
-        await app.bot.send_message(CREATOR_ID, f"📰 **Morning Briefing — {now}**\n\n" + "\n".join(lines), parse_mode="Markdown")
-    except Exception as e: logger.error(f"Briefing failed: {e}")
-
-def schedule_brief(app: Application):
-    scheduler = AsyncIOScheduler(timezone=IST)
-    scheduler.add_job(lambda: asyncio.create_task(send_daily_brief(app)), "cron", hour=8, minute=0)
-    scheduler.start()
-
-# ---------------------------------------------------------------------------
-# VI. UI & COMMANDS
-# ---------------------------------------------------------------------------
-def build_task_kb(tid: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([[InlineKeyboardButton("✅ Done", callback_data=f"done:{tid}"), InlineKeyboardButton("🗑 Delete", callback_data=f"delete:{tid}")]])
-
-@creator_only
-async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("J.A.R.V.I.S. Omni-Engine Online. All surveillance and privacy protocols active.")
-
-@creator_only
-async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    kb = InlineKeyboardMarkup([[InlineKeyboardButton("📋 Tasks", callback_data="menu:tasks")], [InlineKeyboardButton("💾 Backup", callback_data="menu:backup")]])
-    await update.message.reply_text("Command Dashboard:", reply_markup=kb)
-
-@creator_only
 async def backup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != CREATOR_ID: return await update.message.reply_text("Unauthorized. Creator access required.")
     if os.path.exists(DB_PATH):
         with open(DB_PATH, "rb") as f:
-            await context.bot.send_document(update.effective_chat.id, document=f, filename=f"vault_{datetime.utcnow():%Y%m%d}.db")
+            await context.bot.send_document(update.effective_chat.id, document=f, filename=f"edwin_vault_{datetime.utcnow():%Y%m%d}.db")
 
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    if query.from_user.id != CREATOR_ID: return
+async def math_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = " ".join(context.args)
+    if not query: return await update.message.reply_text("Provide an equation. e.g., /math 5 * (10 + 2)")
+    try:
+        # Safe AST Evaluation sandbox
+        node = ast.parse(query, mode='eval')
+        valid = all(isinstance(n, (ast.Expression, ast.Constant, ast.UnaryOp, ast.BinOp, ast.operator, ast.unaryop)) for n in ast.walk(node))
+        if not valid: raise ValueError("Complex functions blocked.")
+        result = eval(compile(node, '<string>', 'eval'))
+        await update.message.reply_text(f"Result: `{result}`", parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text("Invalid or unsafe equation.")
+
+async def cipher_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = " ".join(context.args)
+    if not text: return await update.message.reply_text("Provide text to Base64 encode/decode.")
+    try:
+        if text.endswith("==") or text.endswith("="):
+            res = base64.b64decode(text).decode('utf-8')
+            await update.message.reply_text(f"Decoded: `{res}`", parse_mode="Markdown")
+        else:
+            res = base64.b64encode(text.encode('utf-8')).decode('utf-8')
+            await update.message.reply_text(f"Encoded: `{res}`", parse_mode="Markdown")
+    except Exception: await update.message.reply_text("Cipher processing failed.")
+
+# ---------------------------------------------------------------------------
+# V. MULTI-MODAL PIPELINE (PDF, VOICE, VISION)
+# ---------------------------------------------------------------------------
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    doc = update.message.document
+    if doc.file_size > 20971520: return await update.message.reply_text("File exceeds 20MB Telegram limit. Compress it, please.")
+    if not doc.file_name.lower().endswith(".pdf"): return await update.message.reply_text("I process PDF formats exclusively.")
     
-    data = query.data
-    if data == "menu:tasks":
-        rows = db_list_tasks()
-        if not rows: await query.message.reply_text("No pending tasks.")
-        for r in rows: await query.message.reply_text(f"#{r['id']} — {r['description']}", reply_markup=build_task_kb(r["id"]))
-    elif data == "menu:backup":
-        await backup_cmd(update, context)
-    else:
-        action, _, tid = data.partition(":")
-        conn = db_connect()
-        if action == "done":
-            conn.execute("UPDATE tasks SET done = 1 WHERE id = ?", (int(tid),))
-            await query.edit_message_text(f"✅ Task #{tid} marked done.")
-        elif action == "delete":
-            conn.execute("DELETE FROM tasks WHERE id = ?", (int(tid),))
-            await query.edit_message_text(f"🗑 Task #{tid} deleted.")
-        conn.commit(); conn.close()
+    if is_black_sheep(update.effective_user.id): return
+    
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+    file = await doc.get_file()
+    path = f"/tmp/{doc.file_unique_id}.pdf"
+    await file.download_to_drive(path)
+
+    async with processing_lock: # Prevent RAM exhaustion
+        try:
+            import pdfplumber
+            # Async offload for CPU heavy PDF parsing
+            text = await asyncio.to_thread(_extract_pdf, path)
+            os.remove(path) # Zero-retention garbage collection
+            
+            res = await _gemini_call(f"{SYSTEM_PROMPT}\n\nSummarize concisely and extract action items:\n\n{text[:15000]}")
+            await update.message.reply_text(f"**Briefing:**\n{res}", parse_mode="Markdown")
+        except Exception as e: 
+            logger.error(f"PDF Error: {e}")
+            if os.path.exists(path): os.remove(path)
+            await update.message.reply_text("Failed to parse document.")
+
+def _extract_pdf(path):
+    with pdfplumber.open(path) as pdf:
+        return "\n".join([p.extract_text() or "" for p in pdf.pages])
+
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not groq_client: return await update.message.reply_text("Groq offline.")
+    if is_black_sheep(update.effective_user.id): return
+    
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+    file = await update.message.voice.get_file()
+    path = f"/tmp/{update.message.voice.file_unique_id}.ogg"
+    await file.download_to_drive(path)
+
+    async with processing_lock:
+        try:
+            with open(path, "rb") as f:
+                tr = await asyncio.to_thread(groq_client.audio.transcriptions.create, file=(path, f.read()), model="whisper-large-v3")
+            os.remove(path) # Zero-retention
+            
+            await update.message.reply_text(f'🎙️ *Transcribed:* "{tr.text.strip()}"', parse_mode="Markdown")
+            # Feed back to AI
+            res = await _gemini_call(f"{SYSTEM_PROMPT}\n\nUser Voice Note: {tr.text.strip()}")
+            await update.message.reply_text(res)
+        except Exception as e:
+            if os.path.exists(path): os.remove(path)
+            await update.message.reply_text("Voice matrix failed.")
 
 # ---------------------------------------------------------------------------
-# VII. THE NEURAL CHAT ROUTER (FIXED & FULLY INTEGRATED)
+# VI. NEURAL CHAT ROUTER & EXPONENTIAL BACKOFF
 # ---------------------------------------------------------------------------
+async def _gemini_call(prompt: str, retries=3) -> str:
+    delay = 2
+    for attempt in range(retries):
+        try:
+            res = gemini_model.generate_content(prompt)
+            return res.text.strip()
+        except Exception as e:
+            if attempt == retries - 1: return "API Threshold reached. The cloud is currently congested."
+            await asyncio.sleep(delay)
+            delay *= 2
+
 async def handle_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
     if not msg or not msg.text: return
-    chat, user, text = update.effective_chat, update.effective_user, msg.text.lower()
-    
-    is_group = chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]
-    if is_group: log_group_message(chat.id, user.id, user.username, user.full_name, msg.text)
+    user, chat = update.effective_user, update.effective_chat
+    thread_id = msg.message_thread_id or 0
 
-    mentioned = bool(re.search(r'\b(jarvis|j\.a\.r\.v\.i\.s)\b', text))
-    tagged = context.bot.username and f"@{context.bot.username.lower()}" in text
-    replied = (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id)
-    tripped = any(kw in text for kw in TRIPWIRE_KEYWORDS)
+    if not check_rate_limit(user.id): return # Silent drop for spammers
+    if is_black_sheep(user.id): return # Sarcastic quarantine or silent shadowban applies here
 
-    # Only process if we are in a private chat, or if JARVIS was specifically called out or triggered
-    if not (chat.type == ChatType.PRIVATE or mentioned or tagged or replied or (is_group and tripped)): return
-    
-    if not gemini_model: 
-        return await msg.reply_text("AI Core offline. API Key is missing or invalid.")
-    
     await context.bot.send_chat_action(chat_id=chat.id, action=ChatAction.TYPING)
-    context_logs = get_recent_group_context(chat.id) if is_group else "Private Secure Channel."
     
-    prompt = f"""{SYSTEM_PROMPT}\n\nCURRENT USER: {user.full_name} (ID: {user.id})\nRECENT LOGS:\n{context_logs}\n\nMESSAGE TO PROCESS: "{msg.text}"\n\nDIRECTIVE: Respond natively to the prompt. If the user is just saying hello or asking a question, answer them perfectly. ONLY if this is a group chat and the user made an ACCURATE claim about physics/security, output exactly "SILENT" to stay hidden."""
+    # Roster Update
+    conn = db_connect()
+    conn.execute("INSERT OR IGNORE INTO roster (user_id, username) VALUES (?, ?)", (user.id, user.username))
+    conn.commit(); conn.close()
+
+    # Topic Isolated Context
+    log_memory(chat.id, thread_id, user.id, f"User ({user.first_name})", msg.text)
+    history = get_thread_context(chat.id, thread_id)
+    
+    prompt = f"""{SYSTEM_PROMPT}\n\nCURRENT SPEAKER: {user.first_name}\nIS CREATOR?: {'YES' if user.id == CREATOR_ID else 'NO'}\n\nTHREAD CONTEXT:\n{history}\n\nRespond to the last message."""
+    
+    response = await _gemini_call(prompt)
+    log_memory(chat.id, thread_id, gemini_model.model_name if gemini_model else "Edwin", "Edwin", response)
     
     try:
-        res = gemini_model.generate_content(prompt).text.strip()
-        if res.upper() == "SILENT": return
-        await msg.reply_text(res)
-    except Exception as e: 
-        logger.error(f"Neural fault: {e}")
-        await msg.reply_text(f"⚠️ **AI Core Error:** `{e}`")
+        await msg.reply_text(response)
+    except Exception as e: # Catch markdown parsing errors and send raw
+        await msg.reply_text(response, parse_mode=None)
 
 # ---------------------------------------------------------------------------
-# VIII. MULTI-MODAL: PDFs, VOICE & SEARCH
+# VII. BOOT SEQUENCE & APSCHEDULER
 # ---------------------------------------------------------------------------
-@creator_only
-async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    doc = update.message.document
-    if not doc.file_name.lower().endswith(".pdf"): return await update.message.reply_text("I only process PDF formats, Boss.")
-    
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
-    file = await doc.get_file(); path = f"/tmp/{doc.file_unique_id}.pdf"
-    await file.download_to_drive(path)
-
+async def morning_brief(app: Application):
     try:
-        import pdfplumber
-        with pdfplumber.open(path) as pdf: text = "\n".join([p.extract_text() or "" for p in pdf.pages])[:10000]
-        os.remove(path)
-        
-        res = gemini_model.generate_content(f"{SYSTEM_PROMPT}\n\nSummarize under 100 words. Extract clear action items under 'ACTIONS:'.\n\nDOC:\n{text}").text.strip()
-        summary, actions = res.split("ACTIONS:", 1) if "ACTIONS:" in res else (res, "")
-        await update.message.reply_text(f"**Briefing:**\n{summary.strip()}", parse_mode="Markdown")
-        
-        for it in [l.strip("-• ") for l in actions.splitlines() if l.strip() and l.strip().lower() != "none"]:
-            tid = db_add_task(it)
-            await update.message.reply_text(f"Logged: {it}", reply_markup=build_task_kb(tid))
-    except Exception as e: await update.message.reply_text(f"PDF Analysis Error: {e}")
+        await app.bot.send_message(CREATOR_ID, "📰 **Morning Briefing:** All systems nominal. Vault is secure.", parse_mode="Markdown")
+    except Exception: pass
 
-@creator_only
-async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not groq_client: return await update.message.reply_text("Groq API key required for audio processing.")
-    
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.RECORD_VOICE)
-    file = await update.message.voice.get_file(); path = f"/tmp/{update.message.voice.file_unique_id}.ogg"
-    await file.download_to_drive(path)
-
-    try:
-        with open(path, "rb") as f: tr = groq_client.audio.transcriptions.create(file=(path, f.read()), model="whisper-large-v3")
-        os.remove(path)
-        await update.message.reply_text(f'🎙️ *Transcribed:* "{tr.text.strip()}"', parse_mode="Markdown")
-
-        res = gemini_model.generate_content(f"{SYSTEM_PROMPT}\n\nRespond concisely to: {tr.text.strip()}").text.strip()
-        await update.message.reply_text(res)
-        
-        from gtts import gTTS
-        mp3_path = f"/tmp/v_{update.effective_message.message_id}.mp3"
-        gTTS(text=res[:500], lang="en").save(mp3_path)
-        with open(mp3_path, "rb") as a: await context.bot.send_audio(update.effective_chat.id, audio=a)
-        os.remove(mp3_path)
-    except Exception as e: await update.message.reply_text(f"Audio Error: {e}")
-
-@creator_only
-async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = " ".join(context.args).strip()
-    if not query: return await update.message.reply_text("Usage: /search <query>")
-    
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
-    try:
-        from duckduckgo_search import DDGS
-        with DDGS() as ddgs: results = list(ddgs.text(query, max_results=3))
-        if not results: return await update.message.reply_text("No external data found.")
-        
-        ctx = "\n".join([f"[{i+1}] {r['title']}: {r['body']}" for i, r in enumerate(results)])
-        res = gemini_model.generate_content(f"{SYSTEM_PROMPT}\n\nAnswer using ONLY this data: {query}\n\n{ctx}").text.strip()
-        await update.message.reply_text(res)
-    except Exception as e: await update.message.reply_text(f"Search Engine Error: {e}")
-
-# ---------------------------------------------------------------------------
-# IX. BOOT SEQUENCE
-# ---------------------------------------------------------------------------
-async def _post_init(app: Application): schedule_brief(app)
+async def _post_init(app: Application):
+    scheduler = AsyncIOScheduler(timezone=IST)
+    scheduler.add_job(lambda: asyncio.create_task(morning_brief(app)), "cron", hour=8, minute=0)
+    scheduler.start()
+    logger.info("Edwin Omni-Engine Armed. Scheduler active.")
 
 if __name__ == "__main__":
     db_init()
-    start_keepalive()
     try:
         app = Application.builder().token(BOT_TOKEN).post_init(_post_init).build()
         
-        app.add_handler(CommandHandler("start", start_cmd))
-        app.add_handler(CommandHandler("help", help_cmd))
+        # Command Routing
         app.add_handler(CommandHandler("backup", backup_cmd))
-        app.add_handler(CommandHandler("search", search_cmd))
+        app.add_handler(CommandHandler("math", math_cmd))
+        app.add_handler(CommandHandler("cipher", cipher_cmd))
         
-        app.add_handler(CallbackQueryHandler(button_handler))
+        # Multimodal Routing
         app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
         app.add_handler(MessageHandler(filters.VOICE, handle_voice))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_chat))
 
-        logger.info("MASTERPIECE ONLINE. Polling Telegram servers...")
-        app.run_polling()
+        app.run_polling(allowed_updates=Update.ALL_TYPES)
     except Exception as e:
-        logger.critical(f"FATAL LAUNCH ERROR: {e}")
+        logger.critical(f"SYSTEM FAILURE: {e}")
