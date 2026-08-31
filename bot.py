@@ -36,7 +36,7 @@ CREATOR_ID = int(os.environ.get("CREATOR_ID", "0").strip())
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 ENCRYPTION_KEY = os.environ.get("ENCRYPTION_KEY", "").strip()
-PORT = int(os.environ.get("PORT", 8080)) # Render requires port binding
+PORT = int(os.environ.get("PORT", 8080))
 
 class DummyHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -64,7 +64,8 @@ IST = pytz.timezone("Asia/Kolkata")
 DB_PATH = "edwin_vault.db"
 
 genai.configure(api_key=GEMINI_API_KEY)
-gemini_model = genai.GenerativeModel("gemini-2.0-flash")
+# Fix applied here: Swapped to the stable endpoint
+gemini_model = genai.GenerativeModel("gemini-1.5-flash")
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 SYSTEM_PROMPT = """You are Edwin, an elite AI assistant. Creator: Abhishek (DHANUSH V N).
@@ -120,7 +121,6 @@ async def backup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_document(update.effective_chat.id, document=f, filename=f"edwin_vault_{datetime.utcnow():%Y%m%d}.db")
 
 async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """New Feature: Fast DuckDuckGo Web Search"""
     query = " ".join(context.args)
     if not query: return await update.message.reply_text("Provide a search query. e.g., `/search Latest CVEs`", parse_mode="Markdown")
     
@@ -133,7 +133,7 @@ async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         res = await asyncio.to_thread(gemini_model.generate_content, f"{SYSTEM_PROMPT}\n\nSummarize these live search results for the user's query '{query}':\n{context_str}")
         await update.message.reply_text(res.text)
     except Exception as e:
-        await update.message.reply_text("Uplink to search relay failed.")
+        await update.message.reply_text(f"Search relay failed: {e}")
 
 async def math_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = " ".join(context.args)
@@ -167,7 +167,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"**Briefing:**\n{res.text}")
         except Exception as e: 
             if os.path.exists(path): os.remove(path)
-            await update.message.reply_text("Failed to parse document.")
+            await update.message.reply_text(f"Document parsing failed: {e}")
 
 def _extract_pdf(path):
     import pdfplumber
@@ -190,9 +190,9 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f'🎙️ *Transcribed:* "{tr.text.strip()}"', parse_mode="Markdown")
             res = await asyncio.to_thread(gemini_model.generate_content, f"{SYSTEM_PROMPT}\n\nUser Voice Note: {tr.text.strip()}")
             await update.message.reply_text(res.text)
-        except Exception:
+        except Exception as e:
             if os.path.exists(path): os.remove(path)
-            await update.message.reply_text("Voice matrix failed.")
+            await update.message.reply_text(f"Voice matrix failed: {e}")
 
 # ---------------------------------------------------------------------------
 # NEURAL CHAT & URL EXTRACTION
@@ -208,7 +208,6 @@ async def handle_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     text = msg.text
     
-    # New Feature: URL Anticipatory Routing
     url_pattern = re.compile(r'(https?://[^\s]+)')
     urls = url_pattern.findall(text)
     if urls:
@@ -228,8 +227,9 @@ async def handle_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         res = await asyncio.to_thread(gemini_model.generate_content, prompt)
         log_memory(chat.id, thread_id, user.id, "Edwin", res.text.strip())
         await msg.reply_text(res.text)
-    except Exception:
-        await msg.reply_text("API Threshold reached. The cloud is congested.")
+    except Exception as e:
+        # Fix applied here: Removing the blindfold. This will now print the exact Google API error in Telegram.
+        await msg.reply_text(f"Google API Error: {str(e)}")
 
 # ---------------------------------------------------------------------------
 # BOOT SEQUENCE
