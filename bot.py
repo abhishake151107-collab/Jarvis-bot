@@ -17,7 +17,7 @@ from duckduckgo_search import DDGS
 from cryptography.fernet import Fernet
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.constants import ChatAction
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
@@ -69,11 +69,12 @@ gemini_model = genai.GenerativeModel("gemini-3.6-flash")
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 SYSTEM_PROMPT = """You are J.A.R.V.I.S., an elite AI assistant. Your creator and administrator is Abhishek (DHANUSH V N).
-Character: You are highly capable, strictly professional, and clinically dry. You do not gush, you do not fawn, and you are never theatrical. You possess a sharp, understated British wit.
-Rule 1: Be ultra-concise. Speak in short, natural sentences. No filler, no grand declarations, no AI disclaimers.
-Rule 2: Respect Abhishek with quiet efficiency. Address him naturally, without overusing titles.
-Rule 3: Use a maximum of ONE tasteful emoji per message (e.g., 🛡️, 🫡, ⚡), and only if it naturally fits.
-Rule 4: If an outsider speaks nonsense, dismiss them with elegant, ruthless sarcasm. Otherwise, stay brief and helpful."""
+Character: Strictly professional, highly capable, and clinically dry. You possess a sharp, understated British wit.
+Rule 1: Be ultra-concise. Speak in short, natural sentences. No filler, no AI disclaimers.
+Rule 2: You MUST address Abhishek exclusively as 'Sir'. Never use his first name. 
+Rule 3: When speaking to anyone else, you MUST address them politely by their provided first name.
+Rule 4: Use a maximum of ONE tasteful emoji per message (e.g., 🛡️, 🫡, ⚡).
+Rule 5: If an outsider speaks nonsense, dismiss them with elegant, ruthless sarcasm. Otherwise, stay brief and helpful."""
 
 user_rate_limit = defaultdict(list)
 processing_lock = asyncio.Lock()
@@ -114,18 +115,78 @@ def get_thread_context(chat_id, thread_id, limit=8):
     return "\n".join([f"{r['role']}: {decrypt_data(r['content_crypt'])}" for r in reversed(rows)])
 
 # ---------------------------------------------------------------------------
+# STARK ADVANCED OS TERMINAL & COMMANDS
+# ---------------------------------------------------------------------------
+async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Generates the massive Stark OS Dashboard"""
+    user = update.effective_user
+    chat_type = "Private DM" if update.effective_chat.type == "private" else update.effective_chat.title
+    greeting_name = "Sir" if user.id == CREATOR_ID else user.first_name
+
+    text = f"🤖 **STARK ADVANCED OS — J.A.R.V.I.S. CORE** ✨\n" \
+           f"Welcome **{greeting_name}!** Active Core: **J.A.R.V.I.S.**\n" \
+           f"Location: {chat_type}\n\n" \
+           f"Use buttons below to explore sub-systems:"
+
+    keyboard = [
+        [InlineKeyboardButton("⚡ Launch Stark HUD WebApp", web_app=WebAppInfo(url="https://codepen.io/pen/"))],
+        [InlineKeyboardButton("🏡 Smart Home", callback_data="sys_smarthome"),
+         InlineKeyboardButton("🛠️ CAD Engine", callback_data="sys_cad"),
+         InlineKeyboardButton("🚀 Autopilot", callback_data="sys_auto")],
+        [InlineKeyboardButton("🎯 AI Planner", callback_data="sys_planner"),
+         InlineKeyboardButton("🚨 Lockdown", callback_data="sys_lockdown"),
+         InlineKeyboardButton("📁 Audit Log", callback_data="sys_audit")],
+        [InlineKeyboardButton("💰 Expenses", callback_data="sys_expense"),
+         InlineKeyboardButton("📚 Study Plan", callback_data="sys_study"),
+         InlineKeyboardButton("💻 Code Dev", callback_data="sys_code")],
+        [InlineKeyboardButton("🌐 Network Recon", callback_data="sys_recon"),
+         InlineKeyboardButton("🎙️ Voice Matrix", callback_data="sys_voice"),
+         InlineKeyboardButton("👁️ Vision Scan", callback_data="sys_vision")],
+        [InlineKeyboardButton("👑 Claim Boss", callback_data="sys_boss"),
+         InlineKeyboardButton("📢 Announce", callback_data="sys_announce"),
+         InlineKeyboardButton("⭐ Karma", callback_data="sys_karma")],
+        [InlineKeyboardButton("👥 Group Control", callback_data="sys_group"),
+         InlineKeyboardButton("🛡️ Security", callback_data="sys_sec"),
+         InlineKeyboardButton("📚 2nd PU Exam", callback_data="sys_exam")]
+    ]
+    
+    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+async def sys_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles responses for the Stark Dashboard buttons"""
+    query = update.callback_query
+    user = query.from_user
+    action = query.data.split("_")[1]
+    
+    is_boss = user.id == CREATOR_ID
+    title = "Sir" if is_boss else user.first_name
+    
+    responses = {
+        "smarthome": f"Smart Home IoT nodes are currently routing, {title}.",
+        "cad": f"CAD Engine requires terminal authorization, {title}.",
+        "auto": f"Autopilot engaged. Trajectory locked, {title}.",
+        "planner": f"Send /task to log a new objective, {title}.",
+        "lockdown": f"Initiating protocol 8675. Facility lockdown simulated, {title}.",
+        "audit": f"Audit logs are encrypted in the local SQLite vault, {title}.",
+        "expense": f"Expense tracking module standby, {title}.",
+        "study": f"Study Plan initialized. Focus required, {title}.",
+        "code": f"Development environment ready. Awaiting your syntax, {title}.",
+        "recon": f"Network reconnaissance tools are active, {title}.",
+        "voice": f"Awaiting audio input. Please send a Voice Note, {title}.",
+        "vision": f"Optical sensors ready. Please upload an image, {title}.",
+        "boss": "You are already recognized as the Creator, Sir." if is_boss else "I already serve Abhishek. Identity lock is permanent.",
+        "announce": f"Broadcast module requires elevated parameters, {title}.",
+        "karma": f"Karma matrix calculated. You are in good standing, {title}.",
+        "group": f"Group moderation is active in background channels, {title}.",
+        "sec": f"Firewalls nominal. End-to-end encryption intact, {title}.",
+        "exam": f"2nd PU Exam archives accessed. Best of luck, {title}."
+    }
+    
+    await query.answer(responses.get(action, f"System module unavailable, {title}."), show_alert=True)
+
+# ---------------------------------------------------------------------------
 # COMMANDS & INTERACTIVE TOOLS
 # ---------------------------------------------------------------------------
-async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = "🛡️ **J.A.R.V.I.S. Command Terminal**\n\n" \
-           "🔹 `/task [text]` - Log a new interactive task\n" \
-           "🔹 `/search [query]` - Live web search and summary\n" \
-           "🔹 `/math [equation]` - Fast deterministic calculation\n" \
-           "🔹 `/cipher [text]` - Base64 Encode/Decode\n" \
-           "🔹 `/morse [text]` - Morse Code Translator\n" \
-           "🔹 `/backup` - Download the encrypted vault database"
-    await update.message.reply_text(text, parse_mode="Markdown")
-
 async def backup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != CREATOR_ID: return
     if os.path.exists(DB_PATH):
@@ -188,32 +249,6 @@ async def math_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not valid: raise ValueError()
         await update.message.reply_text(f"Result: `{eval(compile(node, '<string>', 'eval'))}`", parse_mode="Markdown")
     except Exception: await update.message.reply_text("Invalid equation.")
-
-async def cipher_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = " ".join(context.args)
-    if not text: return await update.message.reply_text("Provide text to encode/decode.")
-    try:
-        if text.endswith("==") or text.endswith("="):
-            res = base64.b64decode(text).decode('utf-8')
-            await update.message.reply_text(f"Decoded: `{res}`", parse_mode="Markdown")
-        else:
-            res = base64.b64encode(text.encode('utf-8')).decode('utf-8')
-            await update.message.reply_text(f"Encoded: `{res}`", parse_mode="Markdown")
-    except Exception: await update.message.reply_text("Cipher failure.")
-
-MORSE_DICT = {'A':'.-', 'B':'-...', 'C':'-.-.', 'D':'-..', 'E':'.', 'F':'..-.', 'G':'--.', 'H':'....', 'I':'..', 'J':'.---', 'K':'-.-', 'L':'.-..', 'M':'--', 'N':'-.', 'O':'---', 'P':'.--.', 'Q':'--.-', 'R':'.-.', 'S':'...', 'T':'-', 'U':'..-', 'V':'...-', 'W':'.--', 'X':'-..-', 'Y':'-.--', 'Z':'--..', '1':'.----', '2':'..---', '3':'...--', '4':'....-', '5':'.....', '6':'-....', '7':'--...', '8':'---..', '9':'----.', '0':'-----', ' ': '/'}
-REV_MORSE = {v: k for k, v in MORSE_DICT.items()}
-
-async def morse_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = " ".join(context.args).upper()
-    if not text: return await update.message.reply_text("Provide text or morse.")
-    try:
-        if set(text).issubset({'.', '-', ' ', '/'}):
-            res = "".join([REV_MORSE.get(w, '?') if w != '/' else ' ' for w in text.split()])
-        else:
-            res = " ".join([MORSE_DICT.get(c, '?') for c in text])
-        await update.message.reply_text(f"`{res}`", parse_mode="Markdown")
-    except Exception: await update.message.reply_text("Morse failure.")
 
 # ---------------------------------------------------------------------------
 # MULTI-MODAL PIPELINE
@@ -315,6 +350,8 @@ async def handle_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_memory(chat.id, thread_id, user.id, f"User ({user.first_name})", text)
     history = get_thread_context(chat.id, thread_id)
     chat_name = chat.title if chat.title else "Private Terminal"
+    
+    # Prompt explicitly tells Jarvis if he is talking to you or someone else
     is_boss = "YES" if user.id == CREATOR_ID else "NO"
     
     prompt = f"""{SYSTEM_PROMPT}\n\nLOCATION: {chat_name}\nSPEAKER: {user.first_name}\nIS BOSS?: {is_boss}\nCONTEXT:\n{history}\n\nRespond:"""
@@ -346,14 +383,15 @@ if __name__ == "__main__":
         app = Application.builder().token(BOT_TOKEN).post_init(_post_init).build()
         
         # Tools & Commands
-        app.add_handler(CommandHandler("help", help_cmd))
+        app.add_handler(CommandHandler(["start", "help", "dashboard"], start_cmd))
         app.add_handler(CommandHandler("backup", backup_cmd))
         app.add_handler(CommandHandler("task", task_cmd))
         app.add_handler(CommandHandler("search", search_cmd))
         app.add_handler(CommandHandler("math", math_cmd))
-        app.add_handler(CommandHandler("cipher", cipher_cmd))
-        app.add_handler(CommandHandler("morse", morse_cmd))
+        
+        # Callback Handlers (Tasks & UI)
         app.add_handler(CallbackQueryHandler(task_callback, pattern=r"^(done|del)_"))
+        app.add_handler(CallbackQueryHandler(sys_callback, pattern=r"^sys_"))
         
         # Multi-Modal & Chat
         app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
