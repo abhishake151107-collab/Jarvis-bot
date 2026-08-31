@@ -65,7 +65,7 @@ DB_PATH = "edwin_vault.db"
 
 genai.configure(api_key=GEMINI_API_KEY)
 # Fix applied here: Swapped to the stable endpoint
-gemini_model = genai.GenerativeModel("gemini-1.5-flash")
+gemini_model = genai.GenerativeModel("gemini-pro")
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 SYSTEM_PROMPT = """You are Edwin, an elite AI assistant. Creator: Abhishek (DHANUSH V N).
