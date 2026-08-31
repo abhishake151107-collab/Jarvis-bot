@@ -64,7 +64,10 @@ IST = pytz.timezone("Asia/Kolkata")
 DB_PATH = "edwin_vault.db"
 
 genai.configure(api_key=GEMINI_API_KEY)
-gemini_model = genai.GenerativeModel("gemini-2.5-flash")
+
+# THE FIX: Updated to the new generation model explicitly required by Google for new API keys
+gemini_model = genai.GenerativeModel("gemini-3.6-flash")
+
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 SYSTEM_PROMPT = """You are Edwin, an elite AI assistant. Creator: Abhishek (DHANUSH V N).
