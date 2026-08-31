@@ -64,8 +64,7 @@ IST = pytz.timezone("Asia/Kolkata")
 DB_PATH = "edwin_vault.db"
 
 genai.configure(api_key=GEMINI_API_KEY)
-# Fix applied here: Swapped to the stable endpoint
-gemini_model = genai.GenerativeModel("gemini-pro")
+gemini_model = genai.GenerativeModel("gemini-2.5-flash")
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 SYSTEM_PROMPT = """You are Edwin, an elite AI assistant. Creator: Abhishek (DHANUSH V N).
@@ -228,7 +227,6 @@ async def handle_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log_memory(chat.id, thread_id, user.id, "Edwin", res.text.strip())
         await msg.reply_text(res.text)
     except Exception as e:
-        # Fix applied here: Removing the blindfold. This will now print the exact Google API error in Telegram.
         await msg.reply_text(f"Google API Error: {str(e)}")
 
 # ---------------------------------------------------------------------------
