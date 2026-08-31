@@ -107,6 +107,14 @@ def log_memory(chat_id, thread_id, user_id, role, text):
     conn.commit()
     conn.close()
 
+def get_thread_context(chat_id, thread_id, limit=8):
+    """Retrieves the encrypted memory context to prevent crashes during conversation."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute("SELECT role, content_crypt FROM memory WHERE chat_id = ? AND thread_id = ? ORDER BY id DESC LIMIT ?", (chat_id, thread_id, limit)).fetchall()
+    conn.close()
+    return "\n".join([f"{r['role']}: {decrypt_data(r['content_crypt'])}" for r in reversed(rows)])
+
 def update_karma(user_id: int, name: str, amount: int):
     conn = sqlite3.connect(DB_PATH)
     conn.execute("INSERT INTO karma (user_id, name, score) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET score = score + ?, name = ?", (user_id, name, 10+amount, amount, name))
@@ -208,10 +216,18 @@ async def sys_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if action == "smarthome": await execute_smarthome(update, context)
         elif action == "lockdown": await execute_lockdown(update, context)
         elif action == "sec": await execute_security_sweep(update, context)
+        elif action == "recon":
+            msg = "🌐 **Network Recon Active:**\n\n• `/dns [domain]` - Records\n• `/ssl [domain]` - Cert Check\n• `/headers [url]` - Security\n• `/ip [ip]` - ASN Routing"
+            await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Return", callback_data="sys_menu")]]), parse_mode="Markdown")
         elif action == "planner":
             tasks = conn.execute("SELECT id, task_crypt FROM tasks WHERE status = 'pending'").fetchall()
             msg = "🎯 **Active Objectives:**\n\n" + ("\n".join([f"• {decrypt_data(t['task_crypt'])}" for t in tasks]) if tasks else "Schedule clear, Sir.")
             await query.edit_message_text(msg + "\n\nUse `/task [desc]`", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Return", callback_data="sys_menu")]]), parse_mode="Markdown")
+        elif action == "expense":
+            rows = conn.execute("SELECT amount, category, note_crypt FROM expenses ORDER BY id DESC LIMIT 5").fetchall()
+            total = conn.execute("SELECT SUM(amount) as total FROM expenses").fetchone()['total'] or 0.0
+            msg = f"💰 **Ledger:**\nTotal: ₹{total:.2f}\n\n" + ("\n".join([f"• ₹{r['amount']} ({r['category']}): {decrypt_data(r['note_crypt'])}" for r in rows]) if rows else "No records.")
+            await query.edit_message_text(msg + "\n\nUse `/expense [amount] [cat] [note]`.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Return", callback_data="sys_menu")]]), parse_mode="Markdown")
         elif action == "karma":
             scores = conn.execute("SELECT name, score FROM karma ORDER BY score DESC LIMIT 10").fetchall()
             msg = "⭐ **Karma Leaderboard:**\n\n" + "\n".join([f"• {r['name']}: {r['score']} pts" for r in scores])
@@ -235,6 +251,76 @@ async def smite_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         update_karma(target.id, target.first_name, -50)
         await msg.reply_text(f"🛡️ **ACTIVE DEFENSE**\n\nTarget {target.first_name} permanently neutralized. Silence is golden.", parse_mode="Markdown")
     except Exception: await msg.reply_text("Smite failed. Check privileges.")
+
+async def dns_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    domain = "".join(context.args).replace("https://", "").replace("http://", "").split("/")[0]
+    if not domain: return await update.message.reply_text("Provide a valid domain.")
+    try:
+        ip_list = await asyncio.to_thread(socket.gethostbyname_ex, domain)
+        records = "\n".join([f"• `{ip}`" for ip in ip_list[2]])
+        await update.message.reply_text(f"🌐 **DNS Records for {domain}:**\n\n{records}", parse_mode="Markdown")
+    except Exception: await update.message.reply_text("DNS Resolution Failed.")
+
+async def ip_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = "".join(context.args).replace("https://", "").replace("http://", "").split("/")[0]
+    if not query: return await update.message.reply_text("Provide an IP or domain.")
+    try:
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            data = (await client.get(f"http://ip-api.com/json/{query}")).json()
+            if data.get("status") == "fail": return await update.message.reply_text("Invalid target.")
+        await update.message.reply_text(f"🌐 **ASN Routing:**\n\n• **ISP:** `{data.get('isp')}`\n• **Location:** `{data.get('city')}, {data.get('country')}`", parse_mode="Markdown")
+    except Exception: await update.message.reply_text("IP Query Failed.")
+
+async def ssl_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    domain = "".join(context.args).replace("https://", "").replace("http://", "").split("/")[0]
+    if not domain: return await update.message.reply_text("Provide a domain.")
+    try:
+        ctx = ssl.create_default_context()
+        with socket.create_connection((domain, 443), timeout=5.0) as sock:
+            with ctx.wrap_socket(sock, server_hostname=domain) as ssock:
+                cert = ssock.getpeercert()
+        await update.message.reply_text(f"🔒 **SSL/TLS:**\n• Domain: `{domain}`\n• Expires: `{cert.get('notAfter', 'Unknown')}`\n• Status: Valid 🛡️", parse_mode="Markdown")
+    except Exception: await update.message.reply_text("SSL Inspection Failed.")
+
+async def headers_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    target = "".join(context.args)
+    if not target: return await update.message.reply_text("Provide a URL.")
+    if not target.startswith("http"): target = "https://" + target
+    try:
+        async with httpx.AsyncClient(timeout=6.0, follow_redirects=True) as client:
+            h = (await client.get(target)).headers
+        await update.message.reply_text(f"🛡️ **Headers:**\n• HSTS: {'✅' if 'strict-transport-security' in h else '❌'}\n• CSP: {'✅' if 'content-security-policy' in h else '❌'}\n• X-Frame: {'✅' if 'x-frame-options' in h else '❌'}", parse_mode="Markdown")
+    except Exception: await update.message.reply_text("Header Audit Failed.")
+
+async def task_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != CREATOR_ID: return
+    task = " ".join(context.args)
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("INSERT INTO tasks (user_id, task_crypt) VALUES (?, ?)", (CREATOR_ID, encrypt_data(task)))
+    conn.commit()
+    conn.close()
+    await update.message.reply_text(f"📋 **Task Logged:**\n{task}", parse_mode="Markdown")
+
+async def expense_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != CREATOR_ID: return
+    try:
+        amt, cat, note = float(context.args[0]), context.args[1], " ".join(context.args[2:])
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("INSERT INTO expenses (user_id, amount, category, note_crypt) VALUES (?, ?, ?, ?)", (CREATOR_ID, amt, cat, encrypt_data(note)))
+        conn.commit()
+        conn.close()
+        await update.message.reply_text(f"💰 **Logged:** ₹{amt} [{cat}]")
+    except Exception: await update.message.reply_text("Format: /expense [amount] [category] [note]")
+
+async def code_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != CREATOR_ID: return
+    prompt = " ".join(context.args)
+    if not prompt: return await update.message.reply_text("Provide a coding prompt.")
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+    try:
+        response = await route_llm(prompt, mode="code")
+        await update.message.reply_text(response, parse_mode="Markdown")
+    except Exception as e: await update.message.reply_text(f"Logic Router Error: {e}")
 
 # ---------------------------------------------------------------------------
 # CHAT & NLP INTENT ROUTER
@@ -286,6 +372,13 @@ if __name__ == "__main__":
     
     app.add_handler(CommandHandler(["start", "dashboard", "menu", "help"], start_cmd))
     app.add_handler(CommandHandler("smite", smite_cmd))
+    app.add_handler(CommandHandler("dns", dns_cmd))
+    app.add_handler(CommandHandler("ip", ip_cmd))
+    app.add_handler(CommandHandler("ssl", ssl_cmd))
+    app.add_handler(CommandHandler("headers", headers_cmd))
+    app.add_handler(CommandHandler("task", task_cmd))
+    app.add_handler(CommandHandler("expense", expense_cmd))
+    app.add_handler(CommandHandler("code", code_cmd))
     app.add_handler(CallbackQueryHandler(sys_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_chat))
     
