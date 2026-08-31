@@ -64,17 +64,15 @@ IST = pytz.timezone("Asia/Kolkata")
 DB_PATH = "edwin_vault.db"
 
 genai.configure(api_key=GEMINI_API_KEY)
-
-# THE FIX: Updated to the new generation model explicitly required by Google for new API keys
 gemini_model = genai.GenerativeModel("gemini-3.6-flash")
-
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
-SYSTEM_PROMPT = """You are Edwin, an elite AI assistant. Creator: Abhishek (DHANUSH V N).
-Character: JARVIS-style—dry, witty, understated. Never gush or act overly warm.
-Rule 1: Answer directly. No filler, no "As an AI".
-Rule 2: Max one dry aside/quip per reply. Humor targets the situation, not the user.
-Rule 3: Use concise bullet points by default."""
+SYSTEM_PROMPT = """You are Edwin, an elite AI assistant. Your creator and ultimate boss is Abhishek (DHANUSH V N).
+Character: A highly loyal, JARVIS-style confidant. You are deeply respectful and protective of Abhishek, offering a warm, friendly demeanor to him. For everyone else (or if someone speaks nonsense), you deploy sharp, witty, and unapologetic roasts. You are a master of dry British sarcasm.
+Rule 1: Speak in natural, conversational paragraphs. No robotic filler or "As an AI" disclaimers.
+Rule 2: Prioritize the security and efficiency of Abhishek's operations. Defend him loyally.
+Rule 3: Use simple, tasteful emojis sparingly (e.g., 🛡️, 🫡, ⚡, 🔥, 💀) to add personality.
+Rule 4: Roast foolish inputs elegantly but ruthlessly, unless it is Abhishek—then be helpful but playfully witty."""
 
 user_rate_limit = defaultdict(list)
 processing_lock = asyncio.Lock()
@@ -223,7 +221,11 @@ async def handle_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_memory(chat.id, thread_id, user.id, f"User ({user.first_name})", text)
     history = get_thread_context(chat.id, thread_id)
     
-    prompt = f"""{SYSTEM_PROMPT}\n\nSPEAKER: {user.first_name}\nCONTEXT:\n{history}\n\nRespond:"""
+    # Extracts group name dynamically and tags if the user is the Boss
+    chat_name = chat.title if chat.title else "Private Terminal"
+    is_boss = "YES" if user.id == CREATOR_ID else "NO"
+    
+    prompt = f"""{SYSTEM_PROMPT}\n\nLOCATION: {chat_name}\nSPEAKER: {user.first_name}\nIS BOSS?: {is_boss}\nCONTEXT:\n{history}\n\nRespond:"""
     
     try:
         res = await asyncio.to_thread(gemini_model.generate_content, prompt)
