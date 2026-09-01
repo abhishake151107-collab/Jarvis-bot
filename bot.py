@@ -251,8 +251,23 @@ async def sys_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally: conn.close()
 
 # ---------------------------------------------------------------------------
-# DEFENSE & OSINT COMMANDS
+# DEFENSE, OSINT & DATA INJECTION COMMANDS
 # ---------------------------------------------------------------------------
+async def feed_roster_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != CREATOR_ID: return
+    chat_id = update.effective_chat.id
+    dino_members = [
+        "Pranav Vikash.s 1E", "Gagan", "Harry Potter", 
+        "Imran Sallu Bhai", "Shagul Shagul", "Md Masum"
+    ]
+    conn = sqlite3.connect(DB_PATH)
+    for i, name in enumerate(dino_members):
+        # We assign ghost IDs (negative numbers) since we lack their real Telegram IDs
+        conn.execute("INSERT OR REPLACE INTO roster (chat_id, user_id, name) VALUES (?, ?, ?)", (chat_id, -(i+1), name))
+    conn.commit()
+    conn.close()
+    await update.message.reply_text("✅ **DINO GROUP Roster Injected.**\n\nI have successfully memorized the 6 offline members from your visual manifest, Sir.", parse_mode="Markdown")
+
 async def smite_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != CREATOR_ID: return
     msg = update.effective_message
@@ -396,6 +411,7 @@ if __name__ == "__main__":
     app = Application.builder().token(BOT_TOKEN).build()
     
     app.add_handler(CommandHandler(["start", "dashboard", "menu", "help"], start_cmd))
+    app.add_handler(CommandHandler("feed_roster", feed_roster_cmd))
     app.add_handler(CommandHandler("smite", smite_cmd))
     app.add_handler(CommandHandler("dns", dns_cmd))
     app.add_handler(CommandHandler("ip", ip_cmd))
