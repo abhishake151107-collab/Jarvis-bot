@@ -29,13 +29,21 @@ from telegram.ext import (
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger("jarvis")
 
-BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+# Fallback checking so it works whether you use BOT_TOKEN or TELEGRAM_BOT_TOKEN in Render
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN") or os.environ.get("BOT_TOKEN", "")
+BOT_TOKEN = BOT_TOKEN.strip()
+
 CREATOR_ID = int(os.environ.get("CREATOR_ID", "0").strip())
 ENCRYPTION_KEY = os.environ.get("ENCRYPTION_KEY", Fernet.generate_key().decode()).strip()
 PORT = int(os.environ.get("PORT", 8080))
 SMART_HOME_WEBHOOK = os.environ.get("SMART_HOME_WEBHOOK", "https://maker.ifttt.com/trigger/dummy/with/key/dummy")
 
+# Added do_HEAD to prevent the 501 Unsupported Method error from Render's health checks
 class DummyHandler(BaseHTTPRequestHandler):
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
+
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
@@ -283,8 +291,8 @@ async def scheduled_briefing(context: ContextTypes.DEFAULT_TYPE):
 def main():
     db_init()
     if not BOT_TOKEN:
-        logger.error("TELEGRAM_BOT_TOKEN missing.")
-        return
+        logger.error("TELEGRAM_BOT_TOKEN or BOT_TOKEN missing.")
+        sys.exit(1)
         
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     
