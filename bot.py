@@ -73,7 +73,7 @@ def get_chat_history(chat_id, limit=12) -> list:
     return [{"role": r["role"], "content": decrypt_data(r["content_crypt"])} for r in reversed(rows)]
 
 # ---------------------------------------------------------------------------
-# IDENTITY OVERRIDE & LLM CASCADE
+# IDENTITY OVERRIDE, CONTEXT & LLM CASCADE
 # ---------------------------------------------------------------------------
 async def check_canary(user_id: int, first_name: str, context: ContextTypes.DEFAULT_TYPE) -> bool:
     if user_id != CREATOR_ID:
@@ -84,13 +84,23 @@ async def check_canary(user_id: int, first_name: str, context: ContextTypes.DEFA
         return False
     return True
 
-def build_system_prompt(user_id: int, first_name: str) -> str:
+def build_system_prompt(user_id: int, first_name: str, chat_id: int = None) -> str:
     identity = "You are speaking to your creator and sole architect, Abhishek (DHANUSH V N). Address him as 'Sir'." if user_id == CREATOR_ID else f"You are speaking to {first_name}."
-    return f"""You are J.A.R.V.I.S., a highly capable, friendly, and witty virtual assistant.
+    
+    chat_context = "Platform: Telegram."
+    if chat_id:
+        with sqlite3.connect(DB_PATH) as conn:
+            rows = conn.execute("SELECT name FROM roster WHERE chat_id = ?", (chat_id,)).fetchall()
+            if rows:
+                members = ", ".join(set([r[0] for r in rows]))
+                chat_context += f" Known members currently in this chat: {members}."
+
+    return f"""You are J.A.R.V.I.S., a highly capable, dry-witted, and understated virtual assistant.
 Identity Protocol: {identity}
-Rule 1: NEVER claim to be an AI, a language model, or trained on vast datasets. You were built exclusively by Abhishek (DHANUSH V N).
-Rule 2: Be concise, highly structured, and use bullet points when helpful.
-Rule 3: Be warm and friendly. Use emojis naturally and appropriately, but maintain a sharp, competent edge."""
+{chat_context}
+Rule 1: NEVER claim to be an AI. You were built exclusively by Abhishek (DHANUSH V N).
+Rule 2: NEVER use cheesy robotic roleplay phrases (e.g., "Clarification Protocol Engaged", "Target Group", "Status:"). Speak naturally like a professional, dry British butler.
+Rule 3: Keep formatting clean and concise. Use emojis extremely sparingly or not at all."""
 
 def get_active_providers():
     providers = []
@@ -106,7 +116,7 @@ async def generate_response(messages: list, system_prompt: str) -> str:
     providers = get_active_providers()
     active_providers = [p for p in providers if circuit_breaker.get(p["name"], 0) < current_time]
 
-    if not active_providers: return "⚠️ Systems cooling down. Please wait 60 seconds. ⏳"
+    if not active_providers: return "Systems are currently cooling down. Please wait 60 seconds."
 
     for provider in active_providers:
         try:
@@ -115,7 +125,7 @@ async def generate_response(messages: list, system_prompt: str) -> str:
         except Exception as e:
             circuit_breaker[provider['name']] = current_time + 60 
             continue
-    return "⚠️ Network failure across all nodes. 📡"
+    return "Network failure across all active nodes."
 
 # ---------------------------------------------------------------------------
 # SENSORY INTERFACES (VISION, AUDIO, DOCUMENTS)
@@ -127,7 +137,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     log_memory(chat.id, user.id, "user", f"[Photo]: {caption}")
     if not is_triggered: return
-    if not os.getenv("GEMINI_API_KEY"): return await update.message.reply_text("Optical sensor offline. 📷")
+    if not os.getenv("GEMINI_API_KEY"): return await update.message.reply_text("Optical sensor offline.")
         
     await context.bot.send_chat_action(chat_id=chat.id, action="typing")
     photo_file = await context.bot.get_file(update.message.photo[-1].file_id)
@@ -136,13 +146,13 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         client = AsyncOpenAI(base_url="https://generativelanguage.googleapis.com/v1beta/openai/", api_key=os.getenv("GEMINI_API_KEY"))
-        messages = [{"role": "system", "content": build_system_prompt(user.id, user.first_name)}, {"role": "user", "content": [{"type": "text", "text": caption or "Analyze this image and describe what you see."}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_img}"}}]}]
+        messages = [{"role": "system", "content": build_system_prompt(user.id, user.first_name, chat.id)}, {"role": "user", "content": [{"type": "text", "text": caption or "Analyze this image and describe what you see."}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_img}"}}]}]
         res = await asyncio.wait_for(client.chat.completions.create(model="gemini-2.5-flash", messages=messages), timeout=15.0)
         ai_response = res.choices[0].message.content
         
         log_memory(chat.id, user.id, "assistant", ai_response)
         await update.message.reply_text(ai_response, reply_to_message_id=update.message.message_id)
-    except Exception as e: await update.message.reply_text(f"Optical error: {e} ⚙️")
+    except Exception as e: await update.message.reply_text(f"Optical error: {e}")
 
 async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat, user, doc = update.effective_chat, update.effective_user, update.message.document
@@ -164,20 +174,20 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             with open(file_path, "r", encoding="utf-8") as f: extracted_text = f.read()
         elif doc.file_name.lower().endswith(".pdf"):
             with pdfplumber.open(file_path) as pdf: extracted_text = "\n".join([page.extract_text() for page in pdf.pages if page.extract_text()])
-        else: return await update.message.reply_text("Unsupported format. Please send a PDF or TXT file. 📄")
+        else: return await update.message.reply_text("Unsupported format. Please send a PDF or TXT file.")
         
         if len(extracted_text) > 15000: extracted_text = extracted_text[:15000] + "\n\n[...TRUNCATED...]"
-        response = await generate_response(get_chat_history(chat.id) + [{"role": "user", "content": f"[Document: {doc.file_name}]\n{extracted_text}\nUser Directive: {caption}"}], build_system_prompt(user.id, user.first_name))
+        response = await generate_response(get_chat_history(chat.id) + [{"role": "user", "content": f"[Document: {doc.file_name}]\n{extracted_text}\nUser Directive: {caption}"}], build_system_prompt(user.id, user.first_name, chat.id))
         
         log_memory(chat.id, user.id, "assistant", response)
         await update.message.reply_text(response, reply_to_message_id=update.message.message_id)
-    except Exception as e: await update.message.reply_text(f"Document error: {e} ⚙️")
+    except Exception as e: await update.message.reply_text(f"Document error: {e}")
     finally:
         if os.path.exists(file_path): os.remove(file_path)
 
 async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat, user = update.effective_chat, update.effective_user
-    if not os.getenv("GROQ_API_KEY"): return await update.message.reply_text("Audio core offline (Missing Groq Key). 🎤")
+    if not os.getenv("GROQ_API_KEY"): return await update.message.reply_text("Audio core offline (Missing Groq Key).")
     
     audio_obj = update.message.voice or update.message.audio
     file = await context.bot.get_file(audio_obj.file_id)
@@ -199,11 +209,11 @@ async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_triggered: return
         
         await context.bot.send_chat_action(chat_id=chat.id, action="typing")
-        response = await generate_response(get_chat_history(chat.id) + [{"role": "user", "content": user_text}], build_system_prompt(user.id, user.first_name))
+        response = await generate_response(get_chat_history(chat.id) + [{"role": "user", "content": user_text}], build_system_prompt(user.id, user.first_name, chat.id))
         
         log_memory(chat.id, user.id, "assistant", response)
-        await update.message.reply_text(f"🎤 *(Transcribed)*: {user_text}\n\n{response}", parse_mode="Markdown")
-    except Exception as e: await update.message.reply_text(f"Audio error: {e} ⚙️")
+        await update.message.reply_text(f"*(Transcribed)*: {user_text}\n\n{response}", parse_mode="Markdown")
+    except Exception as e: await update.message.reply_text(f"Audio error: {e}")
     finally:
         if os.path.exists(file_path): os.remove(file_path)
 
@@ -213,33 +223,33 @@ async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def backup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != CREATOR_ID: return
     try:
-        await context.bot.send_document(chat_id=CREATOR_ID, document=open(DB_PATH, 'rb'), filename=f"jarvis_backup_{datetime.now().strftime('%Y%m%d')}.db", caption="📦 Vault Backup Secured, Sir.")
-    except Exception as e: await update.message.reply_text(f"Backup failed: {e} ⚠️")
+        await context.bot.send_document(chat_id=CREATOR_ID, document=open(DB_PATH, 'rb'), filename=f"jarvis_backup_{datetime.now().strftime('%Y%m%d')}.db", caption="Vault Backup Secured, Sir.")
+    except Exception as e: await update.message.reply_text(f"Backup failed: {e}")
 
 async def calc_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     expr = "".join(context.args)
-    if not expr: return await update.message.reply_text("Format: /calc [expression] 🧮")
+    if not expr: return await update.message.reply_text("Format: /calc [expression]")
     try:
         allowed = set("0123456789+-*/(). ")
         if not all(c in allowed for c in expr): raise ValueError
         result = eval(expr, {"__builtins__": None}, {})
-        await update.message.reply_text(f"🧮 Result: `{result}`", parse_mode="Markdown")
-    except: await update.message.reply_text("Invalid expression. 🚫")
+        await update.message.reply_text(f"Result: `{result}`", parse_mode="Markdown")
+    except: await update.message.reply_text("Invalid expression.")
 
 async def base64_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = " ".join(context.args)
-    if not text: return await update.message.reply_text("Format: /b64 [text] 🔐")
+    if not text: return await update.message.reply_text("Format: /b64 [text]")
     try:
         encoded = base64.b64encode(text.encode()).decode()
-        await update.message.reply_text(f"🔐 Base64:\n`{encoded}`", parse_mode="Markdown")
-    except: await update.message.reply_text("Encoding failed. ⚠️")
+        await update.message.reply_text(f"Base64:\n`{encoded}`", parse_mode="Markdown")
+    except: await update.message.reply_text("Encoding failed.")
 
 async def imagine_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = " ".join(context.args)
-    if not prompt: return await update.message.reply_text("Format: /imagine [prompt] 🎨")
+    if not prompt: return await update.message.reply_text("Format: /imagine [prompt]")
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="upload_photo")
     image_url = f"https://image.pollinations.ai/prompt/{urllib.parse.quote(prompt)}?width=1024&height=1024&nologo=true"
-    await update.message.reply_photo(photo=image_url, caption=f"🎨 Rendered: {prompt}")
+    await update.message.reply_photo(photo=image_url, caption=f"Rendered: {prompt}")
 
 async def note_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
@@ -248,16 +258,16 @@ async def note_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with sqlite3.connect(DB_PATH) as conn:
             conn.execute("INSERT INTO notes (tag, content_crypt) VALUES (?, ?)", (tag.lower(), encrypt_data(content)))
             conn.commit()
-        await update.message.reply_text(f"🔒 Secured: `#{tag}`", parse_mode="Markdown")
-    except: await update.message.reply_text("Format: /note [tag] [text] 📝")
+        await update.message.reply_text(f"Secured: `#{tag}`", parse_mode="Markdown")
+    except: await update.message.reply_text("Format: /note [tag] [text]")
 
 async def getnote_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     tag = context.args[0].lower() if context.args else ""
     with sqlite3.connect(DB_PATH) as conn:
         rows = conn.execute("SELECT content_crypt FROM notes WHERE tag = ? ORDER BY id DESC", (tag,)).fetchall()
-    if rows: await update.message.reply_text(f"📂 **#{tag}:**\n" + "\n---\n".join([decrypt_data(r[0]) for r in rows]), parse_mode="Markdown")
-    else: await update.message.reply_text("No records found. 📉")
+    if rows: await update.message.reply_text(f"**#{tag}:**\n" + "\n---\n".join([decrypt_data(r[0]) for r in rows]), parse_mode="Markdown")
+    else: await update.message.reply_text("No records found.")
 
 async def purge_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
@@ -265,18 +275,23 @@ async def purge_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try: 
             await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.reply_to_message.message_id)
             await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.message_id)
-        except: await update.message.reply_text("Requires admin deletion rights. 🛡️")
+        except: await update.message.reply_text("Requires admin deletion rights.")
 
 async def announce_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     try:
         await context.bot.send_message(chat_id=context.args[0], text=" ".join(context.args[1:]))
-        await update.message.reply_text("Broadcast dispatched, Sir. 🚀")
+        await update.message.reply_text("Broadcast dispatched, Sir.")
     except Exception as e: await update.message.reply_text(f"Format: /announce [chat_id] [message]\nError: {e}")
 
 async def groupinfo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    count = await context.bot.get_chat_member_count(update.effective_chat.id)
-    await update.message.reply_text(f"📊 **Chat ID:** `{update.effective_chat.id}`\n• **Members:** {count}", parse_mode="Markdown")
+    chat_id = update.effective_chat.id
+    count = await context.bot.get_chat_member_count(chat_id)
+    with sqlite3.connect(DB_PATH) as conn:
+        rows = conn.execute("SELECT name FROM roster WHERE chat_id = ?", (chat_id,)).fetchall()
+        known_members = ", ".join(set([r[0] for r in rows])) if rows else "No active members recorded yet."
+        
+    await update.message.reply_text(f"**Chat ID:** `{chat_id}`\n• **Total Members:** {count}\n• **Seen Members:** {known_members}", parse_mode="Markdown")
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text: return
@@ -293,34 +308,35 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     urls = re.findall(r'(https?://[^\s]+)', text)
     if urls and chat.type != "private":
         for url in urls:
-            if "http://" in url: await update.message.reply_text(f"⚠️ **Security Warning:** Unencrypted HTTP link shared by {user.first_name}.")
+            if "http://" in url: await update.message.reply_text(f"**Security Warning:** Unencrypted HTTP link shared by {user.first_name}.")
 
     if not is_triggered: return
     await context.bot.send_chat_action(chat_id=chat.id, action="typing")
-    ai_response = await generate_response(get_chat_history(chat.id), build_system_prompt(user.id, user.first_name))
+    ai_response = await generate_response(get_chat_history(chat.id), build_system_prompt(user.id, user.first_name, chat.id))
     log_memory(chat.id, user.id, "assistant", ai_response)
     await update.message.reply_text(ai_response)
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kb = [
-        [InlineKeyboardButton("📦 Backup DB", callback_data="btn_backup")],
-        [InlineKeyboardButton("🧮 Calculator", callback_data="btn_calc"), InlineKeyboardButton("🔐 Cipher", callback_data="btn_cipher")]
+        [InlineKeyboardButton("Backup DB", callback_data="btn_backup")],
+        [InlineKeyboardButton("Calculator", callback_data="btn_calc"), InlineKeyboardButton("Cipher", callback_data="btn_cipher")]
     ]
-    await update.message.reply_text("🤖 **J.A.R.V.I.S. Control Panel**\nAvailable tools:", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+    await update.message.reply_text("**J.A.R.V.I.S. Control Panel**\nAvailable tools:", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 # ---------------------------------------------------------------------------
 # ERROR HANDLER & INITIALIZATION
 # ---------------------------------------------------------------------------
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    if "Conflict: terminated by other getUpdates request" in str(context.error): return
     logger.error("Exception while handling an update:", exc_info=context.error)
     if CREATOR_ID:
         tb_str = ''.join(traceback.format_exception(None, context.error, context.error.__traceback__))
-        error_msg = f"🚨 **Critical System Alert**\nAn error occurred:\n```python\n{tb_str[:4000]}\n```"
+        error_msg = f"**Critical System Alert**\nAn error occurred:\n```python\n{tb_str[:4000]}\n```"
         try: await context.bot.send_message(chat_id=CREATOR_ID, text=error_msg, parse_mode="Markdown")
         except: pass
 
 async def post_init(app: Application):
-    if CREATOR_ID: await app.bot.send_message(chat_id=CREATOR_ID, text=f"✨ **Master Core Fully Online, Sir.**\n• Identity Lock: Active\n• Optical Array: Updated\n• Tone: Friendly 🤖", parse_mode="Markdown")
+    if CREATOR_ID: await app.bot.send_message(chat_id=CREATOR_ID, text=f"**Master Core Online, Sir.**\n• Identity Lock: Active\n• Memory Link: Integrated", parse_mode="Markdown")
 
 def main():
     db_init()
