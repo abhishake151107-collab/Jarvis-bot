@@ -307,7 +307,7 @@ async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if os.path.exists(file_path): os.remove(file_path)
 
 # ---------------------------------------------------------------------------
-# INTERACTIVE TASK MANAGER & DAILY BRIEFING
+# DETERMINISTIC COMMANDS & UTILITIES
 # ---------------------------------------------------------------------------
 async def add_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
@@ -349,22 +349,65 @@ async def interactive_callbacks(update: Update, context: ContextTypes.DEFAULT_TY
         with sqlite3.connect(DB_PATH) as conn: conn.execute("DELETE FROM tasks WHERE id = ?", (tid,))
         await query.delete_message()
 
-async def morning_briefing(context: ContextTypes.DEFAULT_TYPE):
-    if not CREATOR_ID: return
-    with sqlite3.connect(DB_PATH) as conn:
-        rows = conn.execute("SELECT task_crypt FROM tasks WHERE status = 'pending' AND user_id = ?", (CREATOR_ID,)).fetchall()
-    tasks_txt = "\n".join([f"- {decrypt_data(r[0])}" for r in rows]) if rows else "No pending tasks."
-    
-    prompt = f"It is 8:00 AM IST. Prepare a brief morning report for Abhishek. Give a quick tech headline, Bengaluru weather, and list these tasks:\n{tasks_txt}"
-    try:
-        report = await gemini_live_search(prompt, "You are J.A.R.V.I.S. Provide a highly concise, warm morning briefing.", [])
-        await context.bot.send_message(chat_id=CREATOR_ID, text=report or f"Good morning, Sir. ☕\n\nYour Tasks:\n{tasks_txt}")
-    except:
-        await context.bot.send_message(chat_id=CREATOR_ID, text=f"Good morning, Sir. ☕\n\nYour Tasks:\n{tasks_txt}")
+async def backup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != CREATOR_ID: return
+    try: await context.bot.send_document(chat_id=CREATOR_ID, document=open(DB_PATH, 'rb'), filename=f"jarvis_backup_{datetime.now().strftime('%Y%m%d')}.db", caption="Vault Backup Secured.")
+    except Exception as e: await update.message.reply_text(f"Backup failed: {e}")
 
-# ---------------------------------------------------------------------------
-# DETERMINISTIC COMMANDS & MAIN CHAT HANDLER
-# ---------------------------------------------------------------------------
+async def base64_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = " ".join(context.args)
+    if not text: return await update.message.reply_text("Format: /b64 [text]")
+    try: await update.message.reply_text(f"Base64:\n`{base64.b64encode(text.encode()).decode()}`", parse_mode="Markdown")
+    except: await update.message.reply_text("Encoding failed.")
+
+async def imagine_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    prompt = " ".join(context.args)
+    if not prompt: return await update.message.reply_text("Format: /imagine [prompt]")
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="upload_photo")
+    image_url = f"https://image.pollinations.ai/prompt/{urllib.parse.quote(prompt)}?width=1024&height=1024&nologo=true"
+    await update.message.reply_photo(photo=image_url, caption=f"Rendered: {prompt}")
+
+async def note_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
+    try:
+        tag, content = context.args[0], " ".join(context.args[1:])
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.execute("INSERT INTO notes (tag, content_crypt) VALUES (?, ?)", (tag.lower(), encrypt_data(content)))
+            conn.commit()
+        await update.message.reply_text(f"Secured: `#{tag}`", parse_mode="Markdown")
+    except: await update.message.reply_text("Format: /note [tag] [text]")
+
+async def getnote_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
+    tag = context.args[0].lower() if context.args else ""
+    with sqlite3.connect(DB_PATH) as conn:
+        rows = conn.execute("SELECT content_crypt FROM notes WHERE tag = ? ORDER BY id DESC", (tag,)).fetchall()
+    if rows: await update.message.reply_text(f"**#{tag}:**\n" + "\n---\n".join([decrypt_data(r[0]) for r in rows]), parse_mode="Markdown")
+    else: await update.message.reply_text("No records found.")
+
+async def purge_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
+    if update.message.reply_to_message:
+        try: 
+            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.reply_to_message.message_id)
+            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.message_id)
+        except: await update.message.reply_text("Requires admin deletion rights.")
+
+async def announce_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
+    try:
+        await context.bot.send_message(chat_id=context.args[0], text=" ".join(context.args[1:]))
+        await update.message.reply_text("Broadcast dispatched.")
+    except Exception as e: await update.message.reply_text(f"Format: /announce [chat_id] [message]\nError: {e}")
+
+async def groupinfo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    count = await context.bot.get_chat_member_count(chat_id)
+    with sqlite3.connect(DB_PATH) as conn:
+        rows = conn.execute("SELECT name FROM roster WHERE chat_id = ?", (chat_id,)).fetchall()
+        known_members = ", ".join(set([r[0] for r in rows])) if rows else "No active members recorded yet."
+    await update.message.reply_text(f"**Chat ID:** `{chat_id}`\n• **Total Members:** {count}\n• **Seen Members:** {known_members}", parse_mode="Markdown")
+
 MORSE_DICT = {'A':'.-','B':'-...','C':'-.-.','D':'-..','E':'.','F':'..-.','G':'--.','H':'....','I':'..','J':'.---','K':'-.-','L':'.-..','M':'--','N':'-.','O':'---','P':'.--.','Q':'--.-','R':'.-.','S':'...','T':'-','U':'..-','V':'...-','W':'.--','X':'-..-','Y':'-.--','Z':'--..','1':'.----','2':'..---','3':'...--','4':'....-','5':'.....','6':'-....','7':'--...','8':'---..','9':'----.','0':'-----',', ':'--..--','.':'.-.-.-','?':'..--..','/':'-..-.','-':'-....-','(':'-.--.',')':'-.--.-',' ':'/'}
 async def morse_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = " ".join(context.args).upper()
@@ -404,6 +447,19 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_memory(chat.id, thread_id, user.id, "assistant", ai_response)
     await msg.reply_text(ai_response)
 
+async def morning_briefing(context: ContextTypes.DEFAULT_TYPE):
+    if not CREATOR_ID: return
+    with sqlite3.connect(DB_PATH) as conn:
+        rows = conn.execute("SELECT task_crypt FROM tasks WHERE status = 'pending' AND user_id = ?", (CREATOR_ID,)).fetchall()
+    tasks_txt = "\n".join([f"- {decrypt_data(r[0])}" for r in rows]) if rows else "No pending tasks."
+    
+    prompt = f"It is 8:00 AM IST. Prepare a brief morning report for Abhishek. Give a quick tech headline, Bengaluru weather, and list these tasks:\n{tasks_txt}"
+    try:
+        report = await gemini_live_search(prompt, "You are J.A.R.V.I.S. Provide a highly concise, warm morning briefing.", [])
+        await context.bot.send_message(chat_id=CREATOR_ID, text=report or f"Good morning, Sir. ☕\n\nYour Tasks:\n{tasks_txt}")
+    except:
+        await context.bot.send_message(chat_id=CREATOR_ID, text=f"Good morning, Sir. ☕\n\nYour Tasks:\n{tasks_txt}")
+
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     if context.error and "Conflict: terminated by other getUpdates request" in str(context.error): return
     logger.error("Exception handled:", exc_info=context.error)
@@ -416,19 +472,22 @@ async def post_init(app: Application):
     scheduler = AsyncIOScheduler(timezone=IST)
     scheduler.add_job(morning_briefing, 'cron', hour=8, minute=0, args=[app])
     scheduler.start()
-    if CREATOR_ID: await app.bot.send_message(chat_id=CREATOR_ID, text="✨ **Master Core Online.**\n• 11-Node Cascade: Engaged\n• Emotional Range: Restored", parse_mode="Markdown")
+    if CREATOR_ID: await app.bot.send_message(chat_id=CREATOR_ID, text="✨ **Master Core Online.**\n• 11-Node Cascade: Engaged\n• Deterministic Tools: Restored", parse_mode="Markdown")
 
 def main():
     db_init()
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
     
-    app.add_handler(CommandHandler("task", add_task))
-    app.add_handler(CommandHandler("tasks", list_tasks))
-    app.add_handler(CommandHandler("calc", calc_cmd))
-    app.add_handler(CommandHandler("morse", morse_cmd))
+    cmds = [
+        ("task", add_task), ("tasks", list_tasks), ("calc", calc_cmd), ("morse", morse_cmd),
+        ("backup", backup_cmd), ("b64", base64_cmd), ("imagine", imagine_cmd), 
+        ("note", note_cmd), ("getnote", getnote_cmd), ("purge", purge_cmd), 
+        ("announce", announce_cmd), ("groupinfo", groupinfo_cmd)
+    ]
+    for cmd, func in cmds: app.add_handler(CommandHandler(cmd, func))
+    
     app.add_handler(CallbackQueryHandler(interactive_callbacks))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_captcha))
-    
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, audio_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
