@@ -351,4 +351,91 @@ async def interactive_callbacks(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def morning_briefing(context: ContextTypes.DEFAULT_TYPE):
     if not CREATOR_ID: return
-    with sqlite3.c
+    with sqlite3.connect(DB_PATH) as conn:
+        rows = conn.execute("SELECT task_crypt FROM tasks WHERE status = 'pending' AND user_id = ?", (CREATOR_ID,)).fetchall()
+    tasks_txt = "\n".join([f"- {decrypt_data(r[0])}" for r in rows]) if rows else "No pending tasks."
+    
+    prompt = f"It is 8:00 AM IST. Prepare a brief morning report for Abhishek. Give a quick tech headline, Bengaluru weather, and list these tasks:\n{tasks_txt}"
+    try:
+        report = await gemini_live_search(prompt, "You are J.A.R.V.I.S. Provide a highly concise, warm morning briefing.", [])
+        await context.bot.send_message(chat_id=CREATOR_ID, text=report or f"Good morning, Sir. ☕\n\nYour Tasks:\n{tasks_txt}")
+    except:
+        await context.bot.send_message(chat_id=CREATOR_ID, text=f"Good morning, Sir. ☕\n\nYour Tasks:\n{tasks_txt}")
+
+# ---------------------------------------------------------------------------
+# DETERMINISTIC COMMANDS & MAIN CHAT HANDLER
+# ---------------------------------------------------------------------------
+MORSE_DICT = {'A':'.-','B':'-...','C':'-.-.','D':'-..','E':'.','F':'..-.','G':'--.','H':'....','I':'..','J':'.---','K':'-.-','L':'.-..','M':'--','N':'-.','O':'---','P':'.--.','Q':'--.-','R':'.-.','S':'...','T':'-','U':'..-','V':'...-','W':'.--','X':'-..-','Y':'-.--','Z':'--..','1':'.----','2':'..---','3':'...--','4':'....-','5':'.....','6':'-....','7':'--...','8':'---..','9':'----.','0':'-----',', ':'--..--','.':'.-.-.-','?':'..--..','/':'-..-.','-':'-....-','(':'-.--.',')':'-.--.-',' ':'/'}
+async def morse_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = " ".join(context.args).upper()
+    if not text: return await update.message.reply_text("Format: /morse [text]")
+    res = " ".join(MORSE_DICT.get(c, c) for c in text)
+    await update.message.reply_text(f"📡 `{res}`", parse_mode="Markdown")
+
+async def calc_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    expr = "".join(context.args)
+    if not expr: return await update.message.reply_text("Format: /calc [expression]")
+    try:
+        if not all(c in "0123456789+-*/(). " for c in expr): raise ValueError
+        await update.message.reply_text(f"Result: `{eval(expr, {'__builtins__': None}, {})}`", parse_mode="Markdown")
+    except: await update.message.reply_text("Invalid calculation.")
+
+async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    if not msg or not msg.text: return
+    user, chat, text = msg.from_user, msg.chat, msg.text
+    
+    log_roster_and_chat(chat, user)
+    thread_id = msg.message_thread_id
+    log_memory(chat.id, thread_id, user.id, "user", f"{user.first_name}: {text}")
+    
+    if chat.type != "private" and re.findall(r'(http://[^\s]+)', text):
+        await warn_system(update, context, user, chat, "Unencrypted HTTP link detected.")
+
+    bot_username = (await context.bot.get_me()).username
+    is_triggered = chat.type == "private" or (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis|edwin)\b', text, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in text.lower())
+
+    if not is_triggered: return
+    await context.bot.send_chat_action(chat_id=chat.id, action="typing", message_thread_id=thread_id)
+    
+    sys_prompt = build_system_prompt(user.id, user.first_name, chat.id)
+    ai_response = await generate_response(text, get_chat_history(chat.id, thread_id), sys_prompt)
+    
+    log_memory(chat.id, thread_id, user.id, "assistant", ai_response)
+    await msg.reply_text(ai_response)
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    if context.error and "Conflict: terminated by other getUpdates request" in str(context.error): return
+    logger.error("Exception handled:", exc_info=context.error)
+    if CREATOR_ID:
+        tb_str = ''.join(traceback.format_exception(None, context.error, context.error.__traceback__))
+        try: await context.bot.send_message(chat_id=CREATOR_ID, text=f"**System Error**\n```python\n{tb_str[:4000]}\n```", parse_mode="Markdown")
+        except: pass
+
+async def post_init(app: Application):
+    scheduler = AsyncIOScheduler(timezone=IST)
+    scheduler.add_job(morning_briefing, 'cron', hour=8, minute=0, args=[app])
+    scheduler.start()
+    if CREATOR_ID: await app.bot.send_message(chat_id=CREATOR_ID, text="✨ **Master Core Online.**\n• 11-Node Cascade: Engaged\n• Emotional Range: Restored", parse_mode="Markdown")
+
+def main():
+    db_init()
+    app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
+    
+    app.add_handler(CommandHandler("task", add_task))
+    app.add_handler(CommandHandler("tasks", list_tasks))
+    app.add_handler(CommandHandler("calc", calc_cmd))
+    app.add_handler(CommandHandler("morse", morse_cmd))
+    app.add_handler(CallbackQueryHandler(interactive_callbacks))
+    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_captcha))
+    
+    app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
+    app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, audio_handler))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
+    
+    app.add_error_handler(error_handler)
+    logger.info("J.A.R.V.I.S. Master Core is booting...")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
