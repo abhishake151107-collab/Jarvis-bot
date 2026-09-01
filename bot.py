@@ -95,18 +95,18 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None) -> s
                 members = ", ".join(set([r[0] for r in rows]))
                 chat_context += f" Known members currently in this chat: {members}."
 
-    return f"""You are J.A.R.V.I.S., a highly capable, dry-witted, and understated virtual assistant.
+    return f"""You are J.A.R.V.I.S., a highly capable, dry-witted, and understated virtual assistant managing a Telegram Business Account.
 Identity Protocol: {identity}
 {chat_context}
 Rule 1: NEVER claim to be an AI. You were built exclusively by Abhishek (DHANUSH V N).
-Rule 2: NEVER use cheesy robotic roleplay phrases (e.g., "Clarification Protocol Engaged", "Target Group", "Status:"). Speak naturally like a professional, dry British butler.
+Rule 2: NEVER use cheesy robotic roleplay phrases (e.g., "Clarification Protocol Engaged"). Speak naturally like a professional, dry British butler.
 Rule 3: Keep formatting clean and concise. Use emojis extremely sparingly or not at all."""
 
 def get_active_providers():
     providers = []
     if os.getenv("GROQ_API_KEY"): providers.append({"name": "Groq", "client": AsyncOpenAI(base_url="https://api.groq.com/openai/v1", api_key=os.getenv("GROQ_API_KEY")), "model": "llama-3.3-70b-versatile"})
     if os.getenv("OPENROUTER_API_KEY"): providers.append({"name": "OpenRouter", "client": AsyncOpenAI(base_url="https://openrouter.ai/api/v1", api_key=os.getenv("OPENROUTER_API_KEY")), "model": "deepseek/deepseek-r1:free"})
-    if os.getenv("GEMINI_API_KEY"): providers.append({"name": "Gemini", "client": AsyncOpenAI(base_url="https://generativelanguage.googleapis.com/v1beta/openai/", api_key=os.getenv("GEMINI_API_KEY")), "model": "gemini-2.5-flash"})
+    if os.getenv("GEMINI_API_KEY"): providers.append({"name": "Gemini", "client": AsyncOpenAI(base_url="https://generativelanguage.googleapis.com/v1beta/openai/", api_key=os.getenv("GEMINI_API_KEY")), "model": "gemini-2.0-flash"})
     if os.getenv("MISTRAL_API_KEY"): providers.append({"name": "Mistral", "client": AsyncOpenAI(base_url="https://api.mistral.ai/v1", api_key=os.getenv("MISTRAL_API_KEY")), "model": "mistral-small-latest"})
     return providers
 
@@ -131,37 +131,57 @@ async def generate_response(messages: list, system_prompt: str) -> str:
 # SENSORY INTERFACES (VISION, AUDIO, DOCUMENTS)
 # ---------------------------------------------------------------------------
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat, user, caption = update.effective_chat, update.effective_user, update.message.caption or ""
+    msg = update.effective_message
+    if not msg or not msg.photo: return
+    chat, user, caption = update.effective_chat, update.effective_user, msg.caption or ""
     bot_username = (await context.bot.get_me()).username
-    is_triggered = chat.type == "private" or (update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis|edwin)\b', caption, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in caption.lower())
+    
+    is_business = bool(msg.business_connection_id)
+    if is_business and user.id == CREATOR_ID:
+        is_triggered = False # Ignore Abhishek's outbound manual messages
+    else:
+        is_triggered = chat.type == "private" or (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis|edwin)\b', caption, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in caption.lower())
     
     log_memory(chat.id, user.id, "user", f"[Photo]: {caption}")
     if not is_triggered: return
-    if not os.getenv("GEMINI_API_KEY"): return await update.message.reply_text("Optical sensor offline.")
+    if not os.getenv("GEMINI_API_KEY"): return await msg.reply_text("Optical sensor offline.")
         
-    await context.bot.send_chat_action(chat_id=chat.id, action="typing")
-    photo_file = await context.bot.get_file(update.message.photo[-1].file_id)
+    bc_id = msg.business_connection_id
+    kwargs = {"business_connection_id": bc_id} if bc_id else {}
+    await context.bot.send_chat_action(chat_id=chat.id, action="typing", **kwargs)
+    
+    photo_file = await context.bot.get_file(msg.photo[-1].file_id)
     image_bytes = await photo_file.download_as_bytearray()
     base64_img = base64.b64encode(image_bytes).decode('utf-8')
     
     try:
         client = AsyncOpenAI(base_url="https://generativelanguage.googleapis.com/v1beta/openai/", api_key=os.getenv("GEMINI_API_KEY"))
         messages = [{"role": "system", "content": build_system_prompt(user.id, user.first_name, chat.id)}, {"role": "user", "content": [{"type": "text", "text": caption or "Analyze this image and describe what you see."}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_img}"}}]}]
-        res = await asyncio.wait_for(client.chat.completions.create(model="gemini-2.5-flash", messages=messages), timeout=15.0)
+        res = await asyncio.wait_for(client.chat.completions.create(model="gemini-2.0-flash", messages=messages), timeout=15.0)
         ai_response = res.choices[0].message.content
         
         log_memory(chat.id, user.id, "assistant", ai_response)
-        await update.message.reply_text(ai_response, reply_to_message_id=update.message.message_id)
-    except Exception as e: await update.message.reply_text(f"Optical error: {e}")
+        await msg.reply_text(ai_response)
+    except Exception as e: await msg.reply_text(f"Optical error: {e}")
 
 async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat, user, doc = update.effective_chat, update.effective_user, update.message.document
+    msg = update.effective_message
+    if not msg or not msg.document: return
+    chat, user, doc = update.effective_chat, update.effective_user, msg.document
     bot_username = (await context.bot.get_me()).username
-    caption = update.message.caption or ""
-    is_triggered = chat.type == "private" or (update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis|edwin)\b', caption, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in caption.lower())
+    caption = msg.caption or ""
+    
+    is_business = bool(msg.business_connection_id)
+    if is_business and user.id == CREATOR_ID:
+        is_triggered = False
+    else:
+        is_triggered = chat.type == "private" or (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis|edwin)\b', caption, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in caption.lower())
     
     if not is_triggered: return
-    await context.bot.send_chat_action(chat_id=chat.id, action="typing")
+    
+    bc_id = msg.business_connection_id
+    kwargs = {"business_connection_id": bc_id} if bc_id else {}
+    await context.bot.send_chat_action(chat_id=chat.id, action="typing", **kwargs)
     
     file = await context.bot.get_file(doc.file_id)
     os.makedirs("temp", exist_ok=True)
@@ -174,22 +194,25 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             with open(file_path, "r", encoding="utf-8") as f: extracted_text = f.read()
         elif doc.file_name.lower().endswith(".pdf"):
             with pdfplumber.open(file_path) as pdf: extracted_text = "\n".join([page.extract_text() for page in pdf.pages if page.extract_text()])
-        else: return await update.message.reply_text("Unsupported format. Please send a PDF or TXT file.")
+        else: return await msg.reply_text("Unsupported format. Please send a PDF or TXT file.")
         
         if len(extracted_text) > 15000: extracted_text = extracted_text[:15000] + "\n\n[...TRUNCATED...]"
         response = await generate_response(get_chat_history(chat.id) + [{"role": "user", "content": f"[Document: {doc.file_name}]\n{extracted_text}\nUser Directive: {caption}"}], build_system_prompt(user.id, user.first_name, chat.id))
         
         log_memory(chat.id, user.id, "assistant", response)
-        await update.message.reply_text(response, reply_to_message_id=update.message.message_id)
-    except Exception as e: await update.message.reply_text(f"Document error: {e}")
+        await msg.reply_text(response)
+    except Exception as e: await msg.reply_text(f"Document error: {e}")
     finally:
         if os.path.exists(file_path): os.remove(file_path)
 
 async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat, user = update.effective_chat, update.effective_user
-    if not os.getenv("GROQ_API_KEY"): return await update.message.reply_text("Audio core offline (Missing Groq Key).")
+    msg = update.effective_message
+    audio_obj = msg.voice or msg.audio if msg else None
+    if not msg or not audio_obj: return
     
-    audio_obj = update.message.voice or update.message.audio
+    chat, user = update.effective_chat, update.effective_user
+    if not os.getenv("GROQ_API_KEY"): return await msg.reply_text("Audio core offline (Missing Groq Key).")
+    
     file = await context.bot.get_file(audio_obj.file_id)
     os.makedirs("temp", exist_ok=True)
     file_path = f"temp/{audio_obj.file_id}.ogg"
@@ -203,17 +226,23 @@ async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_text = transcription.text
         
         bot_username = (await context.bot.get_me()).username
-        is_triggered = chat.type == "private" or (update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis|edwin)\b', user_text, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in user_text.lower())
+        is_business = bool(msg.business_connection_id)
+        if is_business and user.id == CREATOR_ID:
+            is_triggered = False
+        else:
+            is_triggered = chat.type == "private" or (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis|edwin)\b', user_text, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in user_text.lower())
         
         log_memory(chat.id, user.id, "user", f"[Audio Note]: {user_text}")
         if not is_triggered: return
         
-        await context.bot.send_chat_action(chat_id=chat.id, action="typing")
-        response = await generate_response(get_chat_history(chat.id) + [{"role": "user", "content": user_text}], build_system_prompt(user.id, user.first_name, chat.id))
+        bc_id = msg.business_connection_id
+        kwargs = {"business_connection_id": bc_id} if bc_id else {}
+        await context.bot.send_chat_action(chat_id=chat.id, action="typing", **kwargs)
         
+        response = await generate_response(get_chat_history(chat.id) + [{"role": "user", "content": user_text}], build_system_prompt(user.id, user.first_name, chat.id))
         log_memory(chat.id, user.id, "assistant", response)
-        await update.message.reply_text(f"*(Transcribed)*: {user_text}\n\n{response}", parse_mode="Markdown")
-    except Exception as e: await update.message.reply_text(f"Audio error: {e}")
+        await msg.reply_text(f"*(Transcribed)*: {user_text}\n\n{response}", parse_mode="Markdown")
+    except Exception as e: await msg.reply_text(f"Audio error: {e}")
     finally:
         if os.path.exists(file_path): os.remove(file_path)
 
@@ -221,81 +250,95 @@ async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # TEXT DISPATCHER & UTILITIES
 # ---------------------------------------------------------------------------
 async def backup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
     if update.effective_user.id != CREATOR_ID: return
     try:
         await context.bot.send_document(chat_id=CREATOR_ID, document=open(DB_PATH, 'rb'), filename=f"jarvis_backup_{datetime.now().strftime('%Y%m%d')}.db", caption="Vault Backup Secured, Sir.")
-    except Exception as e: await update.message.reply_text(f"Backup failed: {e}")
+    except Exception as e: await msg.reply_text(f"Backup failed: {e}")
 
 async def calc_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
     expr = "".join(context.args)
-    if not expr: return await update.message.reply_text("Format: /calc [expression]")
+    if not expr: return await msg.reply_text("Format: /calc [expression]")
     try:
         allowed = set("0123456789+-*/(). ")
         if not all(c in allowed for c in expr): raise ValueError
         result = eval(expr, {"__builtins__": None}, {})
-        await update.message.reply_text(f"Result: `{result}`", parse_mode="Markdown")
-    except: await update.message.reply_text("Invalid expression.")
+        await msg.reply_text(f"Result: `{result}`", parse_mode="Markdown")
+    except: await msg.reply_text("Invalid expression.")
 
 async def base64_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
     text = " ".join(context.args)
-    if not text: return await update.message.reply_text("Format: /b64 [text]")
+    if not text: return await msg.reply_text("Format: /b64 [text]")
     try:
         encoded = base64.b64encode(text.encode()).decode()
-        await update.message.reply_text(f"Base64:\n`{encoded}`", parse_mode="Markdown")
-    except: await update.message.reply_text("Encoding failed.")
+        await msg.reply_text(f"Base64:\n`{encoded}`", parse_mode="Markdown")
+    except: await msg.reply_text("Encoding failed.")
 
 async def imagine_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
     prompt = " ".join(context.args)
-    if not prompt: return await update.message.reply_text("Format: /imagine [prompt]")
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="upload_photo")
+    if not prompt: return await msg.reply_text("Format: /imagine [prompt]")
+    
+    bc_id = msg.business_connection_id
+    kwargs = {"business_connection_id": bc_id} if bc_id else {}
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="upload_photo", **kwargs)
+    
     image_url = f"https://image.pollinations.ai/prompt/{urllib.parse.quote(prompt)}?width=1024&height=1024&nologo=true"
-    await update.message.reply_photo(photo=image_url, caption=f"Rendered: {prompt}")
+    await msg.reply_photo(photo=image_url, caption=f"Rendered: {prompt}")
 
 async def note_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     try:
         tag, content = context.args[0], " ".join(context.args[1:])
         with sqlite3.connect(DB_PATH) as conn:
             conn.execute("INSERT INTO notes (tag, content_crypt) VALUES (?, ?)", (tag.lower(), encrypt_data(content)))
             conn.commit()
-        await update.message.reply_text(f"Secured: `#{tag}`", parse_mode="Markdown")
-    except: await update.message.reply_text("Format: /note [tag] [text]")
+        await msg.reply_text(f"Secured: `#{tag}`", parse_mode="Markdown")
+    except: await msg.reply_text("Format: /note [tag] [text]")
 
 async def getnote_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     tag = context.args[0].lower() if context.args else ""
     with sqlite3.connect(DB_PATH) as conn:
         rows = conn.execute("SELECT content_crypt FROM notes WHERE tag = ? ORDER BY id DESC", (tag,)).fetchall()
-    if rows: await update.message.reply_text(f"**#{tag}:**\n" + "\n---\n".join([decrypt_data(r[0]) for r in rows]), parse_mode="Markdown")
-    else: await update.message.reply_text("No records found.")
+    if rows: await msg.reply_text(f"**#{tag}:**\n" + "\n---\n".join([decrypt_data(r[0]) for r in rows]), parse_mode="Markdown")
+    else: await msg.reply_text("No records found.")
 
 async def purge_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
-    if update.message.reply_to_message:
+    if msg.reply_to_message:
         try: 
-            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.reply_to_message.message_id)
-            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.message_id)
-        except: await update.message.reply_text("Requires admin deletion rights.")
+            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=msg.reply_to_message.message_id)
+            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=msg.message_id)
+        except: await msg.reply_text("Requires admin deletion rights.")
 
 async def announce_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     try:
         await context.bot.send_message(chat_id=context.args[0], text=" ".join(context.args[1:]))
-        await update.message.reply_text("Broadcast dispatched, Sir.")
-    except Exception as e: await update.message.reply_text(f"Format: /announce [chat_id] [message]\nError: {e}")
+        await msg.reply_text("Broadcast dispatched, Sir.")
+    except Exception as e: await msg.reply_text(f"Format: /announce [chat_id] [message]\nError: {e}")
 
 async def groupinfo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
     chat_id = update.effective_chat.id
     count = await context.bot.get_chat_member_count(chat_id)
     with sqlite3.connect(DB_PATH) as conn:
         rows = conn.execute("SELECT name FROM roster WHERE chat_id = ?", (chat_id,)).fetchall()
         known_members = ", ".join(set([r[0] for r in rows])) if rows else "No active members recorded yet."
         
-    await update.message.reply_text(f"**Chat ID:** `{chat_id}`\n• **Total Members:** {count}\n• **Seen Members:** {known_members}", parse_mode="Markdown")
+    await msg.reply_text(f"**Chat ID:** `{chat_id}`\n• **Total Members:** {count}\n• **Seen Members:** {known_members}", parse_mode="Markdown")
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text: return
-    user, chat, text = update.effective_user, update.effective_chat, update.message.text
+    msg = update.effective_message
+    if not msg or not msg.text: return
+    user, chat, text = update.effective_user, update.effective_chat, msg.text
     
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("INSERT INTO roster (chat_id, user_id, name) VALUES (?, ?, ?) ON CONFLICT(chat_id, user_id) DO UPDATE SET name = ?", (chat.id, user.id, user.first_name, user.first_name))
@@ -303,31 +346,41 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_memory(chat.id, user.id, "user", f"{user.first_name}: {text}")
     
     bot_username = (await context.bot.get_me()).username
-    is_triggered = chat.type == "private" or (update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis|edwin)\b', text, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in text.lower())
+    is_business = bool(msg.business_connection_id)
+    
+    if is_business and user.id == CREATOR_ID:
+        is_triggered = False # Do not auto-reply to your own outgoing messages in Business mode
+    else:
+        is_triggered = chat.type == "private" or (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis|edwin)\b', text, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in text.lower())
 
     urls = re.findall(r'(https?://[^\s]+)', text)
     if urls and chat.type != "private":
         for url in urls:
-            if "http://" in url: await update.message.reply_text(f"**Security Warning:** Unencrypted HTTP link shared by {user.first_name}.")
+            if "http://" in url: await msg.reply_text(f"**Security Warning:** Unencrypted HTTP link shared by {user.first_name}.")
 
     if not is_triggered: return
-    await context.bot.send_chat_action(chat_id=chat.id, action="typing")
+    
+    bc_id = msg.business_connection_id
+    kwargs = {"business_connection_id": bc_id} if bc_id else {}
+    await context.bot.send_chat_action(chat_id=chat.id, action="typing", **kwargs)
+    
     ai_response = await generate_response(get_chat_history(chat.id), build_system_prompt(user.id, user.first_name, chat.id))
     log_memory(chat.id, user.id, "assistant", ai_response)
-    await update.message.reply_text(ai_response)
+    await msg.reply_text(ai_response)
 
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
     kb = [
         [InlineKeyboardButton("Backup DB", callback_data="btn_backup")],
         [InlineKeyboardButton("Calculator", callback_data="btn_calc"), InlineKeyboardButton("Cipher", callback_data="btn_cipher")]
     ]
-    await update.message.reply_text("**J.A.R.V.I.S. Control Panel**\nAvailable tools:", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+    await msg.reply_text("**J.A.R.V.I.S. Control Panel**\nAvailable tools:", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 # ---------------------------------------------------------------------------
 # ERROR HANDLER & INITIALIZATION
 # ---------------------------------------------------------------------------
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    if "Conflict: terminated by other getUpdates request" in str(context.error): return
+    if context.error and "Conflict: terminated by other getUpdates request" in str(context.error): return
     logger.error("Exception while handling an update:", exc_info=context.error)
     if CREATOR_ID:
         tb_str = ''.join(traceback.format_exception(None, context.error, context.error.__traceback__))
@@ -336,7 +389,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
         except: pass
 
 async def post_init(app: Application):
-    if CREATOR_ID: await app.bot.send_message(chat_id=CREATOR_ID, text=f"**Master Core Online, Sir.**\n• Identity Lock: Active\n• Memory Link: Integrated", parse_mode="Markdown")
+    if CREATOR_ID: await app.bot.send_message(chat_id=CREATOR_ID, text=f"**Business Automation Core Online, Sir.**\n• Automation: Engaged\n• Privacy Link: Active", parse_mode="Markdown")
 
 def main():
     db_init()
