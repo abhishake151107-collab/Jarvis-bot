@@ -24,21 +24,17 @@ from telegram.ext import (
 )
 
 # ---------------------------------------------------------------------------
-# CORE CONFIGURATION & SERVER
+# CORE CONFIGURATION & DUMMY SERVER (PORT KEEP-ALIVE)
 # ---------------------------------------------------------------------------
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger("jarvis")
 
-# Fallback checking so it works whether you use BOT_TOKEN or TELEGRAM_BOT_TOKEN in Render
-BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN") or os.environ.get("BOT_TOKEN", "")
-BOT_TOKEN = BOT_TOKEN.strip()
-
+BOT_TOKEN = (os.environ.get("TELEGRAM_BOT_TOKEN") or os.environ.get("BOT_TOKEN", "")).strip()
 CREATOR_ID = int(os.environ.get("CREATOR_ID", "0").strip())
 ENCRYPTION_KEY = os.environ.get("ENCRYPTION_KEY", Fernet.generate_key().decode()).strip()
 PORT = int(os.environ.get("PORT", 8080))
 SMART_HOME_WEBHOOK = os.environ.get("SMART_HOME_WEBHOOK", "https://maker.ifttt.com/trigger/dummy/with/key/dummy")
 
-# Added do_HEAD to prevent the 501 Unsupported Method error from Render's health checks
 class DummyHandler(BaseHTTPRequestHandler):
     def do_HEAD(self):
         self.send_response(200)
@@ -83,31 +79,9 @@ def get_chat_history(chat_id, limit=10) -> list:
         rows = conn.execute("SELECT role, content_crypt FROM memory WHERE chat_id = ? ORDER BY id DESC LIMIT ?", (chat_id, limit)).fetchall()
     return [{"role": r["role"], "content": decrypt_data(r["content_crypt"])} for r in reversed(rows)]
 
-def update_karma(user_id: int, name: str, amount: int):
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("INSERT INTO karma (user_id, name, score) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET score = score + ?, name = ?", (user_id, name, 10+amount, amount, name))
-        conn.commit()
-
 # ---------------------------------------------------------------------------
-# MULTI-PROVIDER CASCADE & INTELLIGENCE
+# MULTI-PROVIDER CASCADE WITH DIRECT DIAGNOSTICS
 # ---------------------------------------------------------------------------
-def build_provider_cascade() -> list:
-    providers = []
-    if os.getenv("GROQ_API_KEY"): providers.append({"name": "Groq", "client": AsyncOpenAI(base_url="https://api.groq.com/openai/v1", api_key=os.getenv("GROQ_API_KEY")), "model": "llama-3.3-70b-versatile"})
-    if os.getenv("CEREBRAS_API_KEY"): providers.append({"name": "Cerebras", "client": AsyncOpenAI(base_url="https://api.cerebras.ai/v1", api_key=os.getenv("CEREBRAS_API_KEY")), "model": "llama3.1-70b"})
-    if os.getenv("SAMBANOVA_API_KEY"): providers.append({"name": "SambaNova", "client": AsyncOpenAI(base_url="https://api.sambanova.ai/v1", api_key=os.getenv("SAMBANOVA_API_KEY")), "model": "Meta-Llama-3.3-70B-Instruct"})
-    if os.getenv("MISTRAL_API_KEY"): providers.append({"name": "Mistral", "client": AsyncOpenAI(base_url="https://api.mistral.ai/v1", api_key=os.getenv("MISTRAL_API_KEY")), "model": "mistral-small-latest"})
-    if os.getenv("GITHUB_TOKEN"): providers.append({"name": "GitHub Models", "client": AsyncOpenAI(base_url="https://models.inference.ai.azure.com", api_key=os.getenv("GITHUB_TOKEN")), "model": "gpt-4o-mini"})
-    if os.getenv("GEMINI_API_KEY"): providers.append({"name": "Gemini", "client": AsyncOpenAI(base_url="https://generativelanguage.googleapis.com/v1beta/openai", api_key=os.getenv("GEMINI_API_KEY")), "model": "gemini-1.5-flash"})
-    if os.getenv("NVIDIA_API_KEY"): providers.append({"name": "NVIDIA", "client": AsyncOpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=os.getenv("NVIDIA_API_KEY")), "model": "meta/llama3-70b-instruct"})
-    if os.getenv("CLOUDFLARE_API_TOKEN"): providers.append({"name": "Cloudflare", "client": AsyncOpenAI(base_url=f"https://api.cloudflare.com/client/v4/accounts/{os.getenv('CLOUDFLARE_ACCOUNT_ID')}/ai/v1", api_key=os.getenv("CLOUDFLARE_API_TOKEN")), "model": "@cf/meta/llama-3-8b-instruct"})
-    if os.getenv("COHERE_API_KEY"): providers.append({"name": "Cohere", "client": AsyncOpenAI(base_url="https://api.cohere.ai/v1", api_key=os.getenv("COHERE_API_KEY")), "model": "command-r-plus"})
-    if os.getenv("BAZAARLINK_API_KEY"): providers.append({"name": "BazaarLink", "client": AsyncOpenAI(base_url="https://bazaarlink.ai/api/v1", api_key=os.getenv("BAZAARLINK_API_KEY")), "model": "auto:free"})
-    if os.getenv("OPENROUTER_API_KEY"): providers.append({"name": "OpenRouter", "client": AsyncOpenAI(base_url="https://openrouter.ai/api/v1", api_key=os.getenv("OPENROUTER_API_KEY")), "model": "deepseek/deepseek-r1:free"})
-    return providers
-
-PROVIDERS = build_provider_cascade()
-
 def build_system_prompt(user_id: int, first_name: str) -> str:
     identity_rule = (
         "You are speaking to your creator and administrator, Abhishek (DHANUSH V N). You MUST address him exclusively as 'Sir'. Never use his first name."
@@ -122,23 +96,110 @@ Rule 3: Use a maximum of ONE tasteful emoji per message."""
 
 async def generate_response(messages: list, system_prompt: str) -> str:
     full_messages = [{"role": "system", "content": system_prompt}] + messages
-    for provider in PROVIDERS:
+    errors_log = []
+    providers = []
+
+    # 1. Groq
+    if os.getenv("GROQ_API_KEY"):
+        providers.append({
+            "name": "Groq",
+            "client": AsyncOpenAI(base_url="https://api.groq.com/openai/v1", api_key=os.getenv("GROQ_API_KEY")),
+            "model": "llama-3.3-70b-versatile"
+        })
+    # 2. Cerebras
+    if os.getenv("CEREBRAS_API_KEY"):
+        providers.append({
+            "name": "Cerebras",
+            "client": AsyncOpenAI(base_url="https://api.cerebras.ai/v1", api_key=os.getenv("CEREBRAS_API_KEY")),
+            "model": "llama3.1-70b"
+        })
+    # 3. SambaNova
+    if os.getenv("SAMBANOVA_API_KEY"):
+        providers.append({
+            "name": "SambaNova",
+            "client": AsyncOpenAI(base_url="https://api.sambanova.ai/v1", api_key=os.getenv("SAMBANOVA_API_KEY")),
+            "model": "Meta-Llama-3.3-70B-Instruct"
+        })
+    # 4. Mistral
+    if os.getenv("MISTRAL_API_KEY"):
+        providers.append({
+            "name": "Mistral",
+            "client": AsyncOpenAI(base_url="https://api.mistral.ai/v1", api_key=os.getenv("MISTRAL_API_KEY")),
+            "model": "mistral-small-latest"
+        })
+    # 5. OpenRouter
+    if os.getenv("OPENROUTER_API_KEY"):
+        providers.append({
+            "name": "OpenRouter",
+            "client": AsyncOpenAI(base_url="https://openrouter.ai/api/v1", api_key=os.getenv("OPENROUTER_API_KEY")),
+            "model": "deepseek/deepseek-r1:free"
+        })
+    # 6. Gemini
+    if os.getenv("GEMINI_API_KEY"):
+        providers.append({
+            "name": "Gemini",
+            "client": AsyncOpenAI(base_url="https://generativelanguage.googleapis.com/v1beta/openai/", api_key=os.getenv("GEMINI_API_KEY")),
+            "model": "gemini-1.5-flash"
+        })
+    # 7. NVIDIA NIM
+    if os.getenv("NVIDIA_API_KEY"):
+        providers.append({
+            "name": "NVIDIA",
+            "client": AsyncOpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=os.getenv("NVIDIA_API_KEY")),
+            "model": "meta/llama3-70b-instruct"
+        })
+    # 8. Cloudflare Workers AI
+    if os.getenv("CLOUDFLARE_API_TOKEN") and os.getenv("CLOUDFLARE_ACCOUNT_ID"):
+        providers.append({
+            "name": "Cloudflare",
+            "client": AsyncOpenAI(base_url=f"https://api.cloudflare.com/client/v4/accounts/{os.getenv('CLOUDFLARE_ACCOUNT_ID')}/ai/v1", api_key=os.getenv("CLOUDFLARE_API_TOKEN")),
+            "model": "@cf/meta/llama-3-8b-instruct"
+        })
+    # 9. Cohere
+    if os.getenv("COHERE_API_KEY"):
+        providers.append({
+            "name": "Cohere",
+            "client": AsyncOpenAI(base_url="https://api.cohere.ai/v1", api_key=os.getenv("COHERE_API_KEY")),
+            "model": "command-r-plus"
+        })
+    # 10. BazaarLink
+    if os.getenv("BAZAARLINK_API_KEY"):
+        providers.append({
+            "name": "BazaarLink",
+            "client": AsyncOpenAI(base_url="https://bazaarlink.ai/api/v1", api_key=os.getenv("BAZAARLINK_API_KEY")),
+            "model": "auto:free"
+        })
+
+    if not providers:
+        return "⚠️ Diagnostic: No AI API keys detected in Render environment variables."
+
+    for provider in providers:
         try:
             response = await asyncio.wait_for(
-                provider["client"].chat.completions.create(model=provider["model"], messages=full_messages, temperature=0.7), timeout=12.0
+                provider["client"].chat.completions.create(
+                    model=provider["model"],
+                    messages=full_messages,
+                    temperature=0.7
+                ),
+                timeout=10.0
             )
             return response.choices[0].message.content
         except Exception as e:
-            logger.warning(f"[{provider['name']} Fallback]: {e}")
+            err_msg = f"{provider['name']}: {str(e)[:100]}"
+            logger.warning(f"[Cascade Failure] {err_msg}")
+            errors_log.append(err_msg)
             continue
-    return "All neural networks are currently unreachable. ⚠️"
+
+    diag_summary = "\n".join([f"• {err}" for err in errors_log[:4]])
+    return f"⚠️ All neural engines failed. Diagnostics:\n{diag_summary}"
 
 # ---------------------------------------------------------------------------
 # DASHBOARD & CALLBACKS
 # ---------------------------------------------------------------------------
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    if user.id != CREATOR_ID: return await update.message.reply_text(f"Welcome {user.first_name}. Monitoring active.")
+    if user.id != CREATOR_ID: 
+        return await update.message.reply_text(f"Welcome {user.first_name}. Monitoring active.")
     
     keyboard = [
         [InlineKeyboardButton("⚡ Stark HUD WebApp", web_app=WebAppInfo(url="https://codepen.io/pen/"))],
@@ -152,7 +213,8 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def sys_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     action = query.data
-    if query.from_user.id != CREATOR_ID: return await query.answer("Access Denied.", show_alert=True)
+    if query.from_user.id != CREATOR_ID: 
+        return await query.answer("Access Denied.", show_alert=True)
     
     if action.startswith("lift_"):
         cid = action.split("_")[1]
@@ -190,7 +252,8 @@ async def sys_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             scores = conn.execute("SELECT name, score FROM karma ORDER BY score DESC LIMIT 10").fetchall()
             msg = "⭐ **Karma Leaderboard:**\n" + "\n".join([f"• {r['name']}: {r['score']} pts" for r in scores])
             await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Return", callback_data="sys_menu")]]), parse_mode="Markdown")
-        elif action == "menu": await start_cmd(update, context)
+        elif action == "menu": 
+            await start_cmd(update, context)
 
 # ---------------------------------------------------------------------------
 # UTILITIES & RECON COMMANDS
@@ -291,7 +354,7 @@ async def scheduled_briefing(context: ContextTypes.DEFAULT_TYPE):
 def main():
     db_init()
     if not BOT_TOKEN:
-        logger.error("TELEGRAM_BOT_TOKEN or BOT_TOKEN missing.")
+        logger.error("TELEGRAM_BOT_TOKEN or BOT_TOKEN is missing.")
         sys.exit(1)
         
     app = ApplicationBuilder().token(BOT_TOKEN).build()
