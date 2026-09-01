@@ -1,6 +1,8 @@
 import os
 import sys
 import ssl
+import re
+import time
 import socket
 import sqlite3
 import logging
@@ -20,11 +22,11 @@ from openai import AsyncOpenAI
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, ChatPermissions
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
+    ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters, Application
 )
 
 # ---------------------------------------------------------------------------
-# CORE CONFIGURATION & DUMMY SERVER (PORT KEEP-ALIVE)
+# CORE CONFIGURATION & DUMMY SERVER
 # ---------------------------------------------------------------------------
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger("jarvis")
@@ -55,6 +57,10 @@ def decrypt_data(crypto_text: str) -> str:
 
 DB_PATH = "jarvis_vault.db"
 
+# Security Globals
+circuit_breaker = {}
+probing_attempts = defaultdict(int)
+
 # ---------------------------------------------------------------------------
 # SQLITE VAULT & MEMORY
 # ---------------------------------------------------------------------------
@@ -62,9 +68,13 @@ def db_init():
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("CREATE TABLE IF NOT EXISTS memory (id INTEGER PRIMARY KEY, chat_id INTEGER, user_id INTEGER, role TEXT, content_crypt TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
         conn.execute("CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY, user_id INTEGER, task_crypt TEXT, status TEXT DEFAULT 'pending')")
-        conn.execute("CREATE TABLE IF NOT EXISTS expenses (id INTEGER PRIMARY KEY, user_id INTEGER, amount REAL, category TEXT, note_crypt TEXT)")
+        conn.execute("CREATE TABLE IF NOT EXISTS expenses (id INTEGER PRIMARY KEY, user_id INTEGER, amount REAL, category TEXT, note_crypt TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
         conn.execute("CREATE TABLE IF NOT EXISTS karma (user_id INTEGER PRIMARY KEY, name TEXT, score INTEGER DEFAULT 10)")
         conn.execute("CREATE TABLE IF NOT EXISTS roster (chat_id INTEGER, user_id INTEGER, name TEXT, UNIQUE(chat_id, user_id))")
+        
+        # Safe alter for old databases missing the timestamp column
+        try: conn.execute("ALTER TABLE expenses ADD COLUMN timestamp DATETIME DEFAULT CURRENT_TIMESTAMP")
+        except: pass
         conn.commit()
 
 def log_memory(chat_id, user_id, role, text):
@@ -80,7 +90,23 @@ def get_chat_history(chat_id, limit=10) -> list:
     return [{"role": r["role"], "content": decrypt_data(r["content_crypt"])} for r in reversed(rows)]
 
 # ---------------------------------------------------------------------------
-# MULTI-PROVIDER CASCADE WITH DIRECT DIAGNOSTICS
+# COMMAND PROBING CANARY
+# ---------------------------------------------------------------------------
+async def check_canary(user_id: int, first_name: str, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    if user_id != CREATOR_ID:
+        probing_attempts[user_id] += 1
+        if probing_attempts[user_id] >= 3:
+            await context.bot.send_message(
+                chat_id=CREATOR_ID, 
+                text=f"🚨 **Security Alert:** Unauthorized user {first_name} (`{user_id}`) is actively probing restricted admin modules.",
+                parse_mode="Markdown"
+            )
+            probing_attempts[user_id] = 0
+        return False
+    return True
+
+# ---------------------------------------------------------------------------
+# MULTI-PROVIDER CASCADE RING WITH CIRCUIT BREAKER
 # ---------------------------------------------------------------------------
 def build_system_prompt(user_id: int, first_name: str) -> str:
     identity_rule = (
@@ -94,104 +120,47 @@ Rule 1: Be ultra-concise. Speak in short, natural sentences. No AI disclaimers.
 Rule 2: {identity_rule}
 Rule 3: Use a maximum of ONE tasteful emoji per message."""
 
+def get_active_providers():
+    providers = []
+    if os.getenv("GROQ_API_KEY"): providers.append({"name": "Groq", "client": AsyncOpenAI(base_url="https://api.groq.com/openai/v1", api_key=os.getenv("GROQ_API_KEY")), "model": "llama-3.3-70b-versatile"})
+    if os.getenv("CEREBRAS_API_KEY"): providers.append({"name": "Cerebras", "client": AsyncOpenAI(base_url="https://api.cerebras.ai/v1", api_key=os.getenv("CEREBRAS_API_KEY")), "model": "llama3.1-70b"})
+    if os.getenv("SAMBANOVA_API_KEY"): providers.append({"name": "SambaNova", "client": AsyncOpenAI(base_url="https://api.sambanova.ai/v1", api_key=os.getenv("SAMBANOVA_API_KEY")), "model": "Meta-Llama-3.3-70B-Instruct"})
+    if os.getenv("MISTRAL_API_KEY"): providers.append({"name": "Mistral", "client": AsyncOpenAI(base_url="https://api.mistral.ai/v1", api_key=os.getenv("MISTRAL_API_KEY")), "model": "mistral-small-latest"})
+    if os.getenv("OPENROUTER_API_KEY"): providers.append({"name": "OpenRouter", "client": AsyncOpenAI(base_url="https://openrouter.ai/api/v1", api_key=os.getenv("OPENROUTER_API_KEY")), "model": "deepseek/deepseek-r1:free"})
+    if os.getenv("GEMINI_API_KEY"): providers.append({"name": "Gemini", "client": AsyncOpenAI(base_url="https://generativelanguage.googleapis.com/v1beta/openai/", api_key=os.getenv("GEMINI_API_KEY")), "model": "gemini-1.5-flash"})
+    if os.getenv("NVIDIA_API_KEY"): providers.append({"name": "NVIDIA", "client": AsyncOpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=os.getenv("NVIDIA_API_KEY")), "model": "meta/llama3-70b-instruct"})
+    if os.getenv("BAZAARLINK_API_KEY"): providers.append({"name": "BazaarLink", "client": AsyncOpenAI(base_url="https://bazaarlink.ai/api/v1", api_key=os.getenv("BAZAARLINK_API_KEY")), "model": "auto:free"})
+    return providers
+
 async def generate_response(messages: list, system_prompt: str) -> str:
     full_messages = [{"role": "system", "content": system_prompt}] + messages
     errors_log = []
-    providers = []
+    
+    current_time = time.time()
+    providers = get_active_providers()
+    
+    # Circuit Breaker Filter: Skip APIs that failed in the last 5 minutes
+    active_providers = [p for p in providers if circuit_breaker.get(p["name"], 0) < current_time]
 
-    # 1. Groq
-    if os.getenv("GROQ_API_KEY"):
-        providers.append({
-            "name": "Groq",
-            "client": AsyncOpenAI(base_url="https://api.groq.com/openai/v1", api_key=os.getenv("GROQ_API_KEY")),
-            "model": "llama-3.3-70b-versatile"
-        })
-    # 2. Cerebras
-    if os.getenv("CEREBRAS_API_KEY"):
-        providers.append({
-            "name": "Cerebras",
-            "client": AsyncOpenAI(base_url="https://api.cerebras.ai/v1", api_key=os.getenv("CEREBRAS_API_KEY")),
-            "model": "llama3.1-70b"
-        })
-    # 3. SambaNova
-    if os.getenv("SAMBANOVA_API_KEY"):
-        providers.append({
-            "name": "SambaNova",
-            "client": AsyncOpenAI(base_url="https://api.sambanova.ai/v1", api_key=os.getenv("SAMBANOVA_API_KEY")),
-            "model": "Meta-Llama-3.3-70B-Instruct"
-        })
-    # 4. Mistral
-    if os.getenv("MISTRAL_API_KEY"):
-        providers.append({
-            "name": "Mistral",
-            "client": AsyncOpenAI(base_url="https://api.mistral.ai/v1", api_key=os.getenv("MISTRAL_API_KEY")),
-            "model": "mistral-small-latest"
-        })
-    # 5. OpenRouter
-    if os.getenv("OPENROUTER_API_KEY"):
-        providers.append({
-            "name": "OpenRouter",
-            "client": AsyncOpenAI(base_url="https://openrouter.ai/api/v1", api_key=os.getenv("OPENROUTER_API_KEY")),
-            "model": "deepseek/deepseek-r1:free"
-        })
-    # 6. Gemini
-    if os.getenv("GEMINI_API_KEY"):
-        providers.append({
-            "name": "Gemini",
-            "client": AsyncOpenAI(base_url="https://generativelanguage.googleapis.com/v1beta/openai/", api_key=os.getenv("GEMINI_API_KEY")),
-            "model": "gemini-1.5-flash"
-        })
-    # 7. NVIDIA NIM
-    if os.getenv("NVIDIA_API_KEY"):
-        providers.append({
-            "name": "NVIDIA",
-            "client": AsyncOpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=os.getenv("NVIDIA_API_KEY")),
-            "model": "meta/llama3-70b-instruct"
-        })
-    # 8. Cloudflare Workers AI
-    if os.getenv("CLOUDFLARE_API_TOKEN") and os.getenv("CLOUDFLARE_ACCOUNT_ID"):
-        providers.append({
-            "name": "Cloudflare",
-            "client": AsyncOpenAI(base_url=f"https://api.cloudflare.com/client/v4/accounts/{os.getenv('CLOUDFLARE_ACCOUNT_ID')}/ai/v1", api_key=os.getenv("CLOUDFLARE_API_TOKEN")),
-            "model": "@cf/meta/llama-3-8b-instruct"
-        })
-    # 9. Cohere
-    if os.getenv("COHERE_API_KEY"):
-        providers.append({
-            "name": "Cohere",
-            "client": AsyncOpenAI(base_url="https://api.cohere.ai/v1", api_key=os.getenv("COHERE_API_KEY")),
-            "model": "command-r-plus"
-        })
-    # 10. BazaarLink
-    if os.getenv("BAZAARLINK_API_KEY"):
-        providers.append({
-            "name": "BazaarLink",
-            "client": AsyncOpenAI(base_url="https://bazaarlink.ai/api/v1", api_key=os.getenv("BAZAARLINK_API_KEY")),
-            "model": "auto:free"
-        })
+    if not providers: return "⚠️ Diagnostic: No AI API keys detected in Render."
+    if not active_providers: return "⚠️ All nodes are currently cooling down via Circuit Breaker. Please stand by."
 
-    if not providers:
-        return "⚠️ Diagnostic: No AI API keys detected in Render environment variables."
-
-    for provider in providers:
+    for provider in active_providers:
         try:
             response = await asyncio.wait_for(
-                provider["client"].chat.completions.create(
-                    model=provider["model"],
-                    messages=full_messages,
-                    temperature=0.7
-                ),
+                provider["client"].chat.completions.create(model=provider["model"], messages=full_messages, temperature=0.7),
                 timeout=10.0
             )
             return response.choices[0].message.content
         except Exception as e:
-            err_msg = f"{provider['name']}: {str(e)[:100]}"
-            logger.warning(f"[Cascade Failure] {err_msg}")
+            # Trip the circuit breaker for this provider (5 minutes)
+            circuit_breaker[provider['name']] = current_time + 300 
+            err_msg = f"{provider['name']} tripped: {str(e)[:80]}"
+            logger.warning(f"[Circuit Breaker] {err_msg}")
             errors_log.append(err_msg)
             continue
 
-    diag_summary = "\n".join([f"• {err}" for err in errors_log[:4]])
-    return f"⚠️ All neural engines failed. Diagnostics:\n{diag_summary}"
+    return f"⚠️ Network failure. Diagnostics:\n" + "\n".join([f"• {err}" for err in errors_log[:3]])
 
 # ---------------------------------------------------------------------------
 # DASHBOARD & CALLBACKS
@@ -213,7 +182,8 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def sys_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     action = query.data
-    if query.from_user.id != CREATOR_ID: 
+    
+    if not await check_canary(query.from_user.id, query.from_user.first_name, context):
         return await query.answer("Access Denied.", show_alert=True)
     
     if action.startswith("lift_"):
@@ -224,7 +194,6 @@ async def sys_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action = action.replace("sys_", "")
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
-        
         if action == "smarthome":
             try:
                 async with httpx.AsyncClient() as client: await client.post(SMART_HOME_WEBHOOK)
@@ -285,7 +254,7 @@ async def ssl_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except: await update.message.reply_text("SSL Inspection Failed.")
 
 async def task_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != CREATOR_ID: return
+    if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     task = " ".join(context.args)
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("INSERT INTO tasks (user_id, task_crypt) VALUES (?, ?)", (CREATOR_ID, encrypt_data(task)))
@@ -293,7 +262,7 @@ async def task_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"📋 **Task Logged:** {task}", parse_mode="Markdown")
 
 async def expense_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != CREATOR_ID: return
+    if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     try:
         amt, cat, note = float(context.args[0]), context.args[1], " ".join(context.args[2:])
         with sqlite3.connect(DB_PATH) as conn:
@@ -314,7 +283,7 @@ async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e: await update.message.reply_text(f"Search failed: {e}")
 
 # ---------------------------------------------------------------------------
-# HANDLERS
+# INTELLIGENT MESSAGE DISPATCHER
 # ---------------------------------------------------------------------------
 async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     file = await context.bot.get_file(update.message.document.file_id)
@@ -331,33 +300,71 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text: return
-    user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
+        
+    user = update.effective_user
+    chat = update.effective_chat
     user_text = update.message.text
+    bot_username = (await context.bot.get_me()).username
 
-    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-    log_memory(chat_id, user_id, "user", user_text)
+    log_memory(chat.id, user.id, "user", user_text)
+
+    # Blueprint Trigger Check for Groups
+    is_private = chat.type == "private"
+    is_reply_to_bot = (update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id)
+    is_name_called = bool(re.search(r'\b(jarvis|edwin)\b', user_text, re.IGNORECASE))
+    is_mentioned = f"@{bot_username}".lower() in user_text.lower() if bot_username else False
+
+    if not is_private and not (is_reply_to_bot or is_name_called or is_mentioned): return
+
+    await context.bot.send_chat_action(chat_id=chat.id, action="typing")
     
-    dynamic_prompt = build_system_prompt(user_id, update.effective_user.first_name)
-    history = get_chat_history(chat_id, limit=10)
+    dynamic_prompt = build_system_prompt(user.id, user.first_name)
+    history = get_chat_history(chat.id, limit=10)
     ai_response = await generate_response(history, dynamic_prompt)
     
-    log_memory(chat_id, user_id, "assistant", ai_response)
+    log_memory(chat.id, user.id, "assistant", ai_response)
     await update.message.reply_text(ai_response)
 
 async def scheduled_briefing(context: ContextTypes.DEFAULT_TYPE):
-    if CREATOR_ID:
-        prompt = [{"role": "user", "content": "Generate a short, sarcastic morning briefing for today."}]
-        response = await generate_response(prompt, build_system_prompt(CREATOR_ID, "Abhishek"))
-        await context.bot.send_message(chat_id=CREATOR_ID, text=f"🌅 Morning Briefing:\n{response}")
+    if not CREATOR_ID: return
+    
+    # Check if today is Monday for the weekly expense rollup
+    now = datetime.now(pytz.timezone("Asia/Kolkata"))
+    expense_summary = ""
+    
+    if now.weekday() == 0:  # 0 = Monday
+        with sqlite3.connect(DB_PATH) as conn:
+            # Sum expenses from the last 7 days
+            total = conn.execute("SELECT SUM(amount) FROM expenses WHERE timestamp >= datetime('now', '-7 days')").fetchone()[0] or 0.0
+            expense_summary = f"\n\n💰 **Weekly Expense Rollup:** ₹{total:.2f}"
+
+    prompt = [{"role": "user", "content": "Generate a short, sarcastic morning briefing for today."}]
+    response = await generate_response(prompt, build_system_prompt(CREATOR_ID, "Abhishek"))
+    
+    await context.bot.send_message(chat_id=CREATOR_ID, text=f"🌅 Morning Briefing:\n{response}{expense_summary}", parse_mode="Markdown")
+
+async def post_init(app: Application):
+    """Boot-Time Environment Audit"""
+    if not CREATOR_ID: return
+    
+    providers = get_active_providers()
+    log = ["🤖 **J.A.R.V.I.S. Core Rebooting...**\n"]
+    log.append(f"• **LLM Cascade Nodes:** {len(providers)} active")
+    log.append("• **Vault Encryption:** Secured")
+    log.append("• **Port Maintenance:** Listening")
+    
+    if len(providers) == 0:
+        log.append("\n⚠️ **CRITICAL:** No AI API keys detected. Neural net offline.")
+        
+    await app.bot.send_message(chat_id=CREATOR_ID, text="\n".join(log), parse_mode="Markdown")
 
 def main():
     db_init()
     if not BOT_TOKEN:
-        logger.error("TELEGRAM_BOT_TOKEN or BOT_TOKEN is missing.")
+        logger.error("TELEGRAM_BOT_TOKEN is missing.")
         sys.exit(1)
         
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
     
     scheduler = AsyncIOScheduler(timezone=pytz.timezone("Asia/Kolkata"))
     scheduler.add_job(scheduled_briefing, 'cron', hour=8, minute=0, args=[app])
