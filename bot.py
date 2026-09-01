@@ -6,7 +6,7 @@ import base64
 import sqlite3
 import logging
 import asyncio
-import aiohttp
+import httpx
 import traceback
 import threading
 import urllib.parse
@@ -135,11 +135,14 @@ async def gemini_live_search(prompt: str, sys_prompt: str, history: list) -> str
         "systemInstruction": {"parts": [{"text": sys_prompt}]}
     }
     
-    async with aiohttp.ClientSession() as session:
-        async with session.post(url, json=payload, headers={"Content-Type": "application/json"}) as resp:
-            data = await resp.json()
-            try: return data['candidates'][0]['content']['parts'][0]['text']
-            except: return None
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.post(url, json=payload, timeout=15.0)
+            data = resp.json()
+            return data['candidates'][0]['content']['parts'][0]['text']
+        except Exception as e:
+            logger.error(f"Search API Error: {e}")
+            return None
 
 async def generate_response(prompt: str, history: list, sys_prompt: str, force_route=None) -> str:
     current_time = time.time()
@@ -150,22 +153,21 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, force_r
         search_res = await gemini_live_search(prompt, sys_prompt, history)
         if search_res: return search_res
 
-    # Mixture of Experts Cascade
+    # Mixture of Experts Cascade (Trailing slashes applied to fix SDK 404 bugs)
     moe_cascade = [
-        {"name": "Groq", "base": "https://api.groq.com/openai/v1", "key": "GROQ_API_KEY", "model": "llama-3.3-70b-versatile", "tier": "Fast"},
-        {"name": "Cerebras", "base": "https://api.cerebras.ai/v1", "key": "CEREBRAS_API_KEY", "model": "llama3.1-8b", "tier": "Fast"},
-        {"name": "SambaNova", "base": "https://api.sambanova.ai/v1", "key": "SAMBANOVA_API_KEY", "model": "Meta-Llama-3.1-70B-Instruct", "tier": "Fast"},
-        {"name": "OpenRouter", "base": "https://openrouter.ai/api/v1", "key": "OPENROUTER_API_KEY", "model": "deepseek/deepseek-r1:free", "tier": "Logic"},
-        {"name": "NVIDIA", "base": "https://integrate.api.nvidia.com/v1", "key": "NVIDIA_API_KEY", "model": "meta/llama-3.1-70b-instruct", "tier": "Heavy"},
-        {"name": "Cohere", "base": "https://api.cohere.com/v1", "key": "COHERE_API_KEY", "model": "command-r-plus", "tier": "Heavy"},
-        {"name": "Mistral", "base": "https://api.mistral.ai/v1", "key": "MISTRAL_API_KEY", "model": "mistral-small-latest", "tier": "Fallback"},
-        {"name": "Cloudflare", "base": "https://api.cloudflare.com/client/v4/accounts/ai/v1", "key": "CLOUDFLARE_API_KEY", "model": "@cf/meta/llama-3-8b-instruct", "tier": "Fallback"},
-        {"name": "BazaarLink", "base": "https://api.bazaarlink.net/v1", "key": "BAZAARLINK_API_KEY", "model": "auto-free", "tier": "Fallback"}
+        {"name": "Groq", "base": "https://api.groq.com/openai/v1/", "key": "GROQ_API_KEY", "model": "llama-3.3-70b-versatile", "tier": "Fast"},
+        {"name": "Cerebras", "base": "https://api.cerebras.ai/v1/", "key": "CEREBRAS_API_KEY", "model": "llama3.1-8b", "tier": "Fast"},
+        {"name": "SambaNova", "base": "https://api.sambanova.ai/v1/", "key": "SAMBANOVA_API_KEY", "model": "Meta-Llama-3.1-70B-Instruct", "tier": "Fast"},
+        {"name": "OpenRouter", "base": "https://openrouter.ai/api/v1/", "key": "OPENROUTER_API_KEY", "model": "deepseek/deepseek-r1:free", "tier": "Logic"},
+        {"name": "NVIDIA", "base": "https://integrate.api.nvidia.com/v1/", "key": "NVIDIA_API_KEY", "model": "meta/llama-3.1-70b-instruct", "tier": "Heavy"},
+        {"name": "Cohere", "base": "https://api.cohere.com/v1/", "key": "COHERE_API_KEY", "model": "command-r-plus", "tier": "Heavy"},
+        {"name": "Mistral", "base": "https://api.mistral.ai/v1/", "key": "MISTRAL_API_KEY", "model": "mistral-small-latest", "tier": "Fallback"},
+        {"name": "Cloudflare", "base": "https://api.cloudflare.com/client/v4/accounts/ai/v1/", "key": "CLOUDFLARE_API_KEY", "model": "@cf/meta/llama-3-8b-instruct", "tier": "Fallback"},
+        {"name": "BazaarLink", "base": "https://api.bazaarlink.net/v1/", "key": "BAZAARLINK_API_KEY", "model": "auto-free", "tier": "Fallback"}
     ]
 
     full_messages = [{"role": "system", "content": sys_prompt}] + history + [{"role": "user", "content": prompt}]
 
-    # Intelligent Sorting: Logic requests go to OpenRouter first, otherwise use Fast Lane
     if force_route == "logic" or any(kw in prompt.lower() for kw in ["code", "calculate", "math", "solve", "why"]):
         moe_cascade.sort(key=lambda x: x["tier"] != "Logic")
 
@@ -181,7 +183,6 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, force_r
             circuit_breaker[node['name']] = current_time + 60 
             continue
             
-    # Final Fallback to pure Gemini if the entire cascade fails
     fb = await gemini_live_search(prompt, sys_prompt, history)
     return fb or "Network failure across all 11 active nodes, Sir. 📡"
 
@@ -373,7 +374,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     thread_id = msg.message_thread_id
     log_memory(chat.id, thread_id, user.id, "user", f"{user.first_name}: {text}")
     
-    # Active Link Moderation
     if chat.type != "private" and re.findall(r'(http://[^\s]+)', text):
         await warn_system(update, context, user, chat, "Unencrypted HTTP link detected.")
 
@@ -407,7 +407,6 @@ def main():
     db_init()
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
     
-    # Deterministic Core
     app.add_handler(CommandHandler("task", add_task))
     app.add_handler(CommandHandler("tasks", list_tasks))
     app.add_handler(CommandHandler("calc", calc_cmd))
@@ -415,7 +414,6 @@ def main():
     app.add_handler(CallbackQueryHandler(interactive_callbacks))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_captcha))
     
-    # Sensory Core
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, audio_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
