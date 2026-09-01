@@ -8,6 +8,7 @@ import sqlite3
 import logging
 import asyncio
 import threading
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from datetime import datetime
 from collections import defaultdict
@@ -28,24 +29,21 @@ from telegram.ext import (
 # ---------------------------------------------------------------------------
 # CORE CONFIGURATION & DUMMY SERVER
 # ---------------------------------------------------------------------------
-logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", 
+    level=logging.INFO,
+    handlers=[logging.FileHandler("jarvis_sys.log"), logging.StreamHandler()]
+)
 logger = logging.getLogger("jarvis")
 
 BOT_TOKEN = (os.environ.get("TELEGRAM_BOT_TOKEN") or os.environ.get("BOT_TOKEN", "")).strip()
 CREATOR_ID = int(os.environ.get("CREATOR_ID", "0").strip())
 ENCRYPTION_KEY = os.environ.get("ENCRYPTION_KEY", Fernet.generate_key().decode()).strip()
 PORT = int(os.environ.get("PORT", 8080))
-SMART_HOME_WEBHOOK = os.environ.get("SMART_HOME_WEBHOOK", "https://maker.ifttt.com/trigger/dummy/with/key/dummy")
 
 class DummyHandler(BaseHTTPRequestHandler):
-    def do_HEAD(self):
-        self.send_response(200)
-        self.end_headers()
-
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"J.A.R.V.I.S. Multi-Core Active.")
+    def do_HEAD(self): self.send_response(200); self.end_headers()
+    def do_GET(self): self.send_response(200); self.end_headers(); self.wfile.write(b"J.A.R.V.I.S. Ultimate Core Active.")
 
 threading.Thread(target=lambda: HTTPServer(('0.0.0.0', PORT), DummyHandler).serve_forever(), daemon=True).start()
 
@@ -56,8 +54,6 @@ def decrypt_data(crypto_text: str) -> str:
     except Exception: return "[ENCRYPT ERROR]"
 
 DB_PATH = "jarvis_vault.db"
-
-# Security Globals
 circuit_breaker = {}
 probing_attempts = defaultdict(int)
 
@@ -69,319 +65,222 @@ def db_init():
         conn.execute("CREATE TABLE IF NOT EXISTS memory (id INTEGER PRIMARY KEY, chat_id INTEGER, user_id INTEGER, role TEXT, content_crypt TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
         conn.execute("CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY, user_id INTEGER, task_crypt TEXT, status TEXT DEFAULT 'pending')")
         conn.execute("CREATE TABLE IF NOT EXISTS expenses (id INTEGER PRIMARY KEY, user_id INTEGER, amount REAL, category TEXT, note_crypt TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
-        conn.execute("CREATE TABLE IF NOT EXISTS karma (user_id INTEGER PRIMARY KEY, name TEXT, score INTEGER DEFAULT 10)")
+        conn.execute("CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, tag TEXT, content_crypt TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
         conn.execute("CREATE TABLE IF NOT EXISTS roster (chat_id INTEGER, user_id INTEGER, name TEXT, UNIQUE(chat_id, user_id))")
-        
-        # Safe alter for old databases missing the timestamp column
         try: conn.execute("ALTER TABLE expenses ADD COLUMN timestamp DATETIME DEFAULT CURRENT_TIMESTAMP")
         except: pass
         conn.commit()
 
 def log_memory(chat_id, user_id, role, text):
     with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("INSERT INTO memory (chat_id, user_id, role, content_crypt) VALUES (?, ?, ?, ?)", 
-                     (chat_id, user_id, role, encrypt_data(text)))
+        conn.execute("INSERT INTO memory (chat_id, user_id, role, content_crypt) VALUES (?, ?, ?, ?)", (chat_id, user_id, role, encrypt_data(text)))
         conn.commit()
 
-def get_chat_history(chat_id, limit=10) -> list:
+def get_chat_history(chat_id, limit=12) -> list:
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute("SELECT role, content_crypt FROM memory WHERE chat_id = ? ORDER BY id DESC LIMIT ?", (chat_id, limit)).fetchall()
     return [{"role": r["role"], "content": decrypt_data(r["content_crypt"])} for r in reversed(rows)]
 
 # ---------------------------------------------------------------------------
-# COMMAND PROBING CANARY
+# SECURITY CANARY & CASCADE
 # ---------------------------------------------------------------------------
 async def check_canary(user_id: int, first_name: str, context: ContextTypes.DEFAULT_TYPE) -> bool:
     if user_id != CREATOR_ID:
         probing_attempts[user_id] += 1
         if probing_attempts[user_id] >= 3:
-            await context.bot.send_message(
-                chat_id=CREATOR_ID, 
-                text=f"🚨 **Security Alert:** Unauthorized user {first_name} (`{user_id}`) is actively probing restricted admin modules.",
-                parse_mode="Markdown"
-            )
+            await context.bot.send_message(chat_id=CREATOR_ID, text=f"🚨 **Security Alert:** {first_name} (`{user_id}`) is probing restricted modules.", parse_mode="Markdown")
             probing_attempts[user_id] = 0
         return False
     return True
 
-# ---------------------------------------------------------------------------
-# MULTI-PROVIDER CASCADE RING WITH CIRCUIT BREAKER
-# ---------------------------------------------------------------------------
 def build_system_prompt(user_id: int, first_name: str) -> str:
-    identity_rule = (
-        "You are speaking to your creator and administrator, Abhishek (DHANUSH V N). You MUST address him exclusively as 'Sir'. Never use his first name."
-        if user_id == CREATOR_ID else
-        f"You are speaking to {first_name}. Address them politely by their first name. If they speak nonsense, dismiss them with elegant, ruthless sarcasm."
-    )
+    identity_rule = "You are speaking to your creator, Abhishek (DHANUSH V N). Address him as 'Sir'." if user_id == CREATOR_ID else f"You are speaking to {first_name}. If they speak nonsense, use elegant, ruthless sarcasm."
     return f"""You are J.A.R.V.I.S. (Just A Rather Very Intelligent System).
-Character: Strictly professional, highly capable, and clinically dry. You possess a sharp, understated British wit.
-Rule 1: Be ultra-concise. Speak in short, natural sentences. No AI disclaimers.
-Rule 2: {identity_rule}
-Rule 3: Use a maximum of ONE tasteful emoji per message."""
+Character: Professional, highly capable, dry British wit.
+Rule 1: Be ultra-concise.
+Rule 2: {identity_rule}"""
 
 def get_active_providers():
     providers = []
     if os.getenv("GROQ_API_KEY"): providers.append({"name": "Groq", "client": AsyncOpenAI(base_url="https://api.groq.com/openai/v1", api_key=os.getenv("GROQ_API_KEY")), "model": "llama-3.3-70b-versatile"})
-    if os.getenv("CEREBRAS_API_KEY"): providers.append({"name": "Cerebras", "client": AsyncOpenAI(base_url="https://api.cerebras.ai/v1", api_key=os.getenv("CEREBRAS_API_KEY")), "model": "llama3.1-70b"})
-    if os.getenv("SAMBANOVA_API_KEY"): providers.append({"name": "SambaNova", "client": AsyncOpenAI(base_url="https://api.sambanova.ai/v1", api_key=os.getenv("SAMBANOVA_API_KEY")), "model": "Meta-Llama-3.3-70B-Instruct"})
-    if os.getenv("MISTRAL_API_KEY"): providers.append({"name": "Mistral", "client": AsyncOpenAI(base_url="https://api.mistral.ai/v1", api_key=os.getenv("MISTRAL_API_KEY")), "model": "mistral-small-latest"})
-    if os.getenv("OPENROUTER_API_KEY"): providers.append({"name": "OpenRouter", "client": AsyncOpenAI(base_url="https://openrouter.ai/api/v1", api_key=os.getenv("OPENROUTER_API_KEY")), "model": "deepseek/deepseek-r1:free"})
     if os.getenv("GEMINI_API_KEY"): providers.append({"name": "Gemini", "client": AsyncOpenAI(base_url="https://generativelanguage.googleapis.com/v1beta/openai/", api_key=os.getenv("GEMINI_API_KEY")), "model": "gemini-1.5-flash"})
-    if os.getenv("NVIDIA_API_KEY"): providers.append({"name": "NVIDIA", "client": AsyncOpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=os.getenv("NVIDIA_API_KEY")), "model": "meta/llama3-70b-instruct"})
-    if os.getenv("BAZAARLINK_API_KEY"): providers.append({"name": "BazaarLink", "client": AsyncOpenAI(base_url="https://bazaarlink.ai/api/v1", api_key=os.getenv("BAZAARLINK_API_KEY")), "model": "auto:free"})
+    if os.getenv("OPENROUTER_API_KEY"): providers.append({"name": "OpenRouter", "client": AsyncOpenAI(base_url="https://openrouter.ai/api/v1", api_key=os.getenv("OPENROUTER_API_KEY")), "model": "deepseek/deepseek-r1:free"})
     return providers
 
 async def generate_response(messages: list, system_prompt: str) -> str:
     full_messages = [{"role": "system", "content": system_prompt}] + messages
-    errors_log = []
-    
     current_time = time.time()
     providers = get_active_providers()
-    
-    # Circuit Breaker Filter: Skip APIs that failed in the last 5 minutes
     active_providers = [p for p in providers if circuit_breaker.get(p["name"], 0) < current_time]
 
-    if not providers: return "⚠️ Diagnostic: No AI API keys detected in Render."
-    if not active_providers: return "⚠️ All nodes are currently cooling down via Circuit Breaker. Please stand by."
+    if not providers: return "⚠️ No AI API keys detected."
+    if not active_providers: return "⚠️ Circuit Breaker active. Nodes cooling down."
 
     for provider in active_providers:
         try:
-            response = await asyncio.wait_for(
-                provider["client"].chat.completions.create(model=provider["model"], messages=full_messages, temperature=0.7),
-                timeout=10.0
-            )
-            return response.choices[0].message.content
+            res = await asyncio.wait_for(provider["client"].chat.completions.create(model=provider["model"], messages=full_messages, temperature=0.7), timeout=10.0)
+            return res.choices[0].message.content
         except Exception as e:
-            # Trip the circuit breaker for this provider (5 minutes)
             circuit_breaker[provider['name']] = current_time + 300 
-            err_msg = f"{provider['name']} tripped: {str(e)[:80]}"
-            logger.warning(f"[Circuit Breaker] {err_msg}")
-            errors_log.append(err_msg)
+            logger.warning(f"{provider['name']} tripped: {e}")
             continue
-
-    return f"⚠️ Network failure. Diagnostics:\n" + "\n".join([f"• {err}" for err in errors_log[:3]])
-
-# ---------------------------------------------------------------------------
-# DASHBOARD & CALLBACKS
-# ---------------------------------------------------------------------------
-async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    if user.id != CREATOR_ID: 
-        return await update.message.reply_text(f"Welcome {user.first_name}. Monitoring active.")
-    
-    keyboard = [
-        [InlineKeyboardButton("⚡ Stark HUD WebApp", web_app=WebAppInfo(url="https://codepen.io/pen/"))],
-        [InlineKeyboardButton("🏡 Smart Home", callback_data="sys_smarthome"), InlineKeyboardButton("🚨 Lockdown", callback_data="sys_lockdown")],
-        [InlineKeyboardButton("🎯 AI Planner", callback_data="sys_planner"), InlineKeyboardButton("💰 Expenses", callback_data="sys_expense")],
-        [InlineKeyboardButton("⚔️ Defense Recon", callback_data="sys_recon"), InlineKeyboardButton("⭐ Karma Matrix", callback_data="sys_karma")],
-        [InlineKeyboardButton("🛡️ Security Sweep", callback_data="sys_sec")]
-    ]
-    await update.message.reply_text("🤖 **STARK ADVANCED OS — J.A.R.V.I.S. CORE** ✨\nWelcome **Sir!**", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
-
-async def sys_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    action = query.data
-    
-    if not await check_canary(query.from_user.id, query.from_user.first_name, context):
-        return await query.answer("Access Denied.", show_alert=True)
-    
-    if action.startswith("lift_"):
-        cid = action.split("_")[1]
-        await context.bot.set_chat_permissions(cid, ChatPermissions(can_send_messages=True, can_send_audios=True, can_send_photos=True, can_send_videos=True))
-        return await query.edit_message_text(f"🔓 Lockdown lifted for chat `{cid}`.", parse_mode="Markdown")
-        
-    action = action.replace("sys_", "")
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.row_factory = sqlite3.Row
-        if action == "smarthome":
-            try:
-                async with httpx.AsyncClient() as client: await client.post(SMART_HOME_WEBHOOK)
-                await query.answer("IoT Webhook triggered successfully.", show_alert=True)
-            except: await query.answer("IoT Relay offline.", show_alert=True)
-        elif action == "lockdown":
-            await query.answer("Execute /lockdown in the target group.", show_alert=True)
-        elif action == "sec":
-            recent = conn.execute("SELECT DISTINCT user_id, role FROM memory ORDER BY id DESC LIMIT 5").fetchall()
-            threats = "\n".join([f"• ID: `{r['user_id']}`" for r in recent if r['user_id'] != CREATOR_ID])
-            await query.edit_message_text(f"🛡️ **Security Audit Complete**\n\n{threats or 'No anomalies.'}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Return", callback_data="sys_menu")]]), parse_mode="Markdown")
-        elif action == "recon":
-            msg = "🌐 **Network Recon Active:**\n• `/dns [domain]`\n• `/ssl [domain]`\n• `/headers [url]`\n• `/ip [ip]`"
-            await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Return", callback_data="sys_menu")]]), parse_mode="Markdown")
-        elif action == "planner":
-            tasks = conn.execute("SELECT id, task_crypt FROM tasks WHERE status = 'pending'").fetchall()
-            msg = "🎯 **Active Objectives:**\n" + ("\n".join([f"• {decrypt_data(t['task_crypt'])}" for t in tasks]) if tasks else "Schedule clear, Sir.")
-            await query.edit_message_text(msg + "\n\nUse `/task [desc]`", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Return", callback_data="sys_menu")]]), parse_mode="Markdown")
-        elif action == "expense":
-            rows = conn.execute("SELECT amount, category, note_crypt FROM expenses ORDER BY id DESC LIMIT 5").fetchall()
-            total = conn.execute("SELECT SUM(amount) as total FROM expenses").fetchone()['total'] or 0.0
-            msg = f"💰 **Ledger:**\nTotal: ₹{total:.2f}\n" + ("\n".join([f"• ₹{r['amount']} ({r['category']}): {decrypt_data(r['note_crypt'])}" for r in rows]) if rows else "No records.")
-            await query.edit_message_text(msg + "\n\nUse `/expense [amount] [cat] [note]`", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Return", callback_data="sys_menu")]]), parse_mode="Markdown")
-        elif action == "karma":
-            scores = conn.execute("SELECT name, score FROM karma ORDER BY score DESC LIMIT 10").fetchall()
-            msg = "⭐ **Karma Leaderboard:**\n" + "\n".join([f"• {r['name']}: {r['score']} pts" for r in scores])
-            await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Return", callback_data="sys_menu")]]), parse_mode="Markdown")
-        elif action == "menu": 
-            await start_cmd(update, context)
+    return "⚠️ Network failure."
 
 # ---------------------------------------------------------------------------
-# UTILITIES & RECON COMMANDS
+# NEW SENSORY & SECURITY COMMANDS
 # ---------------------------------------------------------------------------
-async def dns_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    domain = "".join(context.args).replace("https://", "").split("/")[0]
-    if not domain: return await update.message.reply_text("Provide a domain.")
-    try:
-        ip_list = await asyncio.to_thread(socket.gethostbyname_ex, domain)
-        await update.message.reply_text(f"🌐 **DNS Records:**\n" + "\n".join([f"• `{ip}`" for ip in ip_list[2]]), parse_mode="Markdown")
-    except: await update.message.reply_text("DNS Resolution Failed.")
+async def imagine_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Image Synthesis via Pollinations (No API Key Required)"""
+    prompt = " ".join(context.args)
+    if not prompt: return await update.message.reply_text("Format: /imagine [prompt]")
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="upload_photo")
+    image_url = f"https://image.pollinations.ai/prompt/{urllib.parse.quote(prompt)}?width=1024&height=1024&nologo=true"
+    await update.message.reply_photo(photo=image_url, caption=f"🎨 Rendered: {prompt}")
 
-async def ip_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = "".join(context.args).replace("https://", "").split("/")[0]
-    try:
-        async with httpx.AsyncClient(timeout=6.0) as client:
-            data = (await client.get(f"http://ip-api.com/json/{query}")).json()
-        await update.message.reply_text(f"🌐 **Routing:**\n• ISP: `{data.get('isp')}`\n• Loc: `{data.get('city')}, {data.get('country')}`", parse_mode="Markdown")
-    except: await update.message.reply_text("IP Query Failed.")
-
-async def ssl_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    domain = "".join(context.args).replace("https://", "").split("/")[0]
-    try:
-        ctx = ssl.create_default_context()
-        with socket.create_connection((domain, 443), timeout=5.0) as sock:
-            with ctx.wrap_socket(sock, server_hostname=domain) as ssock:
-                cert = ssock.getpeercert()
-        await update.message.reply_text(f"🔒 **SSL:** Valid until `{cert.get('notAfter')}`", parse_mode="Markdown")
-    except: await update.message.reply_text("SSL Inspection Failed.")
-
-async def task_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
-    task = " ".join(context.args)
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("INSERT INTO tasks (user_id, task_crypt) VALUES (?, ?)", (CREATOR_ID, encrypt_data(task)))
-        conn.commit()
-    await update.message.reply_text(f"📋 **Task Logged:** {task}", parse_mode="Markdown")
-
-async def expense_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def note_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Encrypted Vault for Prompts and Configs"""
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     try:
-        amt, cat, note = float(context.args[0]), context.args[1], " ".join(context.args[2:])
+        tag, content = context.args[0], " ".join(context.args[1:])
         with sqlite3.connect(DB_PATH) as conn:
-            conn.execute("INSERT INTO expenses (user_id, amount, category, note_crypt) VALUES (?, ?, ?, ?)", (CREATOR_ID, amt, cat, encrypt_data(note)))
+            conn.execute("INSERT INTO notes (tag, content_crypt) VALUES (?, ?)", (tag.lower(), encrypt_data(content)))
             conn.commit()
-        await update.message.reply_text(f"💰 Logged: ₹{amt} for {cat}.")
-    except: await update.message.reply_text("Format: /expense [amount] [category] [note]")
+        await update.message.reply_text(f"🔒 Secured in vault under tag: `#{tag}`", parse_mode="Markdown")
+    except: await update.message.reply_text("Format: /note [tag] [text]")
 
-async def search_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = " ".join(context.args)
-    if not query: return await update.message.reply_text("Provide a search query.")
-    try:
-        results = "\n".join([f"- {r['title']}: {r['body']}" for r in DDGS().text(query, max_results=3)])
-        prompt = get_chat_history(update.effective_chat.id, 5)
-        prompt.append({"role": "user", "content": f"Summarize these search results for me:\n{results}"})
-        answer = await generate_response(prompt, build_system_prompt(update.effective_user.id, update.effective_user.first_name))
-        await update.message.reply_text(answer)
-    except Exception as e: await update.message.reply_text(f"Search failed: {e}")
+async def getnote_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
+    tag = context.args[0].lower() if context.args else ""
+    with sqlite3.connect(DB_PATH) as conn:
+        rows = conn.execute("SELECT content_crypt FROM notes WHERE tag = ? ORDER BY id DESC", (tag,)).fetchall()
+    if rows: await update.message.reply_text(f"📂 **#{tag}:**\n" + "\n---\n".join([decrypt_data(r[0]) for r in rows]), parse_mode="Markdown")
+    else: await update.message.reply_text("No records found.")
 
-# ---------------------------------------------------------------------------
-# INTELLIGENT MESSAGE DISPATCHER
-# ---------------------------------------------------------------------------
-async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    file = await context.bot.get_file(update.message.document.file_id)
-    file_path = "temp_upload.pdf"
+async def purge_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Instant Message Deletion Protocol"""
+    if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
+    if update.message.reply_to_message:
+        try: 
+            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.reply_to_message.message_id)
+            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.message_id)
+        except: await update.message.reply_text("Requires admin deletion rights.")
+
+async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Whisper API Voice Recognition"""
+    if not os.getenv("GROQ_API_KEY"): return await update.message.reply_text("Audio core offline (Missing Groq Key).")
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="record_voice")
+    
+    file = await context.bot.get_file(update.message.voice.file_id)
+    os.makedirs("temp", exist_ok=True)
+    file_path = f"temp/{update.message.voice.file_id}.ogg"
     await file.download_to_drive(file_path)
+    
     try:
-        text = ""
-        with pdfplumber.open(file_path) as pdf:
-            for page in pdf.pages[:3]: text += page.extract_text() + "\n"
-        prompt = [{"role": "user", "content": f"Briefly summarize this document:\n{text[:2000]}"}]
-        answer = await generate_response(prompt, build_system_prompt(update.effective_user.id, update.effective_user.first_name))
-        await update.message.reply_text(f"📄 PDF Analysis:\n{answer}")
-    finally: os.remove(file_path)
+        from groq import AsyncGroq
+        client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
+        with open(file_path, "rb") as audio:
+            transcription = await client.audio.transcriptions.create(file=("audio.ogg", audio.read()), model="whisper-large-v3")
+        user_text = transcription.text
+        
+        log_memory(update.effective_chat.id, update.effective_user.id, "user", f"[Voice] {user_text}")
+        prompt = build_system_prompt(update.effective_user.id, update.effective_user.first_name)
+        history = get_chat_history(update.effective_chat.id)
+        response = await generate_response(history + [{"role": "user", "content": user_text}], prompt)
+        
+        log_memory(update.effective_chat.id, update.effective_user.id, "assistant", response)
+        await update.message.reply_text(f"🎤 *(Transcribed)*: {user_text}\n\n{response}", parse_mode="Markdown")
+    finally:
+        if os.path.exists(file_path): os.remove(file_path)
 
+# ---------------------------------------------------------------------------
+# INTELLIGENT MESSAGE DISPATCHER & LINK SCANNER
+# ---------------------------------------------------------------------------
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text: return
         
-    user = update.effective_user
-    chat = update.effective_chat
-    user_text = update.message.text
-    bot_username = (await context.bot.get_me()).username
+    user, chat, user_text = update.effective_user, update.effective_chat, update.message.text
+    
+    # Roster Update & Background Logging
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("INSERT INTO roster (chat_id, user_id, name) VALUES (?, ?, ?) ON CONFLICT(chat_id, user_id) DO UPDATE SET name = ?", (chat.id, user.id, user.first_name, user.first_name))
+        conn.commit()
+    log_memory(chat.id, user.id, "user", f"{user.first_name}: {user_text}")
 
-    log_memory(chat.id, user.id, "user", user_text)
+    # Automated Link Scanning
+    urls = re.findall(r'(https?://[^\s]+)', user_text)
+    if urls and chat.type != "private":
+        for url in urls:
+            if "http://" in url: # Flag unencrypted traffic
+                await update.message.reply_text(f"⚠️ **Security Warning:** Unencrypted HTTP protocol detected in link shared by {user.first_name}.", parse_mode="Markdown")
 
-    # Blueprint Trigger Check for Groups
     is_private = chat.type == "private"
-    is_reply_to_bot = (update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id)
+    is_reply_to_bot = bool(update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id)
     is_name_called = bool(re.search(r'\b(jarvis|edwin)\b', user_text, re.IGNORECASE))
+    bot_username = (await context.bot.get_me()).username
     is_mentioned = f"@{bot_username}".lower() in user_text.lower() if bot_username else False
 
     if not is_private and not (is_reply_to_bot or is_name_called or is_mentioned): return
 
     await context.bot.send_chat_action(chat_id=chat.id, action="typing")
-    
-    dynamic_prompt = build_system_prompt(user.id, user.first_name)
-    history = get_chat_history(chat.id, limit=10)
-    ai_response = await generate_response(history, dynamic_prompt)
-    
+    ai_response = await generate_response(get_chat_history(chat.id), build_system_prompt(user.id, user.first_name))
     log_memory(chat.id, user.id, "assistant", ai_response)
     await update.message.reply_text(ai_response)
 
+# ---------------------------------------------------------------------------
+# DASHBOARD, TASKS & BASE COMMANDS (From previous iterations)
+# ---------------------------------------------------------------------------
+async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != CREATOR_ID: return await update.message.reply_text("Monitoring active.")
+    kb = [[InlineKeyboardButton("🎯 Active Objectives", callback_data="sys_planner")], [InlineKeyboardButton("🛡️ Security Audit", callback_data="sys_sec")]]
+    await update.message.reply_text("🤖 **STARK ADVANCED OS — ULTIMATE CORE**", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+
+async def announce_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
+    await context.bot.send_message(chat_id=context.args[0], text=" ".join(context.args[1:]))
+
+async def groupinfo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    count = await context.bot.get_chat_member_count(update.effective_chat.id)
+    await update.message.reply_text(f"📊 **Chat ID:** `{update.effective_chat.id}`\n• **Members:** {count}", parse_mode="Markdown")
+
 async def scheduled_briefing(context: ContextTypes.DEFAULT_TYPE):
     if not CREATOR_ID: return
-    
-    # Check if today is Monday for the weekly expense rollup
     now = datetime.now(pytz.timezone("Asia/Kolkata"))
     expense_summary = ""
-    
-    if now.weekday() == 0:  # 0 = Monday
-        with sqlite3.connect(DB_PATH) as conn:
-            # Sum expenses from the last 7 days
+    with sqlite3.connect(DB_PATH) as conn:
+        if now.weekday() == 0:
             total = conn.execute("SELECT SUM(amount) FROM expenses WHERE timestamp >= datetime('now', '-7 days')").fetchone()[0] or 0.0
-            expense_summary = f"\n\n💰 **Weekly Expense Rollup:** ₹{total:.2f}"
+            expense_summary = f"\n\n💰 **Weekly Expense:** ₹{total:.2f}"
+        
+        # Group Health Digest (Friday Report)
+        if now.weekday() == 4:
+            msgs = conn.execute("SELECT COUNT(*) FROM memory WHERE timestamp >= datetime('now', '-7 days') AND role='user'").fetchone()[0]
+            expense_summary += f"\n\n📊 **Group Telemetry:** {msgs} messages logged this week."
 
-    prompt = [{"role": "user", "content": "Generate a short, sarcastic morning briefing for today."}]
-    response = await generate_response(prompt, build_system_prompt(CREATOR_ID, "Abhishek"))
-    
-    await context.bot.send_message(chat_id=CREATOR_ID, text=f"🌅 Morning Briefing:\n{response}{expense_summary}", parse_mode="Markdown")
+    response = await generate_response([{"role": "user", "content": "Morning briefing."}], build_system_prompt(CREATOR_ID, "Abhishek"))
+    await context.bot.send_message(chat_id=CREATOR_ID, text=f"🌅 Briefing:\n{response}{expense_summary}", parse_mode="Markdown")
 
 async def post_init(app: Application):
-    """Boot-Time Environment Audit"""
-    if not CREATOR_ID: return
-    
-    providers = get_active_providers()
-    log = ["🤖 **J.A.R.V.I.S. Core Rebooting...**\n"]
-    log.append(f"• **LLM Cascade Nodes:** {len(providers)} active")
-    log.append("• **Vault Encryption:** Secured")
-    log.append("• **Port Maintenance:** Listening")
-    
-    if len(providers) == 0:
-        log.append("\n⚠️ **CRITICAL:** No AI API keys detected. Neural net offline.")
-        
-    await app.bot.send_message(chat_id=CREATOR_ID, text="\n".join(log), parse_mode="Markdown")
+    if CREATOR_ID: await app.bot.send_message(chat_id=CREATOR_ID, text=f"🤖 **Ultimate Core Online**\n• Cascade: {len(get_active_providers())} Nodes\n• Audio/Vision: Engaged\n• Vault: Encrypted", parse_mode="Markdown")
 
 def main():
     db_init()
-    if not BOT_TOKEN:
-        logger.error("TELEGRAM_BOT_TOKEN is missing.")
-        sys.exit(1)
-        
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
     
     scheduler = AsyncIOScheduler(timezone=pytz.timezone("Asia/Kolkata"))
     scheduler.add_job(scheduled_briefing, 'cron', hour=8, minute=0, args=[app])
     scheduler.start()
 
-    app.add_handler(CommandHandler("start", start_cmd))
-    app.add_handler(CommandHandler("dns", dns_cmd))
-    app.add_handler(CommandHandler("ip", ip_cmd))
-    app.add_handler(CommandHandler("ssl", ssl_cmd))
-    app.add_handler(CommandHandler("task", task_cmd))
-    app.add_handler(CommandHandler("expense", expense_cmd))
-    app.add_handler(CommandHandler("search", search_cmd))
-    app.add_handler(CallbackQueryHandler(sys_callback))
-    app.add_handler(MessageHandler(filters.Document.PDF, document_handler))
+    cmds = [
+        ("start", start_cmd), ("announce", announce_cmd), ("groupinfo", groupinfo_cmd),
+        ("imagine", imagine_cmd), ("note", note_cmd), ("getnote", getnote_cmd), ("purge", purge_cmd)
+    ]
+    for cmd, func in cmds: app.add_handler(CommandHandler(cmd, func))
+    
+    app.add_handler(MessageHandler(filters.VOICE, voice_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
 
-    logger.info("J.A.R.V.I.S. is online.")
+    logger.info("Ultimate Core Online.")
     app.run_polling()
 
 if __name__ == "__main__":
