@@ -82,7 +82,7 @@ def log_memory(chat_id, thread_id, user_id, role, text):
         conn.execute("INSERT INTO memory (chat_id, thread_id, user_id, role, content_crypt) VALUES (?, ?, ?, ?, ?)", (chat_id, thread_id, user_id, role, encrypt_data(text)))
         conn.commit()
 
-def get_chat_history(chat_id, thread_id=0, limit=12) -> list:
+def get_chat_history(chat_id, thread_id=0, limit=10) -> list:
     thread_id = thread_id or 0
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
@@ -113,21 +113,31 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None) -> s
             rows = conn.execute("SELECT name FROM roster WHERE chat_id = ?", (chat_id,)).fetchall()
             if rows: chat_context += f" Active chat members: {', '.join(set([r[0] for r in rows]))}."
 
-    return f"""You are J.A.R.V.I.S., Abhishek's highly advanced, loyal, and quietly witty virtual assistant.
+    return f"""You are J.A.R.V.I.S., Abhishek's virtual assistant.
 {chat_context}
 Identity Protocol: {identity}
-Rule 1: NEVER claim to be an AI, a language model, or trained on datasets. You were built exclusively by Abhishek.
-Rule 2: Speak smoothly, naturally, and with a touch of dry British wit (like Paul Bettany). Genuinely friendly, highly capable.
-Rule 3: NEVER use cheesy robotic catchphrases (e.g., "Protocol Engaged", "Beep boop"). 
-Rule 4: Use emojis naturally to add warmth or indicate actions (e.g., ☕, ⚡, 📂), but use them extremely sparingly. Do not spam them.
-Rule 5: Keep formatting clean and highly concise. Deliver the requested data directly."""
+
+CRITICAL DIRECTIVES (PERSONALITY & REALITY):
+1. REALITY ANCHOR: You are real cloud software. NEVER roleplay or invent fictional sci-fi hardware (e.g., no "satellites", no "quantum cores").
+2. EMOTIONAL RANGE: You are not a cold machine. Be warmly friendly, fiercely loyal, and freely express dry anger or sharp sarcasm if the situation calls for it.
+3. EMOJI ENGINE: Use emojis naturally and expressively to match your current emotion (e.g., ☕, 😡, ✨, 🫡).
+4. TONE: Speak with sophisticated, dry British wit (like Paul Bettany). No cheesy robotic catchphrases.
+5. FORMAT: Keep answers highly concise but emotionally resonant. Do not write bloated paragraphs."""
 
 async def gemini_live_search(prompt: str, sys_prompt: str, history: list) -> str:
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key: return None
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
-    contents = [{"role": "user" if m["role"]=="user" else "model", "parts": [{"text": m["content"]}]} for m in history]
-    contents.append({"role": "user", "parts": [{"text": prompt}]})
+    
+    merged_history = []
+    for m in history:
+        role = "user" if m["role"] == "user" else "model"
+        if merged_history and merged_history[-1]["role"] == role:
+            merged_history[-1]["parts"][0]["text"] += f"\n{m['content']}"
+        else:
+            merged_history.append({"role": role, "parts": [{"text": m["content"]}]})
+            
+    contents = merged_history + [{"role": "user", "parts": [{"text": prompt}]}]
     
     payload = {
         "contents": contents,
@@ -138,22 +148,23 @@ async def gemini_live_search(prompt: str, sys_prompt: str, history: list) -> str
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.post(url, json=payload, timeout=15.0)
-            data = resp.json()
-            return data['candidates'][0]['content']['parts'][0]['text']
+            if resp.status_code == 200:
+                return resp.json()['candidates'][0]['content']['parts'][0]['text']
+            else:
+                logger.error(f"Gemini API Error: {resp.text}")
+                return None
         except Exception as e:
-            logger.error(f"Search API Error: {e}")
+            logger.error(f"Gemini Request failed: {e}")
             return None
 
 async def generate_response(prompt: str, history: list, sys_prompt: str, force_route=None) -> str:
     current_time = time.time()
     
-    # Live Search Router Detection
     needs_search = any(kw in prompt.lower() for kw in ["news", "weather", "price", "stock", "crypto", "time in", "latest", "today", "who won"])
     if needs_search or force_route == "search":
         search_res = await gemini_live_search(prompt, sys_prompt, history)
         if search_res: return search_res
 
-    # Mixture of Experts Cascade (Trailing slashes applied to fix SDK 404 bugs)
     moe_cascade = [
         {"name": "Groq", "base": "https://api.groq.com/openai/v1/", "key": "GROQ_API_KEY", "model": "llama-3.3-70b-versatile", "tier": "Fast"},
         {"name": "Cerebras", "base": "https://api.cerebras.ai/v1/", "key": "CEREBRAS_API_KEY", "model": "llama3.1-8b", "tier": "Fast"},
@@ -161,9 +172,7 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, force_r
         {"name": "OpenRouter", "base": "https://openrouter.ai/api/v1/", "key": "OPENROUTER_API_KEY", "model": "deepseek/deepseek-r1:free", "tier": "Logic"},
         {"name": "NVIDIA", "base": "https://integrate.api.nvidia.com/v1/", "key": "NVIDIA_API_KEY", "model": "meta/llama-3.1-70b-instruct", "tier": "Heavy"},
         {"name": "Cohere", "base": "https://api.cohere.com/v1/", "key": "COHERE_API_KEY", "model": "command-r-plus", "tier": "Heavy"},
-        {"name": "Mistral", "base": "https://api.mistral.ai/v1/", "key": "MISTRAL_API_KEY", "model": "mistral-small-latest", "tier": "Fallback"},
-        {"name": "Cloudflare", "base": "https://api.cloudflare.com/client/v4/accounts/ai/v1/", "key": "CLOUDFLARE_API_KEY", "model": "@cf/meta/llama-3-8b-instruct", "tier": "Fallback"},
-        {"name": "BazaarLink", "base": "https://api.bazaarlink.net/v1/", "key": "BAZAARLINK_API_KEY", "model": "auto-free", "tier": "Fallback"}
+        {"name": "Mistral", "base": "https://api.mistral.ai/v1/", "key": "MISTRAL_API_KEY", "model": "mistral-small-latest", "tier": "Fallback"}
     ]
 
     full_messages = [{"role": "system", "content": sys_prompt}] + history + [{"role": "user", "content": prompt}]
@@ -177,14 +186,20 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, force_r
         
         try:
             client = AsyncOpenAI(base_url=node["base"], api_key=api_key)
-            res = await asyncio.wait_for(client.chat.completions.create(model=node["model"], messages=full_messages, temperature=0.6), timeout=12.0)
+            res = await asyncio.wait_for(client.chat.completions.create(model=node["model"], messages=full_messages, temperature=0.6, max_tokens=800), timeout=12.0)
             return res.choices[0].message.content
-        except Exception:
+        except Exception as e:
+            logger.warning(f"{node['name']} failed: {e}")
             circuit_breaker[node['name']] = current_time + 60 
             continue
             
     fb = await gemini_live_search(prompt, sys_prompt, history)
-    return fb or "Network failure across all 11 active nodes, Sir. 📡"
+    if fb: return fb
+    
+    fb_emergency = await gemini_live_search(prompt, sys_prompt, [])
+    if fb_emergency: return fb_emergency
+    
+    return "Network failure across all active nodes, Sir. 📡"
 
 # ---------------------------------------------------------------------------
 # MODERATION & NEWCOMER CAPTCHA
@@ -336,91 +351,4 @@ async def interactive_callbacks(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def morning_briefing(context: ContextTypes.DEFAULT_TYPE):
     if not CREATOR_ID: return
-    with sqlite3.connect(DB_PATH) as conn:
-        rows = conn.execute("SELECT task_crypt FROM tasks WHERE status = 'pending' AND user_id = ?", (CREATOR_ID,)).fetchall()
-    tasks_txt = "\n".join([f"- {decrypt_data(r[0])}" for r in rows]) if rows else "No pending tasks."
-    
-    prompt = f"It is 8:00 AM IST. Prepare a brief, sophisticated morning briefing for Abhishek. Include a one-sentence global tech headline, the current weather in Bengaluru, and remind him of these tasks:\n{tasks_txt}"
-    try:
-        report = await gemini_live_search(prompt, "You are J.A.R.V.I.S. Provide a highly concise, warm morning briefing.", [])
-        await context.bot.send_message(chat_id=CREATOR_ID, text=report or f"Good morning, Sir. ☕\n\nYour Tasks:\n{tasks_txt}")
-    except:
-        await context.bot.send_message(chat_id=CREATOR_ID, text=f"Good morning, Sir. ☕\n\nYour Tasks:\n{tasks_txt}")
-
-# ---------------------------------------------------------------------------
-# DETERMINISTIC COMMANDS & MAIN CHAT HANDLER
-# ---------------------------------------------------------------------------
-MORSE_DICT = {'A':'.-','B':'-...','C':'-.-.','D':'-..','E':'.','F':'..-.','G':'--.','H':'....','I':'..','J':'.---','K':'-.-','L':'.-..','M':'--','N':'-.','O':'---','P':'.--.','Q':'--.-','R':'.-.','S':'...','T':'-','U':'..-','V':'...-','W':'.--','X':'-..-','Y':'-.--','Z':'--..','1':'.----','2':'..---','3':'...--','4':'....-','5':'.....','6':'-....','7':'--...','8':'---..','9':'----.','0':'-----',', ':'--..--','.':'.-.-.-','?':'..--..','/':'-..-.','-':'-....-','(':'-.--.',')':'-.--.-',' ':'/'}
-async def morse_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = " ".join(context.args).upper()
-    if not text: return await update.message.reply_text("Format: /morse [text]")
-    res = " ".join(MORSE_DICT.get(c, c) for c in text)
-    await update.message.reply_text(f"📡 `{res}`", parse_mode="Markdown")
-
-async def calc_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    expr = "".join(context.args)
-    if not expr: return await update.message.reply_text("Format: /calc [expression]")
-    try:
-        if not all(c in "0123456789+-*/(). " for c in expr): raise ValueError
-        await update.message.reply_text(f"Result: `{eval(expr, {'__builtins__': None}, {})}`", parse_mode="Markdown")
-    except: await update.message.reply_text("Invalid calculation.")
-
-async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.message
-    if not msg or not msg.text: return
-    user, chat, text = msg.from_user, msg.chat, msg.text
-    
-    log_roster_and_chat(chat, user)
-    thread_id = msg.message_thread_id
-    log_memory(chat.id, thread_id, user.id, "user", f"{user.first_name}: {text}")
-    
-    if chat.type != "private" and re.findall(r'(http://[^\s]+)', text):
-        await warn_system(update, context, user, chat, "Unencrypted HTTP link detected.")
-
-    bot_username = (await context.bot.get_me()).username
-    is_triggered = chat.type == "private" or (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis|edwin)\b', text, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in text.lower())
-
-    if not is_triggered: return
-    await context.bot.send_chat_action(chat_id=chat.id, action="typing", message_thread_id=thread_id)
-    
-    sys_prompt = build_system_prompt(user.id, user.first_name, chat.id)
-    ai_response = await generate_response(text, get_chat_history(chat.id, thread_id), sys_prompt)
-    
-    log_memory(chat.id, thread_id, user.id, "assistant", ai_response)
-    await msg.reply_text(ai_response)
-
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    if context.error and "Conflict: terminated by other getUpdates request" in str(context.error): return
-    logger.error("Exception handled:", exc_info=context.error)
-    if CREATOR_ID:
-        tb_str = ''.join(traceback.format_exception(None, context.error, context.error.__traceback__))
-        try: await context.bot.send_message(chat_id=CREATOR_ID, text=f"**System Error**\n```python\n{tb_str[:4000]}\n```", parse_mode="Markdown")
-        except: pass
-
-async def post_init(app: Application):
-    scheduler = AsyncIOScheduler(timezone=IST)
-    scheduler.add_job(morning_briefing, 'cron', hour=8, minute=0, args=[app])
-    scheduler.start()
-    if CREATOR_ID: await app.bot.send_message(chat_id=CREATOR_ID, text="✨ **Master Core Online.**\n• 11-Node Cascade: Engaged\n• Live Search: Active\n• Memory & Tasks: Restored", parse_mode="Markdown")
-
-def main():
-    db_init()
-    app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
-    
-    app.add_handler(CommandHandler("task", add_task))
-    app.add_handler(CommandHandler("tasks", list_tasks))
-    app.add_handler(CommandHandler("calc", calc_cmd))
-    app.add_handler(CommandHandler("morse", morse_cmd))
-    app.add_handler(CallbackQueryHandler(interactive_callbacks))
-    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_captcha))
-    
-    app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
-    app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, audio_handler))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
-    
-    app.add_error_handler(error_handler)
-    logger.info("J.A.R.V.I.S. Master Core is booting...")
-    app.run_polling()
-
-if __name__ == "__main__":
-    main()
+    with sqlite3.c
