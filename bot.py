@@ -67,7 +67,8 @@ IST = pytz.timezone("Asia/Kolkata")
 DB_PATH = "jarvis_vault.db"
 
 genai.configure(api_key=GEMINI_API_KEY)
-gemini_model = genai.GenerativeModel("gemini-2.5-flash")
+# Upgraded to the new 3.6 model to fix the 404 Deprecation Error
+gemini_model = genai.GenerativeModel("gemini-3.6-flash")
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 SYSTEM_PROMPT = """You are J.A.R.V.I.S. (Just A Rather Very Intelligent System). 
@@ -108,7 +109,6 @@ def log_memory(chat_id, thread_id, user_id, role, text):
     conn.close()
 
 def get_thread_context(chat_id, thread_id, limit=8):
-    """Retrieves the encrypted memory context to prevent crashes during conversation."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     rows = conn.execute("SELECT role, content_crypt FROM memory WHERE chat_id = ? AND thread_id = ? ORDER BY id DESC LIMIT ?", (chat_id, thread_id, limit)).fetchall()
@@ -127,18 +127,28 @@ def update_karma(user_id: int, name: str, amount: int):
 # ROUTING & INTELLIGENCE
 # ---------------------------------------------------------------------------
 async def route_llm(prompt: str, mode="fast"):
+    # Fallback wrapper prevents API crashes from bubbling to Telegram
     if mode == "code" and OPENROUTER_API_KEY:
-        headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"}
-        payload = {"model": "mistralai/mistral-large", "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}]}
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            res = await client.post("https://openrouter.ai/api/v1/chat/completions", json=payload, headers=headers)
-            return res.json()['choices'][0]['message']['content']
+        try:
+            headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"}
+            payload = {"model": "mistralai/mistral-large", "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}]}
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                res = await client.post("https://openrouter.ai/api/v1/chat/completions", json=payload, headers=headers)
+                data = res.json()
+                if 'choices' in data: return data['choices'][0]['message']['content']
+        except Exception as e: logger.error(f"OpenRouter Fallback Triggered: {e}")
+
     elif mode == "fast" and CEREBRAS_API_KEY:
-        headers = {"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"}
-        payload = {"model": "llama3.1-8b", "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}]}
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            res = await client.post("https://api.cerebras.ai/v1/chat/completions", json=payload, headers=headers)
-            return res.json()['choices'][0]['message']['content']
+        try:
+            headers = {"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"}
+            payload = {"model": "llama3.1-8b", "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}]}
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                res = await client.post("https://api.cerebras.ai/v1/chat/completions", json=payload, headers=headers)
+                data = res.json()
+                if 'choices' in data: return data['choices'][0]['message']['content']
+        except Exception as e: logger.error(f"Cerebras Fallback Triggered: {e}")
+
+    # Ultimate Fallback: Gemini Core
     return (await asyncio.to_thread(gemini_model.generate_content, f"{SYSTEM_PROMPT}\n\n{prompt}")).text
 
 # ---------------------------------------------------------------------------
