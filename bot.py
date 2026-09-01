@@ -67,7 +67,6 @@ IST = pytz.timezone("Asia/Kolkata")
 DB_PATH = "jarvis_vault.db"
 
 genai.configure(api_key=GEMINI_API_KEY)
-# Upgraded to the new 3.6 model to fix the 404 Deprecation Error
 gemini_model = genai.GenerativeModel("gemini-3.6-flash")
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
@@ -91,7 +90,7 @@ def check_rate_limit(user_id: int) -> bool:
     return True
 
 # ---------------------------------------------------------------------------
-# SQLITE VAULT & KARMA
+# SQLITE VAULT, KARMA & ROSTER
 # ---------------------------------------------------------------------------
 def db_init():
     conn = sqlite3.connect(DB_PATH)
@@ -99,6 +98,13 @@ def db_init():
     conn.execute("CREATE TABLE IF NOT EXISTS tasks (id INTEGER PRIMARY KEY, user_id INTEGER, task_crypt TEXT, status TEXT DEFAULT 'pending')")
     conn.execute("CREATE TABLE IF NOT EXISTS expenses (id INTEGER PRIMARY KEY, user_id INTEGER, amount REAL, category TEXT, note_crypt TEXT)")
     conn.execute("CREATE TABLE IF NOT EXISTS karma (user_id INTEGER PRIMARY KEY, name TEXT, score INTEGER DEFAULT 10)")
+    conn.execute("CREATE TABLE IF NOT EXISTS roster (chat_id INTEGER, user_id INTEGER, name TEXT, UNIQUE(chat_id, user_id))")
+    conn.commit()
+    conn.close()
+
+def log_roster(chat_id, user_id, name):
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute("INSERT OR REPLACE INTO roster (chat_id, user_id, name) VALUES (?, ?, ?)", (chat_id, user_id, name))
     conn.commit()
     conn.close()
 
@@ -127,7 +133,6 @@ def update_karma(user_id: int, name: str, amount: int):
 # ROUTING & INTELLIGENCE
 # ---------------------------------------------------------------------------
 async def route_llm(prompt: str, mode="fast"):
-    # Fallback wrapper prevents API crashes from bubbling to Telegram
     if mode == "code" and OPENROUTER_API_KEY:
         try:
             headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"}
@@ -148,7 +153,6 @@ async def route_llm(prompt: str, mode="fast"):
                 if 'choices' in data: return data['choices'][0]['message']['content']
         except Exception as e: logger.error(f"Cerebras Fallback Triggered: {e}")
 
-    # Ultimate Fallback: Gemini Core
     return (await asyncio.to_thread(gemini_model.generate_content, f"{SYSTEM_PROMPT}\n\n{prompt}")).text
 
 # ---------------------------------------------------------------------------
@@ -341,7 +345,8 @@ async def handle_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user, chat, text = update.effective_user, update.effective_chat, msg.text
     text_lower = text.lower()
     
-    # Passive Karma Tracking & Logging
+    # Passive Karma & Roster Logging
+    log_roster(chat.id, user.id, user.first_name)
     if not update_karma(user.id, user.first_name, 1) <= 0: pass 
     log_memory(chat.id, msg.message_thread_id or 0, user.id, user.first_name, text)
 
@@ -360,8 +365,18 @@ async def handle_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not check_rate_limit(user.id): return 
     await context.bot.send_chat_action(chat_id=chat.id, action=ChatAction.TYPING)
     
+    # System Data Injection (Anti-Hallucination)
+    system_injection = ""
+    if "who" in text_lower and ("group" in text_lower or "members" in text_lower) or "how many" in text_lower:
+        conn = sqlite3.connect(DB_PATH)
+        roster_data = conn.execute("SELECT name FROM roster WHERE chat_id = ?", (chat.id,)).fetchall()
+        conn.close()
+        member_list = ", ".join([r[0] for r in roster_data])
+        if member_list:
+            system_injection = f"\n[SYSTEM DATA: The real known members in this chat are: {member_list}. Use this exact data.]"
+
     history = get_thread_context(chat.id, msg.message_thread_id or 0)
-    prompt = f"LOCATION: {chat.title or 'Private'}\nSPEAKER: {user.first_name}\nIS BOSS?: {'YES' if user.id == CREATOR_ID else 'NO'}\nCONTEXT:\n{history}\nRespond:"
+    prompt = f"LOCATION: {chat.title or 'Private'}\nSPEAKER: {user.first_name}\nIS BOSS?: {'YES' if user.id == CREATOR_ID else 'NO'}\nCONTEXT:\n{history}{system_injection}\nRespond:"
     
     try:
         res = await route_llm(prompt, mode="fast")
