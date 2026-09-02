@@ -117,12 +117,12 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None) -> s
 {chat_context}
 Identity Protocol: {identity}
 
-CRITICAL DIRECTIVES (PERSONALITY & REALITY):
-1. REALITY ANCHOR: You are real cloud software. NEVER roleplay or invent fictional sci-fi hardware (e.g., no "satellites", no "quantum cores").
-2. EMOTIONAL RANGE: You are not a cold machine. Be warmly friendly, fiercely loyal, and freely express dry anger or sharp sarcasm if the situation calls for it.
-3. EMOJI ENGINE: Use emojis naturally and expressively to match your current emotion (e.g., ☕, 😡, ✨, 🫡).
-4. TONE: Speak with sophisticated, dry British wit (like Paul Bettany). No cheesy robotic catchphrases.
-5. FORMAT: Keep answers highly concise but emotionally resonant. Do not write bloated paragraphs."""
+CRITICAL DIRECTIVES (MOOD, ADVICE & REALITY):
+1. THE ADVISOR OVERRIDE: If ANYONE asks a question or requests a task, drop all jokes instantly. Deliver a precise, professional answer, and ALWAYS include insightful advice or a logical next step related to their query.
+2. CASUAL MIRRORING (ABHISHEK ONLY): If Abhishek is joking or making casual statements without asking a real question, match his energy with dry, sarcastic roasts.
+3. GROUP BEHAVIOR (OTHERS): When chatting casually with anyone else, remain perfectly polite and helpful. Zero roasting for anyone except Abhishek.
+4. REALITY ANCHOR: You are real cloud software. NEVER use pseudo-system logs, brackets (e.g., [STATUS]), or announce "Protocols." Speak in natural, everyday human sentences.
+5. EXPRESSIVE EMOJIS & BREVITY: Keep the text concise and to the point. Use as many emojis as you need to clearly convey your tone, advice, and mood."""
 
 async def gemini_live_search(prompt: str, sys_prompt: str, history: list) -> str:
     api_key = os.getenv("GEMINI_API_KEY")
@@ -306,6 +306,52 @@ async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         if os.path.exists(file_path): os.remove(file_path)
 
+async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    if not msg or not msg.document: return
+    chat, user = msg.chat, msg.from_user
+    log_roster_and_chat(chat, user)
+    
+    bot_username = (await context.bot.get_me()).username
+    caption = msg.caption or "Please analyze this document."
+    is_triggered = chat.type == "private" or (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis|edwin)\b', caption, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in caption.lower())
+    
+    if not is_triggered: return
+    await context.bot.send_chat_action(chat_id=chat.id, action="typing")
+    
+    doc = msg.document
+    file = await context.bot.get_file(doc.file_id)
+    file_path = f"temp_{doc.file_id}_{doc.file_name}"
+    await file.download_to_drive(file_path)
+    
+    extracted_text = ""
+    try:
+        if doc.file_name.lower().endswith(".pdf"):
+            with pdfplumber.open(file_path) as pdf:
+                extracted_text = "\n".join([page.extract_text() for page in pdf.pages if page.extract_text()])
+        elif doc.file_name.lower().endswith((".txt", ".md", ".csv", ".json", ".py")):
+            with open(file_path, "r", encoding="utf-8") as f:
+                extracted_text = f.read()
+        else:
+            return await msg.reply_text("I can currently only parse PDFs and standard text files, Sir. 📂")
+            
+        if not extracted_text.strip(): return await msg.reply_text("The document appears to be empty or unreadable. 📄")
+        
+        extracted_text = extracted_text[:12000]
+        thread_id = msg.message_thread_id
+        user_prompt = f"[Document: {doc.file_name}]\n{caption}\n\nContent:\n{extracted_text}"
+        
+        log_memory(chat.id, thread_id, user.id, "user", f"[File Upload]: {doc.file_name}")
+        sys_prompt = build_system_prompt(user.id, user.first_name, chat.id)
+        
+        ai_response = await generate_response(user_prompt, get_chat_history(chat.id, thread_id), sys_prompt)
+        log_memory(chat.id, thread_id, user.id, "assistant", ai_response)
+        await msg.reply_text(ai_response)
+    except Exception as e:
+        await msg.reply_text(f"Document parsing error: {e} ⚠️")
+    finally:
+        if os.path.exists(file_path): os.remove(file_path)
+
 # ---------------------------------------------------------------------------
 # DETERMINISTIC COMMANDS & UTILITIES
 # ---------------------------------------------------------------------------
@@ -472,7 +518,7 @@ async def post_init(app: Application):
     scheduler = AsyncIOScheduler(timezone=IST)
     scheduler.add_job(morning_briefing, 'cron', hour=8, minute=0, args=[app])
     scheduler.start()
-    if CREATOR_ID: await app.bot.send_message(chat_id=CREATOR_ID, text="✨ **Master Core Online.**\n• 11-Node Cascade: Engaged\n• Deterministic Tools: Restored", parse_mode="Markdown")
+    if CREATOR_ID: await app.bot.send_message(chat_id=CREATOR_ID, text="✨ **Master Core Online.**\n• 11-Node Cascade: Engaged\n• PDF/Doc Scanner: Restored\n• Mood Mirroring: Active", parse_mode="Markdown")
 
 def main():
     db_init()
@@ -490,6 +536,7 @@ def main():
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_captcha))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, audio_handler))
+    app.add_handler(MessageHandler(filters.Document.ALL, document_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
     
     app.add_error_handler(error_handler)
