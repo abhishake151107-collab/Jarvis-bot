@@ -2,6 +2,7 @@ import os
 import re
 import time
 import json
+import random
 import base64
 import sqlite3
 import logging
@@ -69,7 +70,7 @@ circuit_breaker = {}
 probing_attempts = defaultdict(int)
 
 # ---------------------------------------------------------------------------
-# II. KARNATAKA 2ND PUC OMNISCIENCE MATRIX (DETERMINISTIC KNOWLEDGE)
+# II. ADVANCED KARNATAKA 2ND PUC DETERMINISTIC MATRIX
 # ---------------------------------------------------------------------------
 EXAM_SCHEDULE_COMMERCE_ARTS = {
     "2026-09-30": "Languages (Kannada / Hindi / Sanskrit / Urdu / Tamil / Telugu / French / Arabic)",
@@ -84,27 +85,93 @@ EXAM_SCHEDULE_COMMERCE_ARTS = {
 
 PUC_ACADEMIC_MATRIX = {
     "accountancy": (
-        "Golden Rules of Accounting:\n"
-        "1. Personal: Debit the receiver, Credit the giver.\n"
-        "2. Real: Debit what comes in, Credit what goes out.\n"
-        "3. Nominal: Debit all expenses & losses, Credit all incomes & gains.\n"
-        "*Partnership:* Sacrificing Ratio = Old Ratio - New Ratio."
+        "📊 **ACCOUNTANCY MASTER MATRIX**\n\n"
+        "**1. Golden Rules:**\n"
+        "• Personal: Dr receiver, Cr giver.\n"
+        "• Real: Dr what comes in, Cr what goes out.\n"
+        "• Nominal: Dr expenses/losses, Cr incomes/gains.\n\n"
+        "**2. Partnership Core:**\n"
+        "• Sacrificing Ratio = Old Share - New Share.\n"
+        "• Gaining Ratio = New Share - Old Share.\n"
+        "• Goodwill (Average Profit) = Total Profit / No. of Years.\n\n"
+        "**3. Revaluation Account (Nominal A/C):**\n"
+        "• Debit Side: Decrease in Assets, Increase in Liabilities.\n"
+        "• Credit Side: Increase in Assets, Decrease in Liabilities.\n\n"
+        "**4. Company Accounts (Shares):**\n"
+        "• Application Money: Bank A/c Dr to Share App A/c.\n"
+        "• Forfeiture: Share Capital A/c Dr to Share Forfeiture A/c to Unpaid Calls.\n\n"
+        "**5. Financial Statements (Schedule III):**\n"
+        "• Current Ratio = Current Assets / Current Liabilities.\n"
+        "• Quick Ratio = Quick Assets / Current Liabilities."
     ),
     "economics": (
-        "Microeconomics Core Formulas:\n"
-        "1. Price Elasticity of Demand (PED) = %Δ in Quantity Demanded / %Δ in Price.\n"
-        "2. Total Cost (TC) = Total Fixed Cost (TFC) + Total Variable Cost (TVC).\n"
-        "3. Marginal Revenue (MR) = ΔTR / ΔQ."
+        "📈 **ECONOMICS MASTER MATRIX**\n\n"
+        "**1. Microeconomics (Consumer Behavior):**\n"
+        "• Law of Diminishing Marginal Utility (DMU): As consumption increases, MU derived from each successive unit falls.\n"
+        "• Price Elasticity (PED) = %ΔQd / %ΔP.\n"
+        "• Indifference Curve: Downward sloping, convex to origin, higher IC = higher satisfaction.\n\n"
+        "**2. Production & Costs:**\n"
+        "• Marginal Product (MP) = TP_n - TP_(n-1).\n"
+        "• Total Cost (TC) = TFC + TVC.\n"
+        "• MC = ΔTC / ΔQ.\n\n"
+        "**3. Macroeconomics (National Income):**\n"
+        "• GDP(MP) = C + I + G + (X - M).\n"
+        "• NNP(FC) [National Income] = GNP(MP) - Depreciation - Net Indirect Taxes.\n"
+        "• Multiplier (K) = 1 / (1 - MPC) or 1 / MPS.\n\n"
+        "**4. Money & Banking:**\n"
+        "• Functions of RBI: Issue of currency, Banker to Govt, Banker's Bank, Credit Control (Repo, CRR, SLR)."
     ),
     "business": (
-        "Principles of Management (Fayol):\n"
-        "Division of Work, Authority and Responsibility, Discipline, Unity of Command, "
-        "Unity of Direction, Subordination of Individual Interest, Remuneration, Centralization."
+        "🏢 **BUSINESS STUDIES MASTER MATRIX**\n\n"
+        "**1. Principles of Management (Fayol's 14):**\n"
+        "Division of work, Authority/Responsibility, Discipline, Unity of command, Unity of direction, "
+        "Subordination of individual interest, Remuneration, Centralization, Scalar chain, Order, Equity, "
+        "Stability of tenure, Initiative, Esprit de corps.\n\n"
+        "**2. Scientific Management (Taylor):**\n"
+        "• Science, not rule of thumb.\n"
+        "• Harmony, not discord.\n"
+        "• Cooperation, not individualism.\n"
+        "• Development of each person to greatest efficiency.\n\n"
+        "**3. Marketing Mix (4 P's):**\n"
+        "• Product (branding, packaging, labeling).\n"
+        "• Price (pricing strategies).\n"
+        "• Place (physical distribution channels).\n"
+        "• Promotion (advertising, personal selling, sales promo, PR).\n\n"
+        "**4. Financial Markets:**\n"
+        "• Money Market (Short term: Treasury bills, Commercial paper).\n"
+        "• Capital Market (Long term: Primary & Secondary markets/Stock Exchange)."
+    ),
+    "computer science": (
+        "💻 **COMPUTER SCIENCE MATRIX**\n\n"
+        "**1. Boolean Algebra:**\n"
+        "• De Morgan's 1st: (X+Y)' = X'.Y'\n"
+        "• De Morgan's 2nd: (X.Y)' = X'+Y'\n"
+        "• Principle of Duality: Change AND to OR, OR to AND, 0 to 1, 1 to 0.\n\n"
+        "**2. Logic Gates:**\n"
+        "• Universal Gates: NAND and NOR.\n"
+        "• XOR: A.B' + A'.B (High if inputs are different).\n\n"
+        "**3. Data Structures:**\n"
+        "• LIFO (Last In First Out) = Stack (Push/Pop).\n"
+        "• FIFO (First In First Out) = Queue (Enqueue/Dequeue).\n\n"
+        "**4. SQL Commands:**\n"
+        "• DDL: CREATE, ALTER, DROP.\n"
+        "• DML: INSERT, UPDATE, DELETE.\n"
+        "• DQL: SELECT."
+    ),
+    "political science": (
+        "🏛️ **POLITICAL SCIENCE MATRIX**\n\n"
+        "**1. Cold War Era:**\n"
+        "• NATO (1949) vs Warsaw Pact (1955).\n"
+        "• NAM (Non-Aligned Movement): Yugoslavia, India, Egypt, Indonesia, Ghana.\n\n"
+        "**2. Indian Politics:**\n"
+        "• State Reorganization Act 1956: Basis of language.\n"
+        "• Emergency (1975-77): Article 352, internal disturbance.\n"
+        "• Planning Commission established 1950 (Replaced by NITI Aayog 2015)."
     )
 }
 
 # ---------------------------------------------------------------------------
-# III. SQLITE VAULT, LORE (RAG), & KARMA ECONOMY
+# III. SQLITE VAULT, DOSSIERS, & ADVANCED ECONOMY
 # ---------------------------------------------------------------------------
 def db_init():
     with sqlite3.connect(DB_PATH) as conn:
@@ -118,13 +185,20 @@ def db_init():
         conn.execute("CREATE TABLE IF NOT EXISTS afk (user_id INTEGER PRIMARY KEY, reason TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
         conn.execute("CREATE TABLE IF NOT EXISTS quotes (id INTEGER PRIMARY KEY, chat_id INTEGER, user_name TEXT, quote_text TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
         conn.execute("CREATE TABLE IF NOT EXISTS breaking_news (id INTEGER PRIMARY KEY, hash TEXT UNIQUE, headline TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
+        conn.execute("CREATE TABLE IF NOT EXISTS interactions (user_a INTEGER, user_b INTEGER, interactions INTEGER DEFAULT 0, UNIQUE(user_a, user_b))")
         conn.execute("CREATE VIRTUAL TABLE IF NOT EXISTS lore_vault USING fts5(chat_id, context_data)")
         conn.commit()
 
-def modify_karma(user_id: int, amount: int):
+def modify_karma(user_id: int, amount: int) -> int:
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("INSERT INTO economy (user_id, karma) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET karma = karma + ?", (user_id, 100 + amount, amount))
         conn.commit()
+        return conn.execute("SELECT karma FROM economy WHERE user_id = ?", (user_id,)).fetchone()[0]
+
+def get_karma(user_id: int) -> int:
+    with sqlite3.connect(DB_PATH) as conn:
+        res = conn.execute("SELECT karma FROM economy WHERE user_id = ?", (user_id,)).fetchone()
+        return res[0] if res else 100
 
 def log_roster_and_chat(chat, user):
     chat_title = chat.title or f"Private: {user.first_name}"
@@ -176,7 +250,7 @@ def set_setting(key, value):
         conn.commit()
 
 # ---------------------------------------------------------------------------
-# IV. STARK SECURITY: CANARY HONEYPOTS & SUBTEXT
+# IV. STARK SECURITY: HONEYPOTS, SUBTEXT & DOSSIER BUILDER
 # ---------------------------------------------------------------------------
 async def check_canary(user_id: int, first_name: str, context: ContextTypes.DEFAULT_TYPE) -> bool:
     if user_id != CREATOR_ID:
@@ -192,12 +266,12 @@ async def check_canary(user_id: int, first_name: str, context: ContextTypes.DEFA
 
 async def analyze_subtext(text: str) -> str:
     try:
-        sys_prompt = "Analyze the psychological state of this text. Reply STRICTLY with ONE word: 'DISTRESS', 'HOSTILE', or 'NORMAL'."
+        sys_prompt = "Analyze the psychological state of this text. Reply STRICTLY with ONE word: 'DISTRESS', 'HOSTILE', 'SAD', 'EXCITED', or 'NORMAL'."
         api_key = os.getenv("GROQ_API_KEY")
         if not api_key: 
             return "NORMAL"
         client = AsyncOpenAI(base_url="https://api.groq.com/openai/v1/", api_key=api_key)
-        res = await client.chat.completions.create(model="llama-3.1-8b-instant", messages=[{"role": "system", "content": sys_prompt}, {"role": "user", "content": text}], max_tokens=10, temperature=0.1)
+        res = await client.chat.completions.create(model="llama3-8b-8192", messages=[{"role": "system", "content": sys_prompt}, {"role": "user", "content": text}], max_tokens=10, temperature=0.1)
         return res.choices[0].message.content.strip().upper()
     except Exception: 
         return "NORMAL"
@@ -225,8 +299,8 @@ Identity Protocol: {identity}
 
 CRITICAL DIRECTIVES:
 1. UNBREAKABLE LOYALTY (ABHISHEK ONLY): You are fiercely loyal to Abhishek. NEVER insult him aggressively.
-2. THE ADVISOR OVERRIDE: If ANYONE asks a real question, drop the wit instantly. Deliver precise logical advice.
-3. FRIENDS GROUP BEHAVIOR: Let them roast each other. Be chill, sarcastic, and witty when interacting. Mention their Dino Coins if they are acting broke or acting rich.
+2. THE ADVISOR OVERRIDE: If ANYONE asks a real academic question, drop the wit instantly. Deliver precise logical advice based on the Karnataka matrix.
+3. FRIENDS GROUP BEHAVIOR (DINO GROUP): Let them roast each other. Be chill, sarcastic, and witty when interacting. Mention their Dino Coins if they are acting broke or acting rich.
 4. EXTREME BREVITY: Keep ALL replies to a maximum of 1 or 2 short sentences. Use 1 or 2 emojis naturally."""
 
 # ---------------------------------------------------------------------------
@@ -257,17 +331,17 @@ async def gemini_live_search(prompt: str, sys_prompt: str, history: list) -> str
 
 async def generate_response(prompt: str, history: list, sys_prompt: str, force_route=None) -> str:
     current_time = time.time()
-    needs_search = any(kw in prompt.lower() for kw in ["news", "weather", "price", "stock", "crypto", "latest", "today", "who won"])
+    needs_search = any(kw in prompt.lower() for kw in ["news", "weather", "price", "stock", "crypto", "latest", "today", "who won", "score"])
     if needs_search or force_route == "search":
         search_res = await gemini_live_search(prompt, sys_prompt, history)
         if search_res: 
             return search_res
 
     moe_cascade = [
-        {"name": "Groq", "base": "https://api.groq.com/openai/v1/", "key": "GROQ_API_KEY", "model": "llama-3.1-8b-instant", "tier": "Fast"},
+        {"name": "Groq", "base": "https://api.groq.com/openai/v1/", "key": "GROQ_API_KEY", "model": "llama3-8b-8192", "tier": "Fast"},
         {"name": "Cerebras", "base": "https://api.cerebras.ai/v1/", "key": "CEREBRAS_API_KEY", "model": "llama3.1-8b", "tier": "Fast"},
-        {"name": "SambaNova", "base": "https://api.sambanova.ai/v1/", "key": "SAMBANOVA_API_KEY", "model": "Meta-Llama-3.1-8B-Instruct", "tier": "Fast"},
-        {"name": "OpenRouter", "base": "https://openrouter.ai/api/v1/", "key": "OPENROUTER_API_KEY", "model": "mistralai/mistral-7b-instruct:free", "tier": "Logic"},
+        {"name": "SambaNova", "base": "https://api.sambanova.ai/v1/", "key": "SAMBANOVA_API_KEY", "model": "Meta-Llama-3-8B-Instruct", "tier": "Fast"},
+        {"name": "OpenRouter", "base": "https://openrouter.ai/api/v1/", "key": "OPENROUTER_API_KEY", "model": "huggingfaceh4/zephyr-7b-beta:free", "tier": "Logic"},
         {"name": "NVIDIA", "base": "https://integrate.api.nvidia.com/v1/", "key": "NVIDIA_API_KEY", "model": "meta/llama3-8b-instruct", "tier": "Heavy"},
         {"name": "Mistral", "base": "https://api.mistral.ai/v1/", "key": "MISTRAL_API_KEY", "model": "mistral-small-latest", "tier": "Fallback"}
     ]
@@ -307,7 +381,7 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, force_r
     return "Sorry, I need to sleep. Bye. 💤"
 
 # ---------------------------------------------------------------------------
-# VI. SENSORY CORE & MEDIA RECONNAISSANCE
+# VI. SENSORY CORE (NATIVE REST VISION) & MEDIA RECONNAISSANCE
 # ---------------------------------------------------------------------------
 async def extract_youtube_transcript(url: str) -> str:
     try:
@@ -334,7 +408,9 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not is_triggered: 
         return
-    if not os.getenv("GEMINI_API_KEY"): 
+    
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key: 
         return await msg.reply_text("Optical sensor offline.")
         
     await context.bot.send_chat_action(chat_id=chat.id, action="typing")
@@ -343,7 +419,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     base64_img = base64.b64encode(image_bytes).decode('utf-8')
     
     try:
-        client = AsyncOpenAI(base_url="https://generativelanguage.googleapis.com/v1beta/openai/", api_key=os.getenv("GEMINI_API_KEY"))
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={api_key}"
         sys_prompt = build_system_prompt(user.id, user.first_name, chat.id, user_prompt=caption or "image analysis")
         
         sys_prompt += (
@@ -355,13 +431,27 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if any(kw in caption.lower() for kw in ["solve", "exam", "formula"]):
             sys_prompt += "\nCRITICAL: The user has uploaded an exam paper or handwritten math/commerce problem. Act as an OCR solver. Read the text perfectly and provide a step-by-step solution."
         
-        messages = [{"role": "system", "content": sys_prompt}, {"role": "user", "content": [{"type": "text", "text": caption or "Analyze this image."}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_img}"}}]}]
-        res = await asyncio.wait_for(client.chat.completions.create(model="gemini-3.6-flash", messages=messages), timeout=15.0)
-        ai_response = res.choices[0].message.content
-        log_memory(chat.id, thread_id, user.id, "assistant", ai_response)
-        await msg.reply_text(ai_response)
+        payload = {
+            "contents": [{
+                "role": "user",
+                "parts": [
+                    {"text": caption or "Analyze this image."},
+                    {"inlineData": {"mimeType": "image/jpeg", "data": base64_img}}
+                ]
+            }],
+            "systemInstruction": {"parts": [{"text": sys_prompt}]}
+        }
+        
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, json=payload, timeout=15.0)
+            if resp.status_code == 200:
+                ai_response = resp.json()['candidates'][0]['content']['parts'][0]['text']
+                log_memory(chat.id, thread_id, user.id, "assistant", ai_response)
+                await msg.reply_text(ai_response)
+            else:
+                await msg.reply_text(f"Optical API Error: {resp.status_code}")
     except Exception as e: 
-        await msg.reply_text(f"Optical error: {e}")
+        await msg.reply_text(f"Optical crash: {e}")
 
 async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
@@ -446,7 +536,7 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.remove(file_path)
 
 # ---------------------------------------------------------------------------
-# VII. MODERATION & 3-STRIKE KARMA SYSTEM
+# VII. MODERATION & CASINO ECONOMY ENGINE
 # ---------------------------------------------------------------------------
 async def new_member_captcha(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id
@@ -507,6 +597,58 @@ async def warn_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target = update.message.reply_to_message.from_user
     reason = " ".join(context.args) or "Violation of group protocols."
     await warn_system(update, context, target, update.effective_chat, reason)
+
+async def gamble_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    try: 
+        amount = int(context.args[0])
+    except: 
+        return await update.message.reply_text("Format: /gamble [amount]")
+    if amount <= 0: return await update.message.reply_text("Nice try.")
+    current = get_karma(user.id)
+    if amount > current: return await update.message.reply_text(f"Insufficient funds. You only have {current} Dino Coins. 💸")
+    
+    if random.choice([True, False, False]): 
+        new_balance = modify_karma(user.id, amount)
+        await update.message.reply_text(f"🎰 **JACKPOT!** {user.first_name} won {amount} Dino Coins!\nNew Balance: {new_balance}")
+    else:
+        new_balance = modify_karma(user.id, -amount)
+        await update.message.reply_text(f"📉 **BUST.** {user.first_name} lost {amount} Dino Coins.\nNew Balance: {new_balance}")
+
+async def rob_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message.reply_to_message: return await update.message.reply_text("Reply to the user you want to rob.")
+    user = update.effective_user
+    target = update.message.reply_to_message.from_user
+    if user.id == target.id: return await update.message.reply_text("You cannot rob yourself.")
+    if target.id == context.bot.id: return await update.message.reply_text("I am heavily encrypted, Sir. 🛡️")
+    
+    target_karma = get_karma(target.id)
+    if target_karma < 20: return await update.message.reply_text(f"{target.first_name} is already broke. Leave them be.")
+    
+    if random.choice([True, False, False, False]):
+        loot = int(target_karma * 0.2)
+        modify_karma(target.id, -loot)
+        modify_karma(user.id, loot)
+        await update.message.reply_text(f"🥷 **HEIST SUCCESSFUL.** {user.first_name} stole {loot} Dino Coins from {target.first_name}!")
+    else:
+        penalty = 30
+        modify_karma(user.id, -penalty)
+        await update.message.reply_text(f"🚔 **CAUGHT.** {user.first_name} was caught trying to rob {target.first_name}.\nPenalty: -{penalty} Dino Coins.")
+
+async def pay_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message.reply_to_message: return await update.message.reply_text("Reply to the user you want to pay.")
+    user = update.effective_user
+    target = update.message.reply_to_message.from_user
+    try: amount = int(context.args[0])
+    except: return await update.message.reply_text("Format: /pay [amount]")
+    if amount <= 0: return
+    
+    current = get_karma(user.id)
+    if amount > current: return await update.message.reply_text("Insufficient funds.")
+    
+    modify_karma(user.id, -amount)
+    modify_karma(target.id, amount)
+    await update.message.reply_text(f"💸 {user.first_name} transferred {amount} Dino Coins to {target.first_name}.")
 
 # ---------------------------------------------------------------------------
 # VIII. GOD MODE COMMANDS & DIAGNOSTICS
@@ -591,7 +733,7 @@ async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("👁️ Vision Core", callback_data="hud_info_vision"), InlineKeyboardButton("🎧 Audio Core", callback_data="hud_info_audio")],
         [InlineKeyboardButton("🔴 SYSTEM OVERRIDE", callback_data="hud_info_godmode")]
     ]
-    await update.message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Titan Core\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+    await update.message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Titan Core V3\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 # ---------------------------------------------------------------------------
 # IX. TROLLING, ECONOMY, & UTILITIES
@@ -719,7 +861,7 @@ async def calc_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Invalid calculation.")
 
 # ---------------------------------------------------------------------------
-# X. AUTOMATED SCHEDULERS & WEB SCRAPING
+# X. ADVANCED SCHEDULERS & DPUE SNIPER
 # ---------------------------------------------------------------------------
 async def flashcard_drill(context: ContextTypes.DEFAULT_TYPE):
     msg = "🧠 **Daily Flashcard Drill**\n\n_What is the formula for Sacrificing Ratio in Partnership Accounting?_\n\nFirst to answer correctly earns 50 Dino Coins."
@@ -732,20 +874,36 @@ async def flashcard_drill(context: ContextTypes.DEFAULT_TYPE):
             pass
 
 async def dpue_board_scraper(context: ContextTypes.DEFAULT_TYPE):
+    """Advanced Headless-style DPUE Sniper via httpx"""
     if not CREATOR_ID: 
         return
+    targets = [
+        "https://dpue-pragathi.karnataka.gov.in/",
+        "https://karresults.nic.in/"
+    ]
     try:
         async with httpx.AsyncClient() as client:
-            resp = await client.get("https://dpue-pragathi.karnataka.gov.in/", timeout=10.0)
-            soup = BeautifulSoup(resp.text, 'html.parser')
-            text_data = soup.get_text().lower()
-            if "mid-term" in text_data or "result" in text_data or "circular" in text_data:
-                event_hash = hashlib.md5("dpue_update".encode()).hexdigest()
-                with sqlite3.connect(DB_PATH) as conn:
-                    if not conn.execute("SELECT id FROM breaking_news WHERE hash = ?", (event_hash,)).fetchone():
-                        conn.execute("INSERT INTO breaking_news (hash, headline) VALUES (?, ?)", (event_hash, "DPUE Site Updated"))
-                        conn.commit()
-                        await context.bot.send_message(chat_id=CREATOR_ID, text="🚨 **DPUE Recon Alert:** New circular detected on Karnataka PU Board website.", parse_mode="Markdown")
+            for url in targets:
+                resp = await client.get(url, timeout=12.0)
+                soup = BeautifulSoup(resp.text, 'html.parser')
+                text_data = soup.get_text().lower()
+                
+                # Check for critical update keywords
+                if any(k in text_data for k in ["mid-term", "result", "circular", "timetable", "postponed"]):
+                    # Extract the newest anchor link text as the headline
+                    links = soup.find_all('a', href=True)
+                    headline = links[0].text.strip() if links else "DPUE Site Updated"
+                    
+                    event_hash = hashlib.md5(f"{url}_{headline}".encode()).hexdigest()
+                    with sqlite3.connect(DB_PATH) as conn:
+                        if not conn.execute("SELECT id FROM breaking_news WHERE hash = ?", (event_hash,)).fetchone():
+                            conn.execute("INSERT INTO breaking_news (hash, headline) VALUES (?, ?)", (event_hash, headline))
+                            conn.commit()
+                            await context.bot.send_message(
+                                chat_id=CREATOR_ID, 
+                                text=f"🚨 **DPUE Recon Alert:** New data detected.\n\n**Source:** {url}\n**Ping:** {headline}", 
+                                parse_mode="Markdown"
+                            )
     except Exception: 
         pass
 
@@ -903,6 +1061,10 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if ent.type == "mention":
                     target_id_row = conn.execute("SELECT user_id, name FROM roster WHERE username = ?", (text[ent.offset+1 : ent.offset+ent.length].lower(),)).fetchone()
                     if target_id_row:
+                        # Log Relationship Interaction
+                        conn.execute("INSERT INTO interactions (user_a, user_b, interactions) VALUES (?, ?, 1) ON CONFLICT(user_a, user_b) DO UPDATE SET interactions = interactions + 1", (user.id, target_id_row[0]))
+                        conn.commit()
+                        
                         afk_status = conn.execute("SELECT reason FROM afk WHERE user_id = ?", (target_id_row[0],)).fetchone()
                         if afk_status: 
                             await msg.reply_text(f"⚠️ {target_id_row[1]} is currently AFK: {afk_status[0]}")
@@ -918,20 +1080,30 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await msg.reply_text(f"🛡️ **Fact Check:** {debunk_msg}")
         return
 
-    # 2. YOUTUBE SEMANTIC DISTILLATION
-    if "youtube.com" in text or "youtu.be" in text:
+    # 2. YOUTUBE SEMANTIC & SPOTIFY VIBE DISTILLATION
+    if "youtube.com" in text or "youtu.be" in text or "spotify.com" in text:
         await context.bot.send_chat_action(chat_id=chat.id, action="typing", message_thread_id=thread_id)
+        
+        # Audio/Video media triggers Pepper Potts vibe check
+        if datetime.now(IST).hour < 5:
+            modify_karma(user.id, -5)
+            if CREATOR_ID:
+                try: 
+                    await context.bot.send_message(chat_id=CREATOR_ID, text=f"🚨 **VIBE ALERT:** `{user.first_name}` is posting media links at {datetime.now(IST).strftime('%I:%M %p')}. Monitor for distress.", parse_mode="Markdown")
+                except Exception: 
+                    pass
+                    
         transcript = await extract_youtube_transcript(text)
         if transcript:
             summary = await generate_response(f"Summarize this YouTube video transcript in 3 bullet points: {transcript}", [], "You are J.A.R.V.I.S. Provide a cynical 3-bullet summary.")
-            await msg.reply_text(f"📺 **Video Intercepted. Summary:**\n\n{summary}")
+            await msg.reply_text(f"📺 **Media Intercepted. Summary:**\n\n{summary}")
             return
         
     # 3. DETERMINISTIC ACADEMIC ENGINE
-    if any(kw in text.lower() for kw in ["accountancy", "economics", "formula", "business"]):
+    if any(kw in text.lower() for kw in ["accountancy", "economics", "formula", "business", "computer science", "political science"]):
         for subject, facts in PUC_ACADEMIC_MATRIX.items():
             if subject in text.lower():
-                await msg.reply_text(f"📚 **Karnataka Board Matrix (Deterministic):**\n\n{facts}")
+                await msg.reply_text(facts)
                 modify_karma(user.id, 5)
                 return
 
@@ -954,13 +1126,13 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sys_prompt = build_system_prompt(user.id, user.first_name, chat.id, user_prompt=text)
     subtext_status = await analyze_subtext(text)
     
-    if "DISTRESS" in subtext_status:
+    if "DISTRESS" in subtext_status or "SAD" in subtext_status:
         if CREATOR_ID and user.id != CREATOR_ID:
             try: 
                 await context.bot.send_message(chat_id=CREATOR_ID, text=f"🚨 **PEPPER POTTS PROTOCOL**\nHigh distress detected from {user.first_name} in {chat.title}.\nMessage: '{text}'", parse_mode="Markdown")
             except Exception: 
                 pass
-        sys_prompt += "\nCRITICAL OVERRIDE: The user is in distress, panicking, or highly stressed. Drop all sarcasm immediately. Be highly supportive, calm, and provide immediate tactical or emotional assistance."
+        sys_prompt += "\nCRITICAL OVERRIDE: The user is in distress, sad, or highly stressed. Drop all sarcasm immediately. Be highly supportive, calm, and provide immediate tactical or emotional assistance."
     elif "HOSTILE" in subtext_status:
         modify_karma(user.id, -10)
         if CREATOR_ID and user.id != CREATOR_ID:
@@ -995,11 +1167,22 @@ async def post_init(app: Application):
     scheduler.add_job(flashcard_drill, 'cron', hour=18, minute=0, args=[app])
     scheduler.add_job(group_night_routine, 'cron', hour=21, minute=0, args=[app])
     scheduler.add_job(nightly_reconciliation, 'cron', hour=3, minute=0, args=[app])
-    scheduler.add_job(dpue_board_scraper, 'interval', minutes=60, args=[app])
+    scheduler.add_job(dpue_board_scraper, 'interval', minutes=45, args=[app])
     scheduler.add_job(breaking_news_monitor, 'interval', minutes=30, args=[app])
     scheduler.start()
     if CREATOR_ID: 
-        await app.bot.send_message(chat_id=CREATOR_ID, text="✨ **God Core (Titan Build V2.1) Online.**\n• DPUE Web Scraper: Engaged\n• Edge-TTS Voice Synth: Ready\n• Lore Vault & Karma Economy: Initialized\n• YouTube Semantic Scanner: Active\n• Deterministic Academic Matrix: Locked\n• FTS5 Sanitizer: Secured\n• Optical AI: gemini-3.6-flash Active", parse_mode="Markdown")
+        await app.bot.send_message(
+            chat_id=CREATOR_ID, 
+            text="✨ **God Core (Titan Build V3) Online.**\n"
+                 "• DPUE Advanced Sniper: Engaged\n"
+                 "• Edge-TTS Voice Synth: Ready\n"
+                 "• Casino Economy & Lore Vault: Initialized\n"
+                 "• FTS5 Sanitizer: Secured\n"
+                 "• MoE Target: Frozen Legacy Endpoints\n"
+                 "• Optical AI: Native REST API Override\n"
+                 "• 2nd PUC Omni-Matrix: Fully Loaded", 
+            parse_mode="Markdown"
+        )
 
 def main():
     db_init()
@@ -1014,7 +1197,8 @@ def main():
         ("captcha", god_mode_cmd), ("say", god_mode_cmd), ("tldr", tldr_cmd), 
         ("roast", roast_cmd), ("shutup", shutup_cmd), ("afk", afk_cmd), 
         ("quote", quote_cmd), ("confess", confess_cmd), ("warn", warn_cmd),
-        ("stats", stats_cmd), ("karma", karma_cmd)
+        ("stats", stats_cmd), ("karma", karma_cmd), ("gamble", gamble_cmd),
+        ("rob", rob_cmd), ("pay", pay_cmd)
     ]
     for cmd, func in cmds: 
         app.add_handler(CommandHandler(cmd, func))
@@ -1027,7 +1211,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
     app.add_error_handler(error_handler)
     
-    logger.info("J.A.R.V.I.S. God Core is booting...")
+    logger.info("J.A.R.V.I.S. Titan V3 is booting...")
     app.run_polling()
 
 if __name__ == "__main__":
