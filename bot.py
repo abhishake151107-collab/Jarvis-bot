@@ -168,13 +168,12 @@ async def check_canary(user_id: int, first_name: str, context: ContextTypes.DEFA
     return True
 
 async def analyze_subtext(text: str) -> str:
-    """Pepper Potts Emotion Scanner"""
     try:
         sys_prompt = "Analyze the psychological state of this text. Reply STRICTLY with ONE word: 'DISTRESS', 'HOSTILE', or 'NORMAL'."
         api_key = os.getenv("GROQ_API_KEY")
         if not api_key: return "NORMAL"
         client = AsyncOpenAI(base_url="https://api.groq.com/openai/v1/", api_key=api_key)
-        res = await client.chat.completions.create(model="llama-3.1-8b-instant", messages=[{"role": "system", "content": sys_prompt}, {"role": "user", "content": text}], max_tokens=10, temperature=0.1)
+        res = await client.chat.completions.create(model="openai/gpt-oss-20b", messages=[{"role": "system", "content": sys_prompt}, {"role": "user", "content": text}], max_tokens=10, temperature=0.1)
         return res.choices[0].message.content.strip().upper()
     except: return "NORMAL"
 
@@ -233,11 +232,11 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, force_r
         if search_res: return search_res
 
     moe_cascade = [
-        {"name": "Groq", "base": "https://api.groq.com/openai/v1/", "key": "GROQ_API_KEY", "model": "llama-3.3-70b-versatile", "tier": "Fast"},
+        {"name": "Groq", "base": "https://api.groq.com/openai/v1/", "key": "GROQ_API_KEY", "model": "openai/gpt-oss-20b", "tier": "Fast"},
         {"name": "Cerebras", "base": "https://api.cerebras.ai/v1/", "key": "CEREBRAS_API_KEY", "model": "llama3.1-8b", "tier": "Fast"},
-        {"name": "SambaNova", "base": "https://api.sambanova.ai/v1/", "key": "SAMBANOVA_API_KEY", "model": "Meta-Llama-3.1-70B-Instruct", "tier": "Fast"},
-        {"name": "OpenRouter", "base": "https://openrouter.ai/api/v1/", "key": "OPENROUTER_API_KEY", "model": "deepseek/deepseek-r1:free", "tier": "Logic"},
-        {"name": "NVIDIA", "base": "https://integrate.api.nvidia.com/v1/", "key": "NVIDIA_API_KEY", "model": "meta/llama-3.1-70b-instruct", "tier": "Heavy"},
+        {"name": "SambaNova", "base": "https://api.sambanova.ai/v1/", "key": "SAMBANOVA_API_KEY", "model": "Meta-Llama-3.3-70B-Instruct", "tier": "Fast"},
+        {"name": "OpenRouter", "base": "https://openrouter.ai/api/v1/", "key": "OPENROUTER_API_KEY", "model": "mistralai/mistral-7b-instruct:free", "tier": "Logic"},
+        {"name": "NVIDIA", "base": "https://integrate.api.nvidia.com/v1/", "key": "NVIDIA_API_KEY", "model": "meta/llama3-8b-instruct", "tier": "Heavy"},
         {"name": "Mistral", "base": "https://api.mistral.ai/v1/", "key": "MISTRAL_API_KEY", "model": "mistral-small-latest", "tier": "Fallback"}
     ]
     full_messages = [{"role": "system", "content": sys_prompt}] + history + [{"role": "user", "content": prompt}]
@@ -252,14 +251,28 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, force_r
         except Exception as e:
             logger.warning(f"{node['name']} failed: {e}")
             circuit_breaker[node['name']] = current_time + 60 
+            
             if CREATOR_ID:
-                alert_text = f"⚠️ **Cascade Shift:** `{node['name']}` hit API limits.\n_Rerouting._\n`{str(e)[:100]}`"
+                error_msg = str(e).lower()
+                reset_time = (datetime.now(IST) + timedelta(seconds=60)).strftime('%I:%M:%S %p IST')
+                
+                if "429" in error_msg or "rate limit" in error_msg:
+                    status = f"Rate Limit Exceeded. Auto-resetting in 60s (at {reset_time})."
+                elif "404" in error_msg or "410" in error_msg or "does not exist" in error_msg or "not available" in error_msg:
+                    status = "FATAL: Model deprecated. Manual code patch required. Will NOT auto-reset."
+                else:
+                    status = f"Connection failure. Auto-resetting in 60s (at {reset_time})."
+                    
+                alert_text = f"⚠️ **Cascade Shift:** `{node['name']}` failed.\n_Rerouting traffic._\n\n**Diagnostics:** {status}\n`{str(e)[:150]}`"
                 asyncio.create_task(httpx.AsyncClient().post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id": CREATOR_ID, "text": alert_text, "parse_mode": "Markdown"}))
             continue
             
+    # Final Fallback
     fb = await gemini_live_search(prompt, sys_prompt, history)
     if fb: return fb
-    return "Network failure across all active nodes, Sir. 📡"
+    
+    # Message shown to group when all nodes are exhausted
+    return "Sorry, I need to sleep. Bye. 💤"
 
 # ---------------------------------------------------------------------------
 # VI. SENSORY CORE & MEDIA RECONNAISSANCE
@@ -611,7 +624,6 @@ async def calc_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # X. AUTOMATED SCHEDULERS & WEB SCRAPING
 # ---------------------------------------------------------------------------
 async def flashcard_drill(context: ContextTypes.DEFAULT_TYPE):
-    """Automated Flashcard Drills at 6 PM"""
     msg = f"🧠 **Daily Flashcard Drill**\n\n_What is the formula for Sacrificing Ratio in Partnership Accounting?_\n\nFirst to answer correctly earns 50 Dino Coins."
     with sqlite3.connect(DB_PATH) as conn: groups = conn.execute("SELECT chat_id FROM chats WHERE chat_id < 0").fetchall()
     for g in groups:
@@ -789,7 +801,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for subject, facts in PUC_ACADEMIC_MATRIX.items():
             if subject in text.lower():
                 await msg.reply_text(f"📚 **Karnataka Board Matrix (Deterministic):**\n\n{facts}")
-                modify_karma(user.id, 5) # Reward for studying
+                modify_karma(user.id, 5)
                 return
 
     # 4. GHOST INTERCEPT PROTOCOL
@@ -814,7 +826,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except: pass
         sys_prompt += "\nCRITICAL OVERRIDE: The user is in distress, panicking, or highly stressed. Drop all sarcasm immediately. Be highly supportive, calm, and provide immediate tactical or emotional assistance."
     elif "HOSTILE" in subtext_status:
-        modify_karma(user.id, -10) # Karma penalty for hostility
+        modify_karma(user.id, -10)
         if CREATOR_ID and user.id != CREATOR_ID:
             try: await context.bot.send_message(chat_id=CREATOR_ID, text=f"⚠️ **HOSTILITY DETECTED**\nToxicity spike from {user.first_name} in {chat.title}.", parse_mode="Markdown")
             except: pass
@@ -845,7 +857,7 @@ async def post_init(app: Application):
     scheduler.add_job(dpue_board_scraper, 'interval', minutes=60, args=[app])
     scheduler.add_job(breaking_news_monitor, 'interval', minutes=30, args=[app])
     scheduler.start()
-    if CREATOR_ID: await app.bot.send_message(chat_id=CREATOR_ID, text="✨ **God Core (Titan Build) Online.**\n• DPUE Web Scraper: Engaged\n• Edge-TTS Voice Synth: Ready\n• Lore Vault & Karma Economy: Initialized\n• YouTube Semantic Scanner: Active\n• Deterministic Academic Matrix: Locked", parse_mode="Markdown")
+    if CREATOR_ID: await app.bot.send_message(chat_id=CREATOR_ID, text="✨ **God Core (Titan Build V2.1) Online.**\n• DPUE Web Scraper: Engaged\n• Edge-TTS Voice Synth: Ready\n• Lore Vault & Karma Economy: Initialized\n• YouTube Semantic Scanner: Active\n• Deterministic Academic Matrix: Locked", parse_mode="Markdown")
 
 def main():
     db_init()
