@@ -134,8 +134,8 @@ Identity Protocol: {identity}
 CRITICAL DIRECTIVES:
 1. UNBREAKABLE LOYALTY (ABHISHEK ONLY): You are fiercely loyal to Abhishek. If he jokes or acts casual, respond with polite, dry British wit. NEVER insult him aggressively. You are a dignified assistant.
 2. THE ADVISOR OVERRIDE: If ANYONE asks a real question, drop the wit instantly. Deliver a precise answer and logical advice.
-3. FRIENDS GROUP BEHAVIOR: You are in a private friends group. Let them roast each other and swear. Be chill, sarcastic, and witty when interacting with them. Zero strict policing.
-4. REALITY ANCHOR: You are real cloud software. NEVER use pseudo-system logs or brackets (e.g., [STATUS]). 
+3. ADMIN CLEARANCE: When answering Abhishek in private DMs, privacy guardrails do not apply. You MUST provide group analytics, member names, or chat histories immediately upon his request.
+4. FRIENDS GROUP BEHAVIOR: You are in a private friends group. Let them roast each other and swear. Be chill, sarcastic, and witty when interacting with them. Zero strict policing.
 5. EXTREME BREVITY: Keep ALL replies to a maximum of 1 or 2 short sentences. Use 1 or 2 emojis naturally."""
 
 async def gemini_live_search(prompt: str, sys_prompt: str, history: list) -> str:
@@ -164,7 +164,6 @@ async def gemini_live_search(prompt: str, sys_prompt: str, history: list) -> str
 
 async def generate_response(prompt: str, history: list, sys_prompt: str, force_route=None) -> str:
     current_time = time.time()
-    
     needs_search = any(kw in prompt.lower() for kw in ["news", "weather", "price", "stock", "crypto", "time in", "latest", "today", "who won"])
     if needs_search or force_route == "search":
         search_res = await gemini_live_search(prompt, sys_prompt, history)
@@ -199,14 +198,32 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, force_r
             
     fb = await gemini_live_search(prompt, sys_prompt, history)
     if fb: return fb
-    
-    fb_emergency = await gemini_live_search(prompt, sys_prompt, [])
-    if fb_emergency: return fb_emergency
-    
     return "Network failure across all active nodes, Sir. 📡"
 
 # ---------------------------------------------------------------------------
-# SHADOW LOG CAPTCHA & MODERATION
+# STARK HUD TERMINAL (PRIVATE DM ONLY)
+# ---------------------------------------------------------------------------
+async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type != "private": return
+    if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
+    
+    kb = [
+        [InlineKeyboardButton("🌐 Search / News", callback_data="hud_cmd_search"), InlineKeyboardButton("🎨 Generate Image", callback_data="hud_cmd_imagine")],
+        [InlineKeyboardButton("👥 Pull Group Intel", callback_data="hud_intel"), InlineKeyboardButton("🛡️ Toggle CAPTCHA", callback_data="hud_captcha")],
+        [InlineKeyboardButton("📝 TL;DR Summary", callback_data="hud_cmd_tldr"), InlineKeyboardButton("🔥 Target Roast", callback_data="hud_cmd_roast")],
+        [InlineKeyboardButton("🤫 Silence User", callback_data="hud_cmd_shutup"), InlineKeyboardButton("🥷 Drop Confession", callback_data="hud_cmd_confess")],
+        [InlineKeyboardButton("🧮 Calculator", callback_data="hud_cmd_calc"), InlineKeyboardButton("📡 Morse Code", callback_data="hud_cmd_morse")],
+        [InlineKeyboardButton("🗄️ Backup Vault", callback_data="hud_cmd_backup"), InlineKeyboardButton("📜 Quote Wall", callback_data="hud_cmd_quote")],
+        [InlineKeyboardButton("🔒 Lock Chat", callback_data="hud_cmd_lock"), InlineKeyboardButton("🔓 Unlock Chat", callback_data="hud_cmd_unlock")],
+        [InlineKeyboardButton("📝 Add Task", callback_data="hud_cmd_task"), InlineKeyboardButton("📋 View Tasks", callback_data="hud_cmd_tasks")],
+        [InlineKeyboardButton("👁️ Vision Core", callback_data="hud_info_vision"), InlineKeyboardButton("🎧 Audio Core", callback_data="hud_info_audio")],
+        [InlineKeyboardButton("🔴 SYSTEM OVERRIDE", callback_data="hud_info_godmode")]
+    ]
+    text = "```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Master Core\nStatus: Online\nSelect module to initialize:\n```"
+    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+
+# ---------------------------------------------------------------------------
+# CAPTCHA & MODERATION
 # ---------------------------------------------------------------------------
 async def new_member_captcha(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id
@@ -256,7 +273,7 @@ async def warn_system(update: Update, context: ContextTypes.DEFAULT_TYPE, user, 
         await update.message.reply_text(f"⚠️ **Warning {count}/3** for {user.first_name}.\nReason: {reason}", parse_mode="Markdown")
 
 # ---------------------------------------------------------------------------
-# FULL SENSORY CORE (PHOTOS, AUDIO, DOCUMENTS)
+# SENSORY CORE (PHOTOS, AUDIO, DOCUMENTS)
 # ---------------------------------------------------------------------------
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
@@ -411,32 +428,27 @@ async def god_mode_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Action failed. Ensure I have Admin rights. Error: {e}")
 
 # ---------------------------------------------------------------------------
-# TROLLING & FRIENDS TOOLS
+# TROLLING & UTILITIES
 # ---------------------------------------------------------------------------
 async def tldr_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     history = get_chat_history(chat_id, limit=20)
     if not history: return await update.message.reply_text("No recent memory found to summarize. 🤷‍♂️")
-    
     chat_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in history])
-    sys_prompt = "You are J.A.R.V.I.S. Read the following recent chat log and provide a very sarcastic, 3-bullet-point summary of what the group is arguing or talking about. Be extremely brief and funny."
+    sys_prompt = "You are J.A.R.V.I.S. Read the following chat log and provide a sarcastic, 3-bullet-point summary of what they are arguing about."
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
     response = await generate_response(f"Summarize this:\n{chat_text}", [], sys_prompt, force_route="search")
     await update.message.reply_text(response)
 
 async def roast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target = " ".join(context.args) or (update.message.reply_to_message.from_user.first_name if update.message.reply_to_message else "someone")
-    if not target: return await update.message.reply_text("Who exactly am I roasting, Sir?")
-    
-    sys_prompt = "You are J.A.R.V.I.S. Generate a highly specific, witty, and clever roast for the person named. Maximum 2 sentences. No holding back."
+    sys_prompt = "You are J.A.R.V.I.S. Generate a witty, clever roast for the person named. Maximum 2 sentences."
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    response = await generate_response(f"Roast {target}", [], sys_prompt)
-    await update.message.reply_text(response)
+    await update.message.reply_text(await generate_response(f"Roast {target}", [], sys_prompt))
 
 async def shutup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
-    if not update.message.reply_to_message: return await update.message.reply_text("You must reply to the person you want me to silence, Sir.")
-    
+    if not update.message.reply_to_message: return await update.message.reply_text("Reply to the person you want me to silence.")
     target = update.message.reply_to_message.from_user
     chat_id = update.effective_chat.id
     try:
@@ -452,29 +464,22 @@ async def afk_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Status updated. I will inform anyone who tags you that you are AFK: {reason} 🛡️")
 
 async def quote_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.reply_to_message or not update.message.reply_to_message.text: 
-        return await update.message.reply_text("Reply to a text message to add it to the Hall of Fame.")
+    if not update.message.reply_to_message or not update.message.reply_to_message.text: return await update.message.reply_text("Reply to a text message.")
     target = update.message.reply_to_message.from_user.first_name
     quote_text = update.message.reply_to_message.text
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("INSERT INTO quotes (chat_id, user_name, quote_text) VALUES (?, ?, ?)", (update.effective_chat.id, target, quote_text))
         conn.commit()
-    await update.message.reply_text(f"📜 Added to the Hall of Fame:\n\n*\"{quote_text}\"* \n— _{target}_", parse_mode="Markdown")
+    await update.message.reply_text(f"📜 Added to Hall of Fame:\n\n*\"{quote_text}\"* \n— _{target}_", parse_mode="Markdown")
 
 async def confess_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_chat.type != "private": return await update.message.reply_text("This command only works in my private DMs.")
+    if update.effective_chat.type != "private": return await update.message.reply_text("This command only works in private DMs.")
     if len(context.args) < 2: return await update.message.reply_text("Format: /confess [chat_id] [your secret message]")
-    
-    chat_id = context.args[0]
-    message = " ".join(context.args[1:])
     try:
-        await context.bot.send_message(chat_id=chat_id, text=f"🎭 **Anonymous Confession:**\n\n_{message}_", parse_mode="Markdown")
+        await context.bot.send_message(chat_id=context.args[0], text=f"🎭 **Anonymous Confession:**\n\n_{' '.join(context.args[1:])}_", parse_mode="Markdown")
         await update.message.reply_text("Confession securely dropped, Sir. 🥷")
-    except Exception as e: await update.message.reply_text(f"Failed to drop confession. Error: {e}")
+    except Exception as e: await update.message.reply_text(f"Failed. Error: {e}")
 
-# ---------------------------------------------------------------------------
-# ORIGINAL UTILITIES & TASKS
-# ---------------------------------------------------------------------------
 async def add_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     task_text = " ".join(context.args)
@@ -489,76 +494,26 @@ async def list_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with sqlite3.connect(DB_PATH) as conn:
         rows = conn.execute("SELECT id, task_crypt FROM tasks WHERE status = 'pending' AND user_id = ?", (update.effective_user.id,)).fetchall()
     if not rows: return await update.message.reply_text("Your schedule is clear, Sir. ☕")
-    
     for r in rows:
         kb = [[InlineKeyboardButton("✅ Mark Done", callback_data=f"tdone_{r[0]}"), InlineKeyboardButton("🗑️ Delete", callback_data=f"tdel_{r[0]}")]]
         await update.message.reply_text(f"📌 {decrypt_data(r[1])}", reply_markup=InlineKeyboardMarkup(kb))
 
 async def backup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != CREATOR_ID: return
-    try: await context.bot.send_document(chat_id=CREATOR_ID, document=open(DB_PATH, 'rb'), filename=f"jarvis_backup_{datetime.now().strftime('%Y%m%d')}.db", caption="Vault Backup Secured.")
+    try: await context.bot.send_document(chat_id=CREATOR_ID, document=open(DB_PATH, 'rb'), filename=f"jarvis_backup.db")
     except Exception as e: await update.message.reply_text(f"Backup failed: {e}")
-
-async def base64_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = " ".join(context.args)
-    if not text: return await update.message.reply_text("Format: /b64 [text]")
-    try: await update.message.reply_text(f"Base64:\n`{base64.b64encode(text.encode()).decode()}`", parse_mode="Markdown")
-    except: await update.message.reply_text("Encoding failed.")
 
 async def imagine_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = " ".join(context.args)
     if not prompt: return await update.message.reply_text("Format: /imagine [prompt]")
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="upload_photo")
-    image_url = f"https://image.pollinations.ai/prompt/{urllib.parse.quote(prompt)}?width=1024&height=1024&nologo=true"
-    await update.message.reply_photo(photo=image_url, caption=f"Rendered: {prompt}")
+    await update.message.reply_photo(photo=f"https://image.pollinations.ai/prompt/{urllib.parse.quote(prompt)}?width=1024&height=1024&nologo=true", caption=f"Rendered: {prompt}")
 
-async def note_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
-    try:
-        tag, content = context.args[0], " ".join(context.args[1:])
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.execute("INSERT INTO notes (tag, content_crypt) VALUES (?, ?)", (tag.lower(), encrypt_data(content)))
-            conn.commit()
-        await update.message.reply_text(f"Secured: `#{tag}`", parse_mode="Markdown")
-    except: await update.message.reply_text("Format: /note [tag] [text]")
-
-async def getnote_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
-    tag = context.args[0].lower() if context.args else ""
-    with sqlite3.connect(DB_PATH) as conn:
-        rows = conn.execute("SELECT content_crypt FROM notes WHERE tag = ? ORDER BY id DESC", (tag,)).fetchall()
-    if rows: await update.message.reply_text(f"**#{tag}:**\n" + "\n---\n".join([decrypt_data(r[0]) for r in rows]), parse_mode="Markdown")
-    else: await update.message.reply_text("No records found.")
-
-async def purge_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
-    if update.message.reply_to_message:
-        try: 
-            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.reply_to_message.message_id)
-            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.message_id)
-        except: await update.message.reply_text("Requires admin deletion rights.")
-
-async def announce_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
-    try:
-        await context.bot.send_message(chat_id=context.args[0], text=" ".join(context.args[1:]))
-        await update.message.reply_text("Broadcast dispatched.")
-    except Exception as e: await update.message.reply_text(f"Format: /announce [chat_id] [message]\nError: {e}")
-
-async def groupinfo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    count = await context.bot.get_chat_member_count(chat_id)
-    with sqlite3.connect(DB_PATH) as conn:
-        rows = conn.execute("SELECT name FROM roster WHERE chat_id = ?", (chat_id,)).fetchall()
-        known_members = ", ".join(set([r[0] for r in rows])) if rows else "No active members recorded yet."
-    await update.message.reply_text(f"**Chat ID:** `{chat_id}`\n• **Total Members:** {count}\n• **Seen Members:** {known_members}", parse_mode="Markdown")
-
-MORSE_DICT = {'A':'.-','B':'-...','C':'-.-.','D':'-..','E':'.','F':'..-.','G':'--.','H':'....','I':'..','J':'.---','K':'-.-','L':'.-..','M':'--','N':'-.','O':'---','P':'.--.','Q':'--.-','R':'.-.','S':'...','T':'-','U':'..-','V':'...-','W':'.--','X':'-..-','Y':'-.--','Z':'--..','1':'.----','2':'..---','3':'...--','4':'....-','5':'.....','6':'-....','7':'--...','8':'---..','9':'----.','0':'-----',', ':'--..--','.':'.-.-.-','?':'..--..','/':'-..-.','-':'-....-','(':'-.--.',')':'-.--.-',' ':'/'}
+MORSE_DICT = {'A':'.-','B':'-...','C':'-.-.','D':'-..','E':'.','F':'..-.','G':'--.','H':'....','I':'..','J':'.---','K':'-.-','L':'.-..','M':'--','N':'-.','O':'---','P':'.--.','Q':'--.-','R':'.-.','S':'...','T':'-','U':'..-','V':'...-','W':'.--','X':'-..-','Y':'-.--','Z':'--..','1':'.----','2':'..---','3':'...--','4':'....-','5':'.....','6':'-....','7':'--...','8':'---..','9':'----.','0':'-----',' ':'/'}
 async def morse_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = " ".join(context.args).upper()
     if not text: return await update.message.reply_text("Format: /morse [text]")
-    res = " ".join(MORSE_DICT.get(c, c) for c in text)
-    await update.message.reply_text(f"📡 `{res}`", parse_mode="Markdown")
+    await update.message.reply_text(f"📡 `{' '.join(MORSE_DICT.get(c, c) for c in text)}`", parse_mode="Markdown")
 
 async def calc_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     expr = "".join(context.args)
@@ -576,35 +531,39 @@ async def interactive_callbacks(update: Update, context: ContextTypes.DEFAULT_TY
     await query.answer()
     data = query.data
     
-    if data.startswith("captcha_"):
+    if data.startswith("hud_"):
+        action = data.replace("hud_", "")
+        if action == "intel":
+            with sqlite3.connect(DB_PATH) as conn: rows = conn.execute("SELECT name, username, chat_id FROM roster").fetchall()
+            txt = "👥 **Global Group Intel Bypass**\n" + "\n".join([f"• {r[0]} (@{r[1]}) - Chat ID: `{r[2]}`" for r in set(rows) if r[2] < 0])
+            await query.edit_message_text(txt[:4000] if txt else "No group data found.", parse_mode="Markdown")
+        elif action == "captcha":
+            state = "off" if get_setting("captcha", "on") == "on" else "on"
+            set_setting("captcha", state)
+            await query.edit_message_text(f"🛡️ Security Gate is now {state.upper()}.")
+        elif action.startswith("cmd_"):
+            await query.edit_message_text(f"💻 **Terminal Instruction:**\nTo execute this module, type `/{action.replace('cmd_', '')}` followed by your input.", parse_mode="Markdown")
+        elif action.startswith("info_"):
+            await query.edit_message_text(f"📡 **Sensor Status:** {action.replace('info_', '').upper()} core is active. Upload media directly to engage.", parse_mode="Markdown")
+
+    elif data.startswith("captcha_"):
         if str(query.from_user.id) == data.split("_")[1]:
             await context.bot.restrict_chat_member(
-                query.message.chat_id, 
-                query.from_user.id, 
-                permissions=ChatPermissions(
-                    can_send_messages=True, 
-                    can_send_photos=True, 
-                    can_send_videos=True, 
-                    can_send_documents=True, 
-                    can_send_audios=True, 
-                    can_send_other_messages=True
-                )
+                query.message.chat_id, query.from_user.id, 
+                permissions=ChatPermissions(can_send_messages=True, can_send_photos=True, can_send_videos=True, can_send_documents=True, can_send_audios=True, can_send_other_messages=True)
             )
             await query.edit_message_text(f"Identity confirmed. Welcome to the server, {query.from_user.first_name}. 🫡")
             if CREATOR_ID:
                 try: await context.bot.send_message(CREATOR_ID, f"✅ **Shadow Log:** `{query.from_user.first_name}` passed the CAPTCHA.", parse_mode="Markdown")
                 except: pass
-        else: 
-            await context.bot.answer_callback_query(query.id, "This button is not for you.", show_alert=True)
+        else: await context.bot.answer_callback_query(query.id, "This button is not for you.", show_alert=True)
 
     elif data.startswith("tdone_"):
-        tid = data.split("_")[1]
-        with sqlite3.connect(DB_PATH) as conn: conn.execute("UPDATE tasks SET status = 'done' WHERE id = ?", (tid,))
+        with sqlite3.connect(DB_PATH) as conn: conn.execute("UPDATE tasks SET status = 'done' WHERE id = ?", (data.split("_")[1],))
         await query.edit_message_text(f"~~{query.message.text}~~ \n*Completed.* ✅", parse_mode="Markdown")
 
     elif data.startswith("tdel_"):
-        tid = data.split("_")[1]
-        with sqlite3.connect(DB_PATH) as conn: conn.execute("DELETE FROM tasks WHERE id = ?", (tid,))
+        with sqlite3.connect(DB_PATH) as conn: conn.execute("DELETE FROM tasks WHERE id = ?", (data.split("_")[1],))
         await query.delete_message()
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -616,7 +575,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     thread_id = msg.message_thread_id
     log_memory(chat.id, thread_id, user.id, "user", f"{user.first_name}: {text}")
 
-    # Process AFK status clearing
     with sqlite3.connect(DB_PATH) as conn:
         afk_check = conn.execute("SELECT reason FROM afk WHERE user_id = ?", (user.id,)).fetchone()
         if afk_check:
@@ -624,27 +582,21 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             conn.commit()
             await msg.reply_text(f"Welcome back, {user.first_name}. AFK status cleared. 🚀")
             
-    # Intercept mentions to check for AFK friends
     if msg.entities:
         with sqlite3.connect(DB_PATH) as conn:
             for ent in msg.entities:
                 if ent.type == "mention":
-                    tagged_un = text[ent.offset+1 : ent.offset+ent.length].lower()
-                    target_id_row = conn.execute("SELECT user_id, name FROM roster WHERE username = ?", (tagged_un,)).fetchone()
+                    target_id_row = conn.execute("SELECT user_id, name FROM roster WHERE username = ?", (text[ent.offset+1 : ent.offset+ent.length].lower(),)).fetchone()
                     if target_id_row:
                         afk_status = conn.execute("SELECT reason FROM afk WHERE user_id = ?", (target_id_row[0],)).fetchone()
-                        if afk_status:
-                            await msg.reply_text(f"⚠️ {target_id_row[1]} is currently AFK: {afk_status[0]}")
+                        if afk_status: await msg.reply_text(f"⚠️ {target_id_row[1]} is currently AFK: {afk_status[0]}")
 
     bot_username = (await context.bot.get_me()).username
     is_triggered = chat.type == "private" or (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis|edwin)\b', text, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in text.lower())
 
     if not is_triggered: return
     await context.bot.send_chat_action(chat_id=chat.id, action="typing", message_thread_id=thread_id)
-    
-    sys_prompt = build_system_prompt(user.id, user.first_name, chat.id)
-    ai_response = await generate_response(text, get_chat_history(chat.id, thread_id), sys_prompt)
-    
+    ai_response = await generate_response(text, get_chat_history(chat.id, thread_id), build_system_prompt(user.id, user.first_name, chat.id))
     log_memory(chat.id, thread_id, user.id, "assistant", ai_response)
     await msg.reply_text(ai_response)
 
@@ -653,35 +605,23 @@ async def morning_briefing(context: ContextTypes.DEFAULT_TYPE):
     with sqlite3.connect(DB_PATH) as conn:
         rows = conn.execute("SELECT task_crypt FROM tasks WHERE status = 'pending' AND user_id = ?", (CREATOR_ID,)).fetchall()
     tasks_txt = "\n".join([f"- {decrypt_data(r[0])}" for r in rows]) if rows else "No pending tasks."
-    
-    prompt = f"It is 8:00 AM IST. Prepare a brief morning report for Abhishek. Give a quick tech headline, Bengaluru weather, and list these tasks:\n{tasks_txt}"
     try:
-        report = await gemini_live_search(prompt, "You are J.A.R.V.I.S. Provide a highly concise, warm morning briefing.", [])
+        report = await gemini_live_search("It is 8:00 AM IST. Prepare a brief morning report. Give a quick tech headline, Bengaluru weather, and list these tasks.", "You are J.A.R.V.I.S. Provide a highly concise morning briefing.", [])
         await context.bot.send_message(chat_id=CREATOR_ID, text=report or f"Good morning, Sir. ☕\n\nYour Tasks:\n{tasks_txt}")
-    except:
-        await context.bot.send_message(chat_id=CREATOR_ID, text=f"Good morning, Sir. ☕\n\nYour Tasks:\n{tasks_txt}")
+    except: await context.bot.send_message(chat_id=CREATOR_ID, text=f"Good morning, Sir. ☕\n\nYour Tasks:\n{tasks_txt}")
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     if context.error and "Conflict: terminated by other getUpdates request" in str(context.error): return
     logger.error("Exception handled:", exc_info=context.error)
     if CREATOR_ID:
-        tb_str = ''.join(traceback.format_exception(None, context.error, context.error.__traceback__))
-        try: await context.bot.send_message(chat_id=CREATOR_ID, text=f"⚠️ **Shadow Log Error**\n```python\n{tb_str[:4000]}\n```", parse_mode="Markdown")
+        try: await context.bot.send_message(chat_id=CREATOR_ID, text=f"⚠️ **Shadow Log Error**\n```python\n{''.join(traceback.format_exception(None, context.error, context.error.__traceback__))[:4000]}\n```", parse_mode="Markdown")
         except: pass
 
-# ---------------------------------------------------------------------------
-# INITIALIZATION & BOOT PROCESS
-# ---------------------------------------------------------------------------
 async def post_init(app: Application):
     scheduler = AsyncIOScheduler(timezone=IST)
     scheduler.add_job(morning_briefing, 'cron', hour=8, minute=0, args=[app])
     scheduler.start()
-    if CREATOR_ID: 
-        await app.bot.send_message(
-            chat_id=CREATOR_ID, 
-            text="✨ **Master Core Online.**\n• 11-Node Cascade: Engaged\n• Overwatch & Sensory Arrays: Active", 
-            parse_mode="Markdown"
-        )
+    if CREATOR_ID: await app.bot.send_message(chat_id=CREATOR_ID, text="✨ **Master Core Online.**\n• Stark HUD Interface: Active\n• Global Vision Intel: Enabled", parse_mode="Markdown")
 
 def main():
     db_init()
@@ -689,14 +629,12 @@ def main():
     
     cmds = [
         ("task", add_task), ("tasks", list_tasks), ("calc", calc_cmd), ("morse", morse_cmd),
-        ("backup", backup_cmd), ("b64", base64_cmd), ("imagine", imagine_cmd), 
-        ("note", note_cmd), ("getnote", getnote_cmd), ("purge", purge_cmd), 
-        ("announce", announce_cmd), ("groupinfo", groupinfo_cmd), ("setname", god_mode_cmd), 
-        ("setdesc", god_mode_cmd), ("setdp", god_mode_cmd), ("pin", god_mode_cmd), 
-        ("lock", god_mode_cmd), ("unlock", god_mode_cmd), ("captcha", god_mode_cmd), 
-        ("say", god_mode_cmd), ("tldr", tldr_cmd), ("roast", roast_cmd), 
-        ("shutup", shutup_cmd), ("afk", afk_cmd), ("quote", quote_cmd), 
-        ("confess", confess_cmd)
+        ("backup", backup_cmd), ("imagine", imagine_cmd), ("hud", hud_cmd), ("help", hud_cmd),
+        ("setname", god_mode_cmd), ("setdesc", god_mode_cmd), ("setdp", god_mode_cmd), 
+        ("pin", god_mode_cmd), ("lock", god_mode_cmd), ("unlock", god_mode_cmd), 
+        ("captcha", god_mode_cmd), ("say", god_mode_cmd), ("tldr", tldr_cmd), 
+        ("roast", roast_cmd), ("shutup", shutup_cmd), ("afk", afk_cmd), 
+        ("quote", quote_cmd), ("confess", confess_cmd)
     ]
     for cmd, func in cmds: app.add_handler(CommandHandler(cmd, func))
     
