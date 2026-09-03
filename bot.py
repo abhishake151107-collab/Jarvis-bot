@@ -271,7 +271,7 @@ async def analyze_subtext(text: str) -> str:
         if not api_key: 
             return "NORMAL"
         client = AsyncOpenAI(base_url="https://api.groq.com/openai/v1/", api_key=api_key)
-        res = await client.chat.completions.create(model="llama-3.1-8b-instant", messages=[{"role": "system", "content": sys_prompt}, {"role": "user", "content": text}], max_tokens=10, temperature=0.1)
+        res = await client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role": "system", "content": sys_prompt}, {"role": "user", "content": text}], max_tokens=10, temperature=0.1)
         return res.choices[0].message.content.strip().upper()
     except Exception: 
         return "NORMAL"
@@ -305,7 +305,7 @@ CRITICAL DIRECTIVES:
 5. EXTREME BREVITY: Keep ALL replies to a maximum of 1 or 2 short sentences. Use 1 or 2 emojis naturally."""
 
 # ---------------------------------------------------------------------------
-# V. 11-NODE MIXTURE OF EXPERTS CASCADE
+# V. 11-NODE MIXTURE OF EXPERTS CASCADE (V4 - AUTO-ROUTERS FIRST)
 # ---------------------------------------------------------------------------
 async def gemini_live_search(prompt: str, sys_prompt: str, history: list) -> str:
     api_key = os.getenv("GEMINI_API_KEY")
@@ -338,13 +338,14 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, force_r
         if search_res: 
             return search_res
 
+    # V4 Cascade: Auto-Routers and Unbreakable Nodes are now positioned at the absolute top.
     moe_cascade = [
-        {"name": "Groq", "base": "https://api.groq.com/openai/v1/", "key": "GROQ_API_KEY", "model": "llama-3.1-8b-instant", "tier": "Fast"},
-        {"name": "Cerebras", "base": "https://api.cerebras.ai/v1/", "key": "CEREBRAS_API_KEY", "model": "llama3.1-8b", "tier": "Fast"},
-        {"name": "SambaNova", "base": "https://api.sambanova.ai/v1/", "key": "SAMBANOVA_API_KEY", "model": "Meta-Llama-3.1-8B-Instruct", "tier": "Fast"},
-        {"name": "OpenRouter", "base": "https://openrouter.ai/api/v1/", "key": "OPENROUTER_API_KEY", "model": "openrouter/free", "tier": "Logic"},
-        {"name": "NVIDIA", "base": "https://integrate.api.nvidia.com/v1/", "key": "NVIDIA_API_KEY", "model": "meta/llama-3.1-8b-instruct", "tier": "Heavy"},
-        {"name": "Mistral", "base": "https://api.mistral.ai/v1/", "key": "MISTRAL_API_KEY", "model": "mistral-small-latest", "tier": "Fallback"}
+        {"name": "OpenRouter", "base": "https://openrouter.ai/api/v1/", "key": "OPENROUTER_API_KEY", "model": "openrouter/free", "tier": "Auto-Router"},
+        {"name": "Pollinations", "base": "https://text.pollinations.ai/openai", "key": "BOT_TOKEN", "model": "openai", "tier": "Infinite-Safety"},
+        {"name": "GitHub Models", "base": "https://models.inference.ai.azure.com", "key": "GITHUB_TOKEN", "model": "gpt-4o-mini", "tier": "Fast"},
+        {"name": "Groq", "base": "https://api.groq.com/openai/v1/", "key": "GROQ_API_KEY", "model": "llama-3.3-70b-versatile", "tier": "Heavy"},
+        {"name": "SambaNova", "base": "https://api.sambanova.ai/v1/", "key": "SAMBANOVA_API_KEY", "model": "Meta-Llama-3.3-70B-Instruct", "tier": "Heavy"},
+        {"name": "HuggingFace", "base": "https://api-inference.huggingface.co/v1/", "key": "HUGGINGFACE_API_KEY", "model": "meta-llama/Meta-Llama-3-8B-Instruct", "tier": "Fallback"}
     ]
     full_messages = [{"role": "system", "content": sys_prompt}] + history + [{"role": "user", "content": prompt}]
 
@@ -715,7 +716,7 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with sqlite3.connect(DB_PATH) as conn:
         mem = conn.execute("SELECT COUNT(*) FROM memory").fetchone()[0]
         users = conn.execute("SELECT COUNT(*) FROM roster").fetchone()[0]
-    await update.message.reply_text(f"📊 **System Diagnostics**\n• Memory Nodes: {mem}\n• Tracked Users: {users}\n• API Cascade: 11 Nodes Active", parse_mode="Markdown")
+    await update.message.reply_text(f"📊 **System Diagnostics**\n• Memory Nodes: {mem}\n• API Cascade: Auto-Routers First", parse_mode="Markdown")
 
 async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != "private": 
@@ -734,7 +735,7 @@ async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("👁️ Vision Core", callback_data="hud_info_vision"), InlineKeyboardButton("🎧 Audio Core", callback_data="hud_info_audio")],
         [InlineKeyboardButton("🔴 SYSTEM OVERRIDE", callback_data="hud_info_godmode")]
     ]
-    await update.message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Titan Core V3\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+    await update.message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Titan Core V4\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 # ---------------------------------------------------------------------------
 # IX. TROLLING, ECONOMY, & UTILITIES
@@ -1174,12 +1175,12 @@ async def post_init(app: Application):
     if CREATOR_ID: 
         await app.bot.send_message(
             chat_id=CREATOR_ID, 
-            text="✨ **God Core (Titan Build V3.1) Online.**\n"
+            text="✨ **God Core (Titan Build V4) Online.**\n"
                  "• DPUE Advanced Sniper: Engaged\n"
                  "• Edge-TTS Voice Synth: Ready\n"
-                 "• Casino Economy & Lore Vault: Initialized\n"
+                 "• Cascade Matrix: Unbreakable Auto-Routers First\n"
                  "• FTS5 Sanitizer: Secured\n"
-                 "• MoE Target: Active 3.1 & Free Routing\n"
+                 "• MoE Target: Active 3.3 Strict Aliases\n"
                  "• Optical AI: Native REST API Override\n"
                  "• 2nd PUC Omni-Matrix: Fully Loaded", 
             parse_mode="Markdown"
@@ -1212,7 +1213,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
     app.add_error_handler(error_handler)
     
-    logger.info("J.A.R.V.I.S. Titan V3.1 is booting...")
+    logger.info("J.A.R.V.I.S. Titan V4 is booting...")
     app.run_polling()
 
 if __name__ == "__main__":
