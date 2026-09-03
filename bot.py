@@ -136,9 +136,11 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None) -> s
     now_ist = datetime.now(IST).strftime("%A, %B %d, %Y - %I:%M %p IST")
     
     chat_context = f"Platform: Telegram.\nCurrent Local Time: {now_ist}."
+    chat_context += "\n2nd PUC Midterm Exams (Malleshwaram): 30-Sep (Lang), 1-Oct (English), 3-Oct (Economics), 5-Oct (Accts/Logic/Math/Edu), 6-Oct (Pol Sci/Basic Math), 7-Oct (Business/Psych/Opt Kannada), 8-Oct (Geo/Soc/Stat), 9-Oct (History/CS)."
+
     with sqlite3.connect(DB_PATH) as conn:
         groups = conn.execute("SELECT title FROM chats WHERE chat_id < 0").fetchall()
-        if groups: chat_context += f" Monitoring groups: {', '.join(set([r[0] for r in groups]))}."
+        if groups: chat_context += f"\nMonitoring groups: {', '.join(set([r[0] for r in groups]))}."
         if chat_id:
             rows = conn.execute("SELECT name FROM roster WHERE chat_id = ?", (chat_id,)).fetchall()
             if rows: chat_context += f" Active chat members: {', '.join(set([r[0] for r in rows]))}."
