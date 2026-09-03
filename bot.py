@@ -5,6 +5,7 @@ import json
 import base64
 import sqlite3
 import logging
+import hashlib
 import asyncio
 import httpx
 import traceback
@@ -57,7 +58,21 @@ circuit_breaker = {}
 probing_attempts = defaultdict(int)
 
 # ---------------------------------------------------------------------------
-# SQLITE VAULT (Memory, Tasks, Notes, Roster, Settings, AFK, Quotes)
+# 2ND PUC COMMERCE & ARTS MIDTERM SCHEDULE (18TH CROSS, MALLESHWARAM)
+# ---------------------------------------------------------------------------
+EXAM_SCHEDULE_COMMERCE_ARTS = {
+    "2026-09-30": "Languages (Kannada / Hindi / Sanskrit / Urdu / Tamil / Telugu / French / Arabic)",
+    "2026-10-01": "English",
+    "2026-10-03": "Economics",
+    "2026-10-05": "Accountancy / Logic / Mathematics / Education",
+    "2026-10-06": "Political Science / Basic Maths",
+    "2026-10-07": "Business Studies / Psychology / Optional Kannada",
+    "2026-10-08": "Geography / Sociology / Statistics",
+    "2026-10-09": "History / Computer Science"
+}
+
+# ---------------------------------------------------------------------------
+# SQLITE VAULT (Memory, Tasks, Notes, Roster, Settings, AFK, Quotes, News)
 # ---------------------------------------------------------------------------
 def db_init():
     with sqlite3.connect(DB_PATH) as conn:
@@ -70,6 +85,7 @@ def db_init():
         conn.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)")
         conn.execute("CREATE TABLE IF NOT EXISTS afk (user_id INTEGER PRIMARY KEY, reason TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
         conn.execute("CREATE TABLE IF NOT EXISTS quotes (id INTEGER PRIMARY KEY, chat_id INTEGER, user_name TEXT, quote_text TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
+        conn.execute("CREATE TABLE IF NOT EXISTS breaking_news (id INTEGER PRIMARY KEY, hash TEXT UNIQUE, headline TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)")
         conn.commit()
 
 def log_roster_and_chat(chat, user):
@@ -221,6 +237,108 @@ async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     text = "```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Master Core\nStatus: Online\nSelect module to initialize:\n```"
     await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+
+# ---------------------------------------------------------------------------
+# AUTOMATED SCHEDULERS & ACADEMIC MONITORS
+# ---------------------------------------------------------------------------
+async def exam_morning_alert(context: ContextTypes.DEFAULT_TYPE):
+    today_str = datetime.now(IST).strftime("%Y-%m-%d")
+    exam_subject = EXAM_SCHEDULE_COMMERCE_ARTS.get(today_str)
+    if not exam_subject: return
+    
+    msg_text = (
+        f"🔔 **2nd PUC Midterm Exam Today**\n\n"
+        f"• **Paper:** {exam_subject}\n"
+        f"• **Timing:** 10:00 AM – 1:00 PM\n"
+        f"• **Institution:** Govt PU College, 18th Cross, Malleshwaram\n\n"
+        f"Ensure all stationery and hall tickets are secured. Best of luck, gentlemen. 🎯"
+    )
+    with sqlite3.connect(DB_PATH) as conn:
+        groups = conn.execute("SELECT chat_id FROM chats WHERE chat_id < 0").fetchall()
+    for g in groups:
+        try: await context.bot.send_message(chat_id=g[0], text=msg_text, parse_mode="Markdown")
+        except: pass
+
+async def group_morning_news(context: ContextTypes.DEFAULT_TYPE):
+    today_str = datetime.now(IST).strftime("%A, %B %d, %Y")
+    prompt = (
+        f"Today is {today_str}. Provide an ultra-crisp morning drop for 12th college students in Bengaluru:\n"
+        f"1. Any Karnataka PU board announcements or Bengaluru student holiday notices.\n"
+        f"2. Top 3 major world/tech news headlines.\n"
+        f"Format strictly as 3 concise bullet points. No conversational filler."
+    )
+    news_text = await gemini_live_search(prompt, "You are J.A.R.V.I.S. Provide a high-precision student news briefing.", [])
+    if not news_text: news_text = "• Global networks operating nominally.\n• Bengaluru skies clear.\n• Academic sessions proceeding on schedule."
+    
+    broadcast = f"☀️ **Good morning, everyone.**\n\n{news_text}"
+    with sqlite3.connect(DB_PATH) as conn:
+        groups = conn.execute("SELECT chat_id FROM chats WHERE chat_id < 0").fetchall()
+    for g in groups:
+        try: await context.bot.send_message(chat_id=g[0], text=broadcast, parse_mode="Markdown")
+        except: pass
+
+async def creator_morning_briefing(context: ContextTypes.DEFAULT_TYPE):
+    if not CREATOR_ID: return
+    with sqlite3.connect(DB_PATH) as conn:
+        rows = conn.execute("SELECT task_crypt FROM tasks WHERE status = 'pending' AND user_id = ?", (CREATOR_ID,)).fetchall()
+        groups_count = conn.execute("SELECT COUNT(DISTINCT chat_id) FROM chats WHERE chat_id < 0").fetchone()[0]
+        members_count = conn.execute("SELECT COUNT(DISTINCT user_id) FROM roster").fetchone()[0]
+        warn_count = conn.execute("SELECT SUM(count) FROM warnings").fetchone()[0] or 0
+    
+    tasks_txt = "\n".join([f"- {decrypt_data(r[0])}" for r in rows]) if rows else "No pending tasks."
+    captcha_state = get_setting("captcha", "on").upper()
+    
+    prompt = "Provide a 2-bullet summary of major global tech/political events today and Bengaluru weather."
+    world_news = await gemini_live_search(prompt, "You are J.A.R.V.I.S. Provide a crisp executive morning briefing for Sir.", [])
+    
+    report = (
+        f"☕ **Morning Executive Briefing, Sir.**\n\n"
+        f"🛡️ **Group Security Audit:**\n"
+        f"• Monitored Channels: {groups_count}\n"
+        f"• Active Roster Tracked: {members_count} members\n"
+        f"• Outstanding Warnings: {warn_count}\n"
+        f"• Security Gate (CAPTCHA): {captcha_state}\n\n"
+        f"🌐 **Global & Local Intelligence:**\n{world_news or 'Worldwide networks reporting normal throughput.'}\n\n"
+        f"📝 **Pending Operations:**\n{tasks_txt}"
+    )
+    try: await context.bot.send_message(chat_id=CREATOR_ID, text=report, parse_mode="Markdown")
+    except: pass
+
+async def group_night_routine(context: ContextTypes.DEFAULT_TYPE):
+    tomorrow_str = (datetime.now(IST) + timedelta(days=1)).strftime("%Y-%m-%d")
+    tomorrow_exam = EXAM_SCHEDULE_COMMERCE_ARTS.get(tomorrow_str)
+    
+    night_msg = "🌙 **Good night, gentlemen.** Systems standing down for evening standby."
+    if tomorrow_exam:
+        night_msg += (
+            f"\n\n⚠️ **Academic Notice (Tomorrow's Exam):**\n"
+            f"• **Paper:** {tomorrow_exam}\n"
+            f"• **Timing:** 10:00 AM – 1:00 PM\n"
+            f"• **Centre:** Govt PU College, 18th Cross, Malleshwaram\n"
+            f"Get adequate rest."
+        )
+    with sqlite3.connect(DB_PATH) as conn:
+        groups = conn.execute("SELECT chat_id FROM chats WHERE chat_id < 0").fetchall()
+    for g in groups:
+        try: await context.bot.send_message(chat_id=g[0], text=night_msg, parse_mode="Markdown")
+        except: pass
+
+async def breaking_news_monitor(context: ContextTypes.DEFAULT_TYPE):
+    if not CREATOR_ID: return
+    prompt = "Check live sources right now. If there is a major breaking global crisis, catastrophe, or massive world news event from the past 1 hour, describe it in 1 sentence. If nothing majorly critical broke in the last hour, respond strictly with 'NOMINAL'."
+    res = await gemini_live_search(prompt, "You are an automated emergency breaking news scanner.", [])
+    if not res or "NOMINAL" in res.upper(): return
+    
+    event_hash = hashlib.md5(res.strip().encode()).hexdigest()
+    with sqlite3.connect(DB_PATH) as conn:
+        exists = conn.execute("SELECT id FROM breaking_news WHERE hash = ?", (event_hash,)).fetchone()
+        if exists: return
+        conn.execute("INSERT INTO breaking_news (hash, headline) VALUES (?, ?)", (event_hash, res.strip()))
+        conn.commit()
+        
+    alert_msg = f"🚨 **EMERGENCY WORLD BREAKING NEWS ALERT**\n\n{res.strip()}\n\n_Dispatched instantly to Stark Terminal._"
+    try: await context.bot.send_message(chat_id=CREATOR_ID, text=alert_msg, parse_mode="Markdown")
+    except: pass
 
 # ---------------------------------------------------------------------------
 # CAPTCHA & MODERATION
@@ -534,9 +652,23 @@ async def interactive_callbacks(update: Update, context: ContextTypes.DEFAULT_TY
     if data.startswith("hud_"):
         action = data.replace("hud_", "")
         if action == "intel":
-            with sqlite3.connect(DB_PATH) as conn: rows = conn.execute("SELECT name, username, chat_id FROM roster").fetchall()
-            txt = "👥 **Global Group Intel Bypass**\n" + "\n".join([f"• {r[0]} (@{r[1]}) - Chat ID: `{r[2]}`" for r in set(rows) if r[2] < 0])
-            await query.edit_message_text(txt[:4000] if txt else "No group data found.", parse_mode="Markdown")
+            with sqlite3.connect(DB_PATH) as conn:
+                groups = conn.execute("SELECT chat_id, title FROM chats WHERE chat_id < 0").fetchall()
+                roster_rows = conn.execute("SELECT name, username, chat_id FROM roster").fetchall()
+                warn_rows = conn.execute("SELECT user_id, count FROM warnings").fetchall()
+            
+            dossier = "👥 **STARK HUD: COMPLETE GROUP INTEL DOSSIER**\n\n"
+            if not groups: dossier += "No active groups recorded yet.\n"
+            for gid, title in groups:
+                dossier += f"📁 **Group:** {title} (`{gid}`)\n"
+                members = [r for r in roster_rows if r[2] == gid]
+                if members:
+                    for m in members:
+                        un_str = f"@{m[1]}" if m[1] else "No Username"
+                        dossier += f"  • {m[0]} ({un_str})\n"
+                else: dossier += "  • No member interaction logs recorded yet.\n"
+                dossier += "\n"
+            await query.edit_message_text(dossier[:4000], parse_mode="Markdown")
         elif action == "captcha":
             state = "off" if get_setting("captcha", "on") == "on" else "on"
             set_setting("captcha", state)
@@ -600,16 +732,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_memory(chat.id, thread_id, user.id, "assistant", ai_response)
     await msg.reply_text(ai_response)
 
-async def morning_briefing(context: ContextTypes.DEFAULT_TYPE):
-    if not CREATOR_ID: return
-    with sqlite3.connect(DB_PATH) as conn:
-        rows = conn.execute("SELECT task_crypt FROM tasks WHERE status = 'pending' AND user_id = ?", (CREATOR_ID,)).fetchall()
-    tasks_txt = "\n".join([f"- {decrypt_data(r[0])}" for r in rows]) if rows else "No pending tasks."
-    try:
-        report = await gemini_live_search("It is 8:00 AM IST. Prepare a brief morning report. Give a quick tech headline, Bengaluru weather, and list these tasks.", "You are J.A.R.V.I.S. Provide a highly concise morning briefing.", [])
-        await context.bot.send_message(chat_id=CREATOR_ID, text=report or f"Good morning, Sir. ☕\n\nYour Tasks:\n{tasks_txt}")
-    except: await context.bot.send_message(chat_id=CREATOR_ID, text=f"Good morning, Sir. ☕\n\nYour Tasks:\n{tasks_txt}")
-
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     if context.error and "Conflict: terminated by other getUpdates request" in str(context.error): return
     logger.error("Exception handled:", exc_info=context.error)
@@ -617,11 +739,18 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
         try: await context.bot.send_message(chat_id=CREATOR_ID, text=f"⚠️ **Shadow Log Error**\n```python\n{''.join(traceback.format_exception(None, context.error, context.error.__traceback__))[:4000]}\n```", parse_mode="Markdown")
         except: pass
 
+# ---------------------------------------------------------------------------
+# INITIALIZATION & SCHEDULER BOOT
+# ---------------------------------------------------------------------------
 async def post_init(app: Application):
     scheduler = AsyncIOScheduler(timezone=IST)
-    scheduler.add_job(morning_briefing, 'cron', hour=8, minute=0, args=[app])
+    scheduler.add_job(exam_morning_alert, 'cron', hour=6, minute=0, args=[app])
+    scheduler.add_job(group_morning_news, 'cron', hour=7, minute=0, args=[app])
+    scheduler.add_job(creator_morning_briefing, 'cron', hour=8, minute=0, args=[app])
+    scheduler.add_job(group_night_routine, 'cron', hour=21, minute=0, args=[app])
+    scheduler.add_job(breaking_news_monitor, 'interval', minutes=30, args=[app])
     scheduler.start()
-    if CREATOR_ID: await app.bot.send_message(chat_id=CREATOR_ID, text="✨ **Master Core Online.**\n• Stark HUD Interface: Active\n• Global Vision Intel: Enabled", parse_mode="Markdown")
+    if CREATOR_ID: await app.bot.send_message(chat_id=CREATOR_ID, text="✨ **Master Core Online.**\n• Stark HUD Interface: Active\n• Academic & News Schedulers: Engaged\n• Breaking News Overwatch: Operational", parse_mode="Markdown")
 
 def main():
     db_init()
