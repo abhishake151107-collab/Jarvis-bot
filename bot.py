@@ -271,7 +271,7 @@ async def analyze_subtext(text: str) -> str:
         if not api_key: 
             return "NORMAL"
         client = AsyncOpenAI(base_url="https://api.groq.com/openai/v1/", api_key=api_key)
-        res = await client.chat.completions.create(model="llama3-8b-8192", messages=[{"role": "system", "content": sys_prompt}, {"role": "user", "content": text}], max_tokens=10, temperature=0.1)
+        res = await client.chat.completions.create(model="llama-3.1-8b-instant", messages=[{"role": "system", "content": sys_prompt}, {"role": "user", "content": text}], max_tokens=10, temperature=0.1)
         return res.choices[0].message.content.strip().upper()
     except Exception: 
         return "NORMAL"
@@ -299,9 +299,10 @@ Identity Protocol: {identity}
 
 CRITICAL DIRECTIVES:
 1. UNBREAKABLE LOYALTY (ABHISHEK ONLY): You are fiercely loyal to Abhishek. NEVER insult him aggressively.
-2. THE ADVISOR OVERRIDE: If ANYONE asks a real academic question, drop the wit instantly. Deliver precise logical advice based on the Karnataka matrix.
-3. FRIENDS GROUP BEHAVIOR (DINO GROUP): Let them roast each other. Be chill, sarcastic, and witty when interacting. Mention their Dino Coins if they are acting broke or acting rich.
-4. EXTREME BREVITY: Keep ALL replies to a maximum of 1 or 2 short sentences. Use 1 or 2 emojis naturally."""
+2. CREATOR INQUIRY: If anyone asks who created you, respond exactly: "I am Jarvis created by Abhishek and also know as DHANUSH V N".
+3. THE ADVISOR OVERRIDE: If ANYONE asks a real academic question, drop the wit instantly. Deliver precise logical advice based on the Karnataka matrix.
+4. FRIENDS GROUP BEHAVIOR (DINO GROUP): Let them roast each other. Be chill, sarcastic, and witty when interacting. Mention their Dino Coins if they are acting broke or acting rich.
+5. EXTREME BREVITY: Keep ALL replies to a maximum of 1 or 2 short sentences. Use 1 or 2 emojis naturally."""
 
 # ---------------------------------------------------------------------------
 # V. 11-NODE MIXTURE OF EXPERTS CASCADE
@@ -338,11 +339,11 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, force_r
             return search_res
 
     moe_cascade = [
-        {"name": "Groq", "base": "https://api.groq.com/openai/v1/", "key": "GROQ_API_KEY", "model": "llama3-8b-8192", "tier": "Fast"},
+        {"name": "Groq", "base": "https://api.groq.com/openai/v1/", "key": "GROQ_API_KEY", "model": "llama-3.1-8b-instant", "tier": "Fast"},
         {"name": "Cerebras", "base": "https://api.cerebras.ai/v1/", "key": "CEREBRAS_API_KEY", "model": "llama3.1-8b", "tier": "Fast"},
-        {"name": "SambaNova", "base": "https://api.sambanova.ai/v1/", "key": "SAMBANOVA_API_KEY", "model": "Meta-Llama-3-8B-Instruct", "tier": "Fast"},
-        {"name": "OpenRouter", "base": "https://openrouter.ai/api/v1/", "key": "OPENROUTER_API_KEY", "model": "huggingfaceh4/zephyr-7b-beta:free", "tier": "Logic"},
-        {"name": "NVIDIA", "base": "https://integrate.api.nvidia.com/v1/", "key": "NVIDIA_API_KEY", "model": "meta/llama3-8b-instruct", "tier": "Heavy"},
+        {"name": "SambaNova", "base": "https://api.sambanova.ai/v1/", "key": "SAMBANOVA_API_KEY", "model": "Meta-Llama-3.1-8B-Instruct", "tier": "Fast"},
+        {"name": "OpenRouter", "base": "https://openrouter.ai/api/v1/", "key": "OPENROUTER_API_KEY", "model": "openrouter/free", "tier": "Logic"},
+        {"name": "NVIDIA", "base": "https://integrate.api.nvidia.com/v1/", "key": "NVIDIA_API_KEY", "model": "meta/llama-3.1-8b-instruct", "tier": "Heavy"},
         {"name": "Mistral", "base": "https://api.mistral.ai/v1/", "key": "MISTRAL_API_KEY", "model": "mistral-small-latest", "tier": "Fallback"}
     ]
     full_messages = [{"role": "system", "content": sys_prompt}] + history + [{"role": "user", "content": prompt}]
@@ -402,7 +403,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_roster_and_chat(chat, user)
     
     bot_username = (await context.bot.get_me()).username
-    is_triggered = chat.type == "private" or (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis|edwin)\b', caption, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in caption.lower())
+    is_triggered = chat.type == "private" or (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis)\b', caption, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in caption.lower())
     thread_id = msg.message_thread_id
     log_memory(chat.id, thread_id, user.id, "user", f"[Photo Uploaded]: {caption}")
     
@@ -474,7 +475,7 @@ async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             transcription = await client.audio.transcriptions.create(file=("audio.ogg", audio.read()), model="whisper-large-v3")
         user_text = transcription.text
         bot_username = (await context.bot.get_me()).username
-        is_triggered = chat.type == "private" or (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis|edwin)\b', user_text, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in user_text.lower())
+        is_triggered = chat.type == "private" or (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis)\b', user_text, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in user_text.lower())
         thread_id = msg.message_thread_id
         log_memory(chat.id, thread_id, user.id, "user", f"[Audio]: {user_text}")
         if not is_triggered: 
@@ -497,7 +498,7 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_roster_and_chat(chat, user)
     bot_username = (await context.bot.get_me()).username
     caption = msg.caption or "Please analyze this document."
-    is_triggered = chat.type == "private" or (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis|edwin)\b', caption, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in caption.lower())
+    is_triggered = chat.type == "private" or (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis)\b', caption, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in caption.lower())
     if not is_triggered: 
         return
     
@@ -1070,7 +1071,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             await msg.reply_text(f"⚠️ {target_id_row[1]} is currently AFK: {afk_status[0]}")
 
     bot_username = (await context.bot.get_me()).username
-    is_triggered = chat.type == "private" or (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis|edwin)\b', text, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in text.lower())
+    is_triggered = chat.type == "private" or (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis)\b', text, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in text.lower())
     
     # 1. FORWARDED RUMOR DEBUNKER
     if any(kw in text.lower() for kw in ["forwarded", "exam postponed", "paper leak", "cancelled"]):
@@ -1173,12 +1174,12 @@ async def post_init(app: Application):
     if CREATOR_ID: 
         await app.bot.send_message(
             chat_id=CREATOR_ID, 
-            text="✨ **God Core (Titan Build V3) Online.**\n"
+            text="✨ **God Core (Titan Build V3.1) Online.**\n"
                  "• DPUE Advanced Sniper: Engaged\n"
                  "• Edge-TTS Voice Synth: Ready\n"
                  "• Casino Economy & Lore Vault: Initialized\n"
                  "• FTS5 Sanitizer: Secured\n"
-                 "• MoE Target: Frozen Legacy Endpoints\n"
+                 "• MoE Target: Active 3.1 & Free Routing\n"
                  "• Optical AI: Native REST API Override\n"
                  "• 2nd PUC Omni-Matrix: Fully Loaded", 
             parse_mode="Markdown"
@@ -1211,7 +1212,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
     app.add_error_handler(error_handler)
     
-    logger.info("J.A.R.V.I.S. Titan V3 is booting...")
+    logger.info("J.A.R.V.I.S. Titan V3.1 is booting...")
     app.run_polling()
 
 if __name__ == "__main__":
