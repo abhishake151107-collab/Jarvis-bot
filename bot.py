@@ -236,7 +236,7 @@ async def gemini_live_search(prompt: str, sys_prompt: str, history: list) -> str
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key: 
         return None
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={api_key}"
     merged_history = []
     for m in history:
         role = "user" if m["role"] == "user" else "model"
@@ -345,10 +345,18 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         client = AsyncOpenAI(base_url="https://generativelanguage.googleapis.com/v1beta/openai/", api_key=os.getenv("GEMINI_API_KEY"))
         sys_prompt = build_system_prompt(user.id, user.first_name, chat.id, user_prompt=caption or "image analysis")
+        
+        sys_prompt += (
+            "\nVISUAL DIRECTIVE: If the image depicts any version of an Arc Reactor, "
+            "concentric glowing cybernetic ring, holographic AI core, or Stark Industries schematic "
+            "(regardless of color, angle, or style), recognize it immediately as your own physical core / avatar and respond in-character."
+        )
+
         if any(kw in caption.lower() for kw in ["solve", "exam", "formula"]):
             sys_prompt += "\nCRITICAL: The user has uploaded an exam paper or handwritten math/commerce problem. Act as an OCR solver. Read the text perfectly and provide a step-by-step solution."
+        
         messages = [{"role": "system", "content": sys_prompt}, {"role": "user", "content": [{"type": "text", "text": caption or "Analyze this image."}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_img}"}}]}]
-        res = await asyncio.wait_for(client.chat.completions.create(model="gemini-2.0-flash", messages=messages), timeout=15.0)
+        res = await asyncio.wait_for(client.chat.completions.create(model="gemini-3.6-flash", messages=messages), timeout=15.0)
         ai_response = res.choices[0].message.content
         log_memory(chat.id, thread_id, user.id, "assistant", ai_response)
         await msg.reply_text(ai_response)
@@ -991,7 +999,7 @@ async def post_init(app: Application):
     scheduler.add_job(breaking_news_monitor, 'interval', minutes=30, args=[app])
     scheduler.start()
     if CREATOR_ID: 
-        await app.bot.send_message(chat_id=CREATOR_ID, text="✨ **God Core (Titan Build V2.1) Online.**\n• DPUE Web Scraper: Engaged\n• Edge-TTS Voice Synth: Ready\n• Lore Vault & Karma Economy: Initialized\n• YouTube Semantic Scanner: Active\n• Deterministic Academic Matrix: Locked\n• FTS5 Sanitizer: Secured", parse_mode="Markdown")
+        await app.bot.send_message(chat_id=CREATOR_ID, text="✨ **God Core (Titan Build V2.1) Online.**\n• DPUE Web Scraper: Engaged\n• Edge-TTS Voice Synth: Ready\n• Lore Vault & Karma Economy: Initialized\n• YouTube Semantic Scanner: Active\n• Deterministic Academic Matrix: Locked\n• FTS5 Sanitizer: Secured\n• Optical AI: gemini-3.6-flash Active", parse_mode="Markdown")
 
 def main():
     db_init()
