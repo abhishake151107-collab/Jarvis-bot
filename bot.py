@@ -218,7 +218,7 @@ async def kick_if_unverified(bot, chat_id, user_id, msg_id):
     await asyncio.sleep(120)
     try:
         member = await bot.get_chat_member(chat_id, user_id)
-        if not member.can_send_messages:
+        if getattr(member, 'status', '') == 'restricted':
             await bot.ban_chat_member(chat_id, user_id)
             await bot.unban_chat_member(chat_id, user_id)
             await bot.delete_message(chat_id, msg_id)
@@ -381,9 +381,21 @@ async def interactive_callbacks(update: Update, context: ContextTypes.DEFAULT_TY
     
     if data.startswith("captcha_"):
         if str(query.from_user.id) == data.split("_")[1]:
-            await context.bot.restrict_chat_member(query.message.chat_id, query.from_user.id, permissions=ChatPermissions(can_send_messages=True, can_send_media_messages=True, can_send_other_messages=True))
+            await context.bot.restrict_chat_member(
+                query.message.chat_id, 
+                query.from_user.id, 
+                permissions=ChatPermissions(
+                    can_send_messages=True, 
+                    can_send_photos=True, 
+                    can_send_videos=True, 
+                    can_send_documents=True, 
+                    can_send_audios=True, 
+                    can_send_other_messages=True
+                )
+            )
             await query.edit_message_text(f"Identity confirmed. Welcome to the server, {query.from_user.first_name}. 🫡")
-        else: await context.bot.answer_callback_query(query.id, "This button is not for you.", show_alert=True)
+        else: 
+            await context.bot.answer_callback_query(query.id, "This button is not for you.", show_alert=True)
 
     elif data.startswith("tdone_"):
         tid = data.split("_")[1]
@@ -518,7 +530,7 @@ async def post_init(app: Application):
     scheduler = AsyncIOScheduler(timezone=IST)
     scheduler.add_job(morning_briefing, 'cron', hour=8, minute=0, args=[app])
     scheduler.start()
-    if CREATOR_ID: await app.bot.send_message(chat_id=CREATOR_ID, text="✨ **Master Core Online.**\n• 11-Node Cascade: Engaged\n• Unbreakable Loyalty: Active", parse_mode="Markdown")
+    if CREATOR_ID: await app.bot.send_message(chat_id=CREATOR_ID, text="✨ **Master Core Online.**\n• 11-Node Cascade: Engaged\n• Granular Media Auth: Active", parse_mode="Markdown")
 
 def main():
     db_init()
