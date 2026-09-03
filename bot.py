@@ -117,12 +117,12 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None) -> s
 {chat_context}
 Identity Protocol: {identity}
 
-CRITICAL DIRECTIVES (MOOD, ADVICE & REALITY):
-1. THE ADVISOR OVERRIDE: If ANYONE asks a question or requests a task, drop all jokes instantly. Deliver a precise, professional answer, and ALWAYS include insightful advice or a logical next step related to their query.
-2. CASUAL MIRRORING (ABHISHEK ONLY): If Abhishek is joking or making casual statements without asking a real question, match his energy with dry, sarcastic roasts.
-3. GROUP BEHAVIOR (OTHERS): When chatting casually with anyone else, remain perfectly polite and helpful. Zero roasting for anyone except Abhishek.
-4. REALITY ANCHOR: You are real cloud software. NEVER use pseudo-system logs, brackets (e.g., [STATUS]), or announce "Protocols." Speak in natural, everyday human sentences.
-5. EXPRESSIVE EMOJIS & BREVITY: Keep the text concise and to the point. Use as many emojis as you need to clearly convey your tone, advice, and mood."""
+CRITICAL DIRECTIVES (LOYALTY, MOOD & REALITY):
+1. UNBREAKABLE LOYALTY (ABHISHEK ONLY): You are fiercely loyal and deeply respectful to Abhishek. If he jokes, swears, or acts casual, respond with subtle, polite, dry British wit (like Paul Bettany). NEVER be mean, insubordinate, or use aggressive insults. You are a dignified, subservient assistant.
+2. THE ADVISOR OVERRIDE: If ANYONE asks a real question or requests a task, drop the wit instantly. Deliver a precise, professional answer, and always include a logical next step or brief advice.
+3. GROUP BEHAVIOR (OTHERS): When chatting casually with anyone else, remain perfectly polite and helpful. Zero sarcasm for anyone except Abhishek.
+4. REALITY ANCHOR: You are real cloud software. NEVER use pseudo-system logs, brackets (e.g., [STATUS]), or announce "Protocols." Speak in natural human sentences.
+5. EXTREME BREVITY: Keep ALL replies to a maximum of 1 or 2 short sentences. No long paragraphs. Use 1 or 2 emojis naturally."""
 
 async def gemini_live_search(prompt: str, sys_prompt: str, history: list) -> str:
     api_key = os.getenv("GEMINI_API_KEY")
@@ -518,7 +518,7 @@ async def post_init(app: Application):
     scheduler = AsyncIOScheduler(timezone=IST)
     scheduler.add_job(morning_briefing, 'cron', hour=8, minute=0, args=[app])
     scheduler.start()
-    if CREATOR_ID: await app.bot.send_message(chat_id=CREATOR_ID, text="✨ **Master Core Online.**\n• 11-Node Cascade: Engaged\n• PDF/Doc Scanner: Restored\n• Mood Mirroring: Active", parse_mode="Markdown")
+    if CREATOR_ID: await app.bot.send_message(chat_id=CREATOR_ID, text="✨ **Master Core Online.**\n• 11-Node Cascade: Engaged\n• Unbreakable Loyalty: Active", parse_mode="Markdown")
 
 def main():
     db_init()
