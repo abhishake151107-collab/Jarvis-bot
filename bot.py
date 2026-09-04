@@ -334,19 +334,17 @@ async def analyze_subtext(text: str) -> str:
         if not api_key: 
             return "NORMAL"
             
-        client = AsyncOpenAI(base_url="https://api.groq.com/openai/v1/", api_key=api_key)
+        # Using a reliable fallback client with 30s timeouts
+        client = AsyncOpenAI(base_url="https://api.groq.com/openai/v1/", api_key=api_key, timeout=30.0)
         
-        res = await asyncio.wait_for(
-            client.chat.completions.create(
-                model="llama3-8b-8192", 
-                messages=[
-                    {"role": "system", "content": sys_prompt}, 
-                    {"role": "user", "content": text}
-                ], 
-                max_tokens=10, 
-                temperature=0.1
-            ), 
-            timeout=10.0
+        res = await client.chat.completions.create(
+            model="mixtral-8x7b-32768", 
+            messages=[
+                {"role": "system", "content": sys_prompt}, 
+                {"role": "user", "content": text}
+            ], 
+            max_tokens=10, 
+            temperature=0.1
         )
         return res.choices[0].message.content.strip().upper()
         
@@ -387,7 +385,7 @@ CRITICAL DIRECTIVES:
 5. EXTREME BREVITY: Keep ALL replies to a maximum of 1 or 2 short sentences. Use 1 or 2 emojis naturally."""
 
 # ---------------------------------------------------------------------------
-# V. 11-NODE MIXTURE OF EXPERTS CASCADE (V4.2 - ENHANCED TIMEOUTS)
+# V. 11-NODE MIXTURE OF EXPERTS CASCADE (V4.3 - THE IMMORTAL FALLBACK)
 # ---------------------------------------------------------------------------
 async def gemini_live_search(prompt: str, sys_prompt: str, history: list) -> str:
     api_key = os.getenv("GEMINI_API_KEY")
@@ -414,7 +412,8 @@ async def gemini_live_search(prompt: str, sys_prompt: str, history: list) -> str
     
     async with httpx.AsyncClient() as client:
         try:
-            resp = await client.post(url, json=payload, timeout=20.0)
+            # 30-Second Timeout for stability
+            resp = await client.post(url, json=payload, timeout=30.0)
             if resp.status_code == 200: 
                 return resp.json()['candidates'][0]['content']['parts'][0]['text']
             return None
@@ -422,7 +421,8 @@ async def gemini_live_search(prompt: str, sys_prompt: str, history: list) -> str
             logger.error(f"Gemini live search failed: {e}")
             return None
 
-async def generate_response(prompt: str, history: list, sys_prompt: str, force_route=None) -> str:
+# Passed user_id and user_name directly into the function to customize the crash message
+async def generate_response(prompt: str, history: list, sys_prompt: str, user_id: int, user_name: str, force_route=None) -> str:
     current_time = time.time()
     needs_search = any(kw in prompt.lower() for kw in ["news", "weather", "price", "stock", "crypto", "latest", "today", "who won", "score"])
     
@@ -431,12 +431,13 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, force_r
         if search_res: 
             return search_res
 
+    # V4.3 MoE Cascade: Locked models, 30s timeouts, and guaranteed endpoints
     moe_cascade = [
         {"name": "Pollinations", "base": "https://text.pollinations.ai/openai", "key": "BOT_TOKEN", "model": "openai", "tier": "Infinite-Safety"},
         {"name": "OpenRouter", "base": "https://openrouter.ai/api/v1/", "key": "OPENROUTER_API_KEY", "model": "openrouter/free", "tier": "Auto-Router"},
         {"name": "GitHub Models", "base": "https://models.inference.ai.azure.com", "key": "GITHUB_TOKEN", "model": "gpt-4o-mini", "tier": "Fast"},
-        {"name": "Groq", "base": "https://api.groq.com/openai/v1/", "key": "GROQ_API_KEY", "model": "llama3-8b-8192", "tier": "Bulletproof"},
-        {"name": "SambaNova", "base": "https://api.sambanova.ai/v1/", "key": "SAMBANOVA_API_KEY", "model": "Meta-Llama-3.1-8B-Instruct", "tier": "Bulletproof"},
+        {"name": "Groq", "base": "https://api.groq.com/openai/v1/", "key": "GROQ_API_KEY", "model": "mixtral-8x7b-32768", "tier": "Bulletproof"},
+        {"name": "SambaNova", "base": "https://api.sambanova.ai/v1/", "key": "SAMBANOVA_API_KEY", "model": "Meta-Llama-3.2-1B-Instruct", "tier": "Bulletproof"},
         {"name": "HuggingFace", "base": "https://api-inference.huggingface.co/v1/", "key": "HUGGINGFACE_API_KEY", "model": "meta-llama/Meta-Llama-3-8B-Instruct", "tier": "Fallback"}
     ]
     
@@ -448,15 +449,13 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, force_r
             continue
             
         try:
-            client = AsyncOpenAI(base_url=node["base"], api_key=api_key)
-            res = await asyncio.wait_for(
-                client.chat.completions.create(
-                    model=node["model"], 
-                    messages=full_messages, 
-                    temperature=0.7, 
-                    max_tokens=800
-                ), 
-                timeout=20.0
+            # 30-Second global timeout for OpenRouter/GitHub to prevent Render connection drops
+            client = AsyncOpenAI(base_url=node["base"], api_key=api_key, timeout=30.0)
+            res = await client.chat.completions.create(
+                model=node["model"], 
+                messages=full_messages, 
+                temperature=0.7, 
+                max_tokens=800
             )
             return res.choices[0].message.content
             
@@ -494,7 +493,13 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, force_r
     if fb: 
         return fb
     
-    return "Sorry, I need to sleep. Bye. 💤"
+    # -----------------------------------------------------------------------
+    # THE CUSTOM FALLBACK / CRASH PROTOCOL (REPLACES THE SLEEP MESSAGE)
+    # -----------------------------------------------------------------------
+    if user_id == CREATOR_ID:
+        return "Sorry Sir, I am facing critical technical issues. All nodes are offline."
+    else:
+        return f"Sorry {user_name}, i am facing some technical issues i need to make it correct sorry bye"
 
 # ---------------------------------------------------------------------------
 # VI. SENSORY CORE (NATIVE REST VISION) & MEDIA RECONNAISSANCE
@@ -576,7 +581,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
         
         async with httpx.AsyncClient() as client:
-            resp = await client.post(url, json=payload, timeout=20.0)
+            resp = await client.post(url, json=payload, timeout=30.0)
             
             if resp.status_code == 200:
                 ai_response = resp.json()['candidates'][0]['content']['parts'][0]['text']
@@ -610,7 +615,7 @@ async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         from groq import AsyncGroq
-        client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
+        client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"), timeout=30.0)
         
         with open(file_path, "rb") as audio:
             transcription = await client.audio.transcriptions.create(
@@ -638,7 +643,9 @@ async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_chat_action(chat_id=chat.id, action="typing")
         
         sys_prompt = build_system_prompt(user.id, user.first_name, chat.id, user_prompt=user_text)
-        response = await generate_response(user_text, get_chat_history(chat.id, thread_id), sys_prompt)
+        
+        # Passes the user_id and user_name to trigger the custom error fallback message
+        response = await generate_response(user_text, get_chat_history(chat.id, thread_id), sys_prompt, user.id, user.first_name)
         
         log_memory(chat.id, thread_id, user.id, "assistant", response)
         await msg.reply_text(f"🎙️ *(Transcribed)*: {user_text}\n\n{response}", parse_mode="Markdown")
@@ -706,7 +713,9 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log_memory(chat.id, thread_id, user.id, "user", f"[File Upload]: {doc.file_name}")
         
         sys_prompt = build_system_prompt(user.id, user.first_name, chat.id, user_prompt=caption)
-        ai_response = await generate_response(user_prompt, get_chat_history(chat.id, thread_id), sys_prompt)
+        
+        # Passes the user_id and user_name for the fallback protocol
+        ai_response = await generate_response(user_prompt, get_chat_history(chat.id, thread_id), sys_prompt, user.id, user.first_name)
         
         log_memory(chat.id, thread_id, user.id, "assistant", ai_response)
         await msg.reply_text(ai_response)
@@ -999,7 +1008,7 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📊 **System Diagnostics**\n"
         f"• Memory Nodes: {mem}\n"
         f"• Tracked Users: {users}\n"
-        f"• API Cascade: Unkillable Nodes Prioritized"
+        f"• API Cascade: Fallback Override Priority Locked"
     )
     await update.message.reply_text(diag_text, parse_mode="Markdown")
 
@@ -1025,7 +1034,7 @@ async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hud_text = (
         "```\n"
         "[ STARK INDUSTRIES TERMINAL ]\n"
-        "System: J.A.R.V.I.S. Titan Core V4.2\n"
+        "System: J.A.R.V.I.S. Titan Core V4.3\n"
         "Status: Online\n"
         "Select module:\n"
         "```"
@@ -1059,7 +1068,7 @@ async def tldr_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sys_prompt = "You are J.A.R.V.I.S. Read the following chat log and provide a sarcastic, 3-bullet-point summary of what they are arguing about."
     
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-    response = await generate_response(f"Summarize this:\n{chat_text}", [], sys_prompt, force_route="search")
+    response = await generate_response(f"Summarize this:\n{chat_text}", [], sys_prompt, update.effective_user.id, update.effective_user.first_name, force_route="search")
     await update.message.reply_text(response)
 
 async def roast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1073,7 +1082,7 @@ async def roast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sys_prompt = "You are J.A.R.V.I.S. Generate a witty, clever roast for the person named. Maximum 2 sentences."
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     
-    response = await generate_response(f"Roast {target}", [], sys_prompt)
+    response = await generate_response(f"Roast {target}", [], sys_prompt, update.effective_user.id, update.effective_user.first_name)
     await update.message.reply_text(response)
 
 async def shutup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1551,7 +1560,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     
         transcript = await extract_youtube_transcript(text)
         if transcript:
-            summary = await generate_response(f"Summarize this YouTube video transcript in 3 bullet points: {transcript}", [], "You are J.A.R.V.I.S. Provide a cynical 3-bullet summary.")
+            summary = await generate_response(f"Summarize this YouTube video transcript in 3 bullet points: {transcript}", [], "You are J.A.R.V.I.S. Provide a cynical 3-bullet summary.", user.id, user.first_name)
             await msg.reply_text(f"📺 **Media Intercepted. Summary:**\n\n{summary}")
             return
         
@@ -1602,7 +1611,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
         sys_prompt += "\nCRITICAL OVERRIDE: The user is hostile or aggressive. De-escalate the situation using dry humor, logic, or a calm redirection. Do not insult them back."
 
-    ai_response = await generate_response(text, get_chat_history(chat.id, thread_id), sys_prompt)
+    ai_response = await generate_response(text, get_chat_history(chat.id, thread_id), sys_prompt, user.id, user.first_name)
     log_memory(chat.id, thread_id, user.id, "assistant", ai_response)
     await msg.reply_text(ai_response)
 
@@ -1640,13 +1649,11 @@ async def post_init(app: Application):
     
     if CREATOR_ID: 
         boot_msg = (
-            "✨ **God Core (Titan Build V4.2) Online.**\n"
-            "• Hardcoded /news, /morning, /night overrides added.\n"
-            "• Cascade Matrix: Unbreakable Routing Locked\n"
+            "✨ **God Core (Titan Build V4.3) Online.**\n"
+            "• Custom Embarrassment Fallback Activated\n"
+            "• Cascade Matrix: 30-Second API Timeouts Applied\n"
             "• FTS5 Sanitizer: Secured\n"
-            "• MoE Target: Bulletproof 8B & 20s Timeouts\n"
-            "• Optical AI: Gemini 1.5-Flash Stable Override\n"
-            "• Codebase format: Fully Expanded PEP-8"
+            "• MoE Target: Mixtral & 1B Fallbacks Reinstated"
         )
         try:
             await app.bot.send_message(chat_id=CREATOR_ID, text=boot_msg, parse_mode="Markdown")
@@ -1657,7 +1664,6 @@ def main():
     db_init()
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
     
-    # Expanding Command Registrations fully
     app.add_handler(CommandHandler("speak", speak_cmd))
     app.add_handler(CommandHandler("task", add_task))
     app.add_handler(CommandHandler("tasks", list_tasks))
@@ -1699,7 +1705,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
     app.add_error_handler(error_handler)
     
-    logger.info("J.A.R.V.I.S. Titan V4.2 is booting...")
+    logger.info("J.A.R.V.I.S. Titan V4.3 is booting...")
     app.run_polling()
 
 if __name__ == "__main__":
