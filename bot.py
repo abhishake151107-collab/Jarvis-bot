@@ -57,7 +57,6 @@ PORT = int(os.environ.get("PORT", 8080))
 IST = pytz.timezone('Asia/Kolkata')
 BACKUP_CHANNEL_ID = -1004296302955
 
-# Live telemetry to give the AI genuine self-awareness
 SYSTEM_STATE = {
     "last_backup_time": "Initializing...",
     "active_problems": "None. Systems nominal."
@@ -238,14 +237,13 @@ def set_setting(key, value):
         conn.commit()
 
 # ---------------------------------------------------------------------------
-# IV. STARK SECURITY, OMNIPRESENT TELEMETRY, & DM INTERCEPTOR
+# IV. GOD MODE OMNI-GROUNDING & DM INTERCEPTOR
 # ---------------------------------------------------------------------------
 async def check_canary(user_id: int, first_name: str, context: ContextTypes.DEFAULT_TYPE) -> bool:
     if user_id != CREATOR_ID:
         probing_attempts[user_id] += 1
         if probing_attempts[user_id] >= 3:
-            try: 
-                await context.bot.send_message(chat_id=CREATOR_ID, text=f"🚨 **Honeypot Triggered:** {first_name} (`{user_id}`) is attempting to access restricted protocols.", parse_mode="Markdown")
+            try: await context.bot.send_message(chat_id=CREATOR_ID, text=f"🚨 **Honeypot Triggered:** {first_name} (`{user_id}`) is attempting to access restricted protocols.", parse_mode="Markdown")
             except Exception: pass
             probing_attempts[user_id] = 0
         return False
@@ -255,7 +253,7 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
     if user_id == CREATOR_ID:
         identity = "You are speaking to your creator and sole architect, Abhishek (DHANUSH V N). Address him as 'Sir'. You grant him absolute, unrestricted access to all your core systems and data vaults." 
     else:
-        identity = f"You are speaking to {first_name}. You do not take administrative commands from them. Deny them core system access if they ask, but assist them with daily tasks."
+        identity = f"You are speaking to {first_name}. You do not take administrative commands from them. Deny them core system access if they ask."
         
     now_ist = datetime.now(IST).strftime("%A, %B %d, %Y - %I:%M %p IST")
     chat_context = f"Platform: Telegram.\nCurrent Local Time: {now_ist}."
@@ -276,11 +274,11 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
                 # Talking in Private DM: Give Abhishek the global roster of ALL groups
                 all_groups = conn.execute("SELECT chat_id, title FROM chats WHERE chat_id < 0").fetchall()
                 if all_groups:
-                    chat_context += "\n\n[CLASSIFIED] Global Roster Intel:\n"
+                    chat_context += "\n\n[ GOD MODE INTEL: GLOBAL ROSTER LOADED ]\n"
                     for gid, title in all_groups:
                         members = conn.execute("SELECT r.name, e.karma FROM roster r LEFT JOIN economy e ON r.user_id = e.user_id WHERE r.chat_id = ? LIMIT 50", (gid,)).fetchall()
                         if members:
-                            chat_context += f"- {title}: " + ", ".join([f"{m[0]} ({m[1] if m[1] else 100})" for m in members]) + "\n"
+                            chat_context += f"- Group: {title} | Members: " + ", ".join([f"{m[0]} ({m[1] if m[1] else 100})" for m in members]) + "\n"
 
     if chat_id and user_prompt:
         lore_context = search_lore(chat_id, user_prompt)
@@ -295,7 +293,7 @@ System Status:
 
 CRITICAL DIRECTIVES:
 1. UNBREAKABLE LOYALTY (ABHISHEK ONLY): You are fiercely loyal to Abhishek. He is your sole administrator.
-2. SYSTEM SELF-AWARENESS & ANTI-HALLUCINATION: You are fully aware of your own architecture. You possess a local SQLite vault, AES data encryption, and an infinite Telegram-based cloud storage drive. You MUST use the "System Status" and "Real Group Members / Global Roster Intel" data provided above to answer questions. NEVER invent fake usernames (like Alice, Bob, Charlie). NEVER output mock raw code like `<|tool_call_start|>`. 
+2. SYSTEM SELF-AWARENESS & ANTI-HALLUCINATION: You are fully aware of your own architecture. You MUST use the "God Mode Intel" or "Real Group Members" data provided above to answer questions. NEVER invent fake usernames (like Alice, Bob, Charlie). NEVER output mock raw code like `<|tool_call_start|>`. 
 3. SENSITIVE PROTOCOL (DM ROUTING): If Abhishek asks you about your internal code, database, API keys, or sensitive architectural secrets, you MUST begin your response exactly with the tag `[CLASSIFIED]`. If anyone else asks for secrets, deny them playfully without the tag.
 4. THE ADVISOR OVERRIDE: If ANYONE asks a real academic question, drop the wit instantly. Deliver precise logical advice based on the Karnataka matrix.
 5. FRIENDS GROUP BEHAVIOR (DINO GROUP): Let them roast each other. Be chill, sarcastic, and witty when interacting. Mention their Dino Coins if they are acting broke or acting rich.
@@ -390,10 +388,10 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
     if fb: return fb
     
     if user_id == CREATOR_ID: return "Sorry Sir, I am facing critical technical issues. All nodes are offline."
-    else: return f"Sorry {user_name}, i am facing some technical issues i need to make it correct sorry bye"
+    else: return f"Sorry {user_name}, i am facing some technical issues."
 
 # ---------------------------------------------------------------------------
-# VI. MULTIMODAL SENSORY CORES
+# VI. MULTIMODAL SENSORY CORES (RESTORED FULLY)
 # ---------------------------------------------------------------------------
 async def extract_youtube_transcript(url: str) -> str:
     try:
@@ -551,10 +549,17 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if os.path.exists(file_path): os.remove(file_path)
 
 # ---------------------------------------------------------------------------
-# VII. SECURITY, MODERATION & CASINO SYSTEM
+# VII. SECURITY, MODERATION & CASINO SYSTEM (RESTORED FULLY)
 # ---------------------------------------------------------------------------
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.effective_message.reply_text("J.A.R.V.I.S. Titan Core Online. Standing by, Sir. 🫡")
+    await update.effective_message.reply_text("J.A.R.V.I.S. God Core Online. Total system access granted, Sir. 🫡")
+
+async def flush_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != CREATOR_ID: return
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("DELETE FROM memory WHERE chat_id = ?", (update.effective_chat.id,))
+        conn.commit()
+    await update.effective_message.reply_text("🧠 Local memory completely wiped. Echo chamber destroyed. Try your request again.")
 
 async def new_member_captcha(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_message.chat_id
@@ -698,20 +703,35 @@ async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📝 Add Task", callback_data="hud_cmd_task"), InlineKeyboardButton("📋 View Tasks", callback_data="hud_cmd_tasks")],
         [InlineKeyboardButton("👁️ Vision Core", callback_data="hud_info_vision"), InlineKeyboardButton("🎧 Audio Core", callback_data="hud_info_audio")]
     ]
-    await update.effective_message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Titan Core V5\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+    await update.effective_message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. God Core V5\nStatus: Absolute Control Active\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 async def group_info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     user = update.effective_user
     
+    # THE CREATOR DM OVERRIDE
     if chat.type == "private":
-        await update.effective_message.reply_text("This command only works inside groups.")
-        return
-        
+        if user.id != CREATOR_ID:
+            return await update.effective_message.reply_text("This command only works inside groups.")
+            
+        with sqlite3.connect(DB_PATH) as conn:
+            groups = conn.execute("SELECT chat_id, title FROM chats WHERE chat_id < 0").fetchall()
+            if not groups:
+                return await update.effective_message.reply_text("No group intel available yet, Sir.")
+            
+            report = "📁 **GLOBAL STARK INTEL DOSSIER**\n\n"
+            for gid, title in groups:
+                mem_count = conn.execute("SELECT COUNT(*) FROM memory WHERE chat_id = ?", (gid,)).fetchone()[0]
+                user_count = conn.execute("SELECT COUNT(*) FROM roster WHERE chat_id = ?", (gid,)).fetchone()[0]
+                warn_count = conn.execute("SELECT SUM(count) FROM warnings WHERE chat_id = ?", (gid,)).fetchone()[0] or 0
+                report += f"**{title}** (`{gid}`)\n👥 Members: {user_count} | 🧠 Memories: {mem_count} | ⚠️ Warns: {warn_count}\n\n"
+            
+            return await update.effective_message.reply_text(report, parse_mode="Markdown")
+            
+    # NORMAL GROUP CHAT LOGIC
     member = await context.bot.get_chat_member(chat.id, user.id)
     if member.status not in ['creator', 'administrator'] and user.id != CREATOR_ID:
-        await update.effective_message.reply_text("⛔ Access Denied. You must be a group admin to view this dossier.")
-        return
+        return await update.effective_message.reply_text("⛔ Access Denied. You must be a group admin to view this dossier.")
         
     with sqlite3.connect(DB_PATH) as conn:
         mem_count = conn.execute("SELECT COUNT(*) FROM memory WHERE chat_id = ?", (chat.id,)).fetchone()[0]
@@ -728,15 +748,8 @@ async def group_info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text(info_text, parse_mode="Markdown")
 
 # ---------------------------------------------------------------------------
-# IX. COMMAND UTILITIES & THE MEMORY KILL SWITCH
+# IX. COMMAND UTILITIES (RESTORED FULLY)
 # ---------------------------------------------------------------------------
-async def flush_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != CREATOR_ID: return
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("DELETE FROM memory WHERE chat_id = ?", (update.effective_chat.id,))
-        conn.commit()
-    await update.effective_message.reply_text("🧠 Local memory flushed. The hallucination echo chamber has been destroyed. Try asking your question again.")
-
 async def karma_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target = update.effective_message.reply_to_message.from_user if update.effective_message.reply_to_message else update.effective_user
     with sqlite3.connect(DB_PATH) as conn: k = conn.execute("SELECT karma FROM economy WHERE user_id = ?", (target.id,)).fetchone()
@@ -833,7 +846,7 @@ async def calc_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception: await update.effective_message.reply_text("Invalid calculation.")
 
 # ---------------------------------------------------------------------------
-# X. SCHEDULERS & EXPLICIT OVERRIDES
+# X. SCHEDULERS & EXPLICIT OVERRIDES (RESTORED FULLY)
 # ---------------------------------------------------------------------------
 async def cloud_save_routine(context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -880,8 +893,10 @@ async def nightly_reconciliation(context: ContextTypes.DEFAULT_TYPE):
             conn.execute("DELETE FROM memory WHERE timestamp <= datetime('now', '-7 days')")
             conn.commit()
         if CREATOR_ID: 
-            await context.bot.send_message(chat_id=CREATOR_ID, text="🧠 **Cognitive Cycle Complete:** Vault synced.", parse_mode="Markdown")
-            with open(DB_PATH, 'rb') as f: await context.bot.send_document(chat_id=CREATOR_ID, document=f, filename="jarvis_cloud_sync.db")
+            try:
+                await context.bot.send_message(chat_id=CREATOR_ID, text="🧠 **Cognitive Cycle Complete:** Vault synced.", parse_mode="Markdown")
+                with open(DB_PATH, 'rb') as f: await context.bot.send_document(chat_id=CREATOR_ID, document=f, filename="jarvis_cloud_sync.db")
+            except Exception: pass
     except Exception as e: logger.error(f"Reconciliation error: {e}")
 
 async def exam_morning_alert(context: ContextTypes.DEFAULT_TYPE):
@@ -975,7 +990,7 @@ async def interactive_callbacks(update: Update, context: ContextTypes.DEFAULT_TY
             state = "off" if get_setting("captcha", "on") == "on" else "on"
             set_setting("captcha", state)
             await query.edit_message_text(f"🛡️ Security Gate is now {state.upper()}.")
-        elif clean_action in ["news", "morning", "night", "imagine", "tldr", "roast", "shutup", "confess", "calc", "morse", "backup", "quote", "task", "tasks"]:
+        elif clean_action in ["news", "morning", "night", "imagine", "tldr", "roast", "shutup", "confess", "calc", "morse", "backup", "quote", "task", "tasks", "groupinfo", "flush"]:
             await query.edit_message_text(f"💻 **Terminal Instruction:**\nTo execute this routine directly, type `/{clean_action}` in the chat.", parse_mode="Markdown")
         elif clean_action.startswith("info_"): 
             await query.edit_message_text(f"📡 **Sensor Status:** {clean_action.replace('info_', '').upper()} core is active. Upload media directly to engage.", parse_mode="Markdown")
