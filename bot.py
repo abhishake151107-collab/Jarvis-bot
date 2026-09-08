@@ -90,7 +90,7 @@ circuit_breaker = {}
 probing_attempts = defaultdict(int)
 
 # ---------------------------------------------------------------------------
-# II. ADVANCED KARNATAKA 2ND PUC DETERMINISTIC MATRIX
+# II. DETERMINISTIC ACADEMIC MATRIX
 # ---------------------------------------------------------------------------
 EXAM_SCHEDULE_COMMERCE_ARTS = {
     "2026-09-30": "Languages (Kannada / Hindi / Sanskrit / Urdu / Tamil / Telugu / French / Arabic)",
@@ -155,7 +155,7 @@ PUC_ACADEMIC_MATRIX = {
 }
 
 # ---------------------------------------------------------------------------
-# III. SQLITE VAULT, DOSSIERS, & ADVANCED ECONOMY
+# III. DATABASE VAULT & ECONOMY
 # ---------------------------------------------------------------------------
 def db_init():
     with sqlite3.connect(DB_PATH) as conn:
@@ -270,7 +270,8 @@ CRITICAL DIRECTIVES:
 6. EXTREME BREVITY: Keep ALL replies to a maximum of 1 or 2 short sentences. Use 1 or 2 emojis naturally."""
 
 async def route_response(msg, ai_response: str, user, chat, context) -> str:
-    if not ai_response: return "Connection anomaly detected."
+    if not ai_response: 
+        return "Connection anomaly detected."
     
     if "[CLASSIFIED]" in ai_response:
         clean_response = ai_response.replace("[CLASSIFIED]", "").strip()
@@ -344,7 +345,7 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
             res = await client.chat.completions.create(model=node["model"], messages=full_messages, temperature=0.7, max_tokens=800)
             return res.choices[0].message.content
             
-        except Exception as e:
+        except Exception:
             circuit_breaker[node['name']] = current_time + 60 
             if CREATOR_ID:
                 try: asyncio.create_task(httpx.AsyncClient().post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id": CREATOR_ID, "text": f"⚠️ **Cascade Shift:** `{node['name']}` failed.\n_Rerouting traffic._", "parse_mode": "Markdown"}))
@@ -358,7 +359,7 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
     else: return f"Sorry {user_name}, i am facing some technical issues i need to make it correct sorry bye"
 
 # ---------------------------------------------------------------------------
-# VI. SENSORY CORE (NATIVE REST VISION & VOICE SYNTHESIS)
+# VI. SENSORY CORE (VISION, VOICE, & DOCUMENTS)
 # ---------------------------------------------------------------------------
 async def extract_youtube_transcript(url: str) -> str:
     try:
@@ -466,7 +467,7 @@ async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             with open(voice_file, "rb") as f:
                 await msg.reply_voice(voice=f, caption=f"🎙️ *(Transcribed)*: _{user_text}_\n\n{final_text}", parse_mode="Markdown")
             os.remove(voice_file)
-        except Exception as tts_e:
+        except Exception:
             await msg.reply_text(f"🎙️ *(Transcribed)*: _{user_text}_\n\n{final_text}\n\n_(Voice synth failed)_", parse_mode="Markdown")
             
     except Exception as e: logger.error(f"Audio handler failed: {e}")
@@ -691,7 +692,7 @@ async def group_info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text(info_text, parse_mode="Markdown")
 
 # ---------------------------------------------------------------------------
-# IX. TROLLING, ECONOMY, & UTILITIES
+# IX. UTILITIES & ECONOMY COMMANDS
 # ---------------------------------------------------------------------------
 async def karma_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target = update.effective_message.reply_to_message.from_user if update.effective_message.reply_to_message else update.effective_user
@@ -789,7 +790,7 @@ async def calc_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception: await update.effective_message.reply_text("Invalid calculation.")
 
 # ---------------------------------------------------------------------------
-# X. ADVANCED SCHEDULERS & EXPLICIT MANUAL OVERRIDES
+# X. SCHEDULERS & EXPLICIT OVERRIDES
 # ---------------------------------------------------------------------------
 async def cloud_save_routine(context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -908,7 +909,7 @@ async def news_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text(f"📰 **Direct Live Briefing:**\n\n{news_text}", parse_mode="Markdown")
 
 # ---------------------------------------------------------------------------
-# XI. MESSAGE HANDLERS & VISUAL INTERCEPTOR
+# XI. MESSAGE HANDLERS & CALLBACKS
 # ---------------------------------------------------------------------------
 async def interactive_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1019,7 +1020,9 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.reply_text(final_text)
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    if context.error and "Conflict: terminated by other getUpdates request" in str(context.error): return
+    if context.error and "Conflict: terminated by other getUpdates request" in str(context.error): 
+        logger.warning("Conflict detected: Another instance is polling with this token.")
+        return
     logger.error("Exception handled:", exc_info=context.error)
     if CREATOR_ID:
         try: await context.bot.send_message(chat_id=CREATOR_ID, text=f"⚠️ **Shadow Log Error**\n```python\n{''.join(traceback.format_exception(None, context.error, context.error.__traceback__))[:4000]}\n```", parse_mode="Markdown")
@@ -1114,7 +1117,7 @@ def main():
     app.add_error_handler(error_handler)
     
     logger.info("J.A.R.V.I.S. Titan V5 is booting...")
-    app.run_polling()
+    app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
