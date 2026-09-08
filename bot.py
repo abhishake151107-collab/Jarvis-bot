@@ -12,9 +12,12 @@ import httpx
 import traceback
 import threading
 import urllib.parse
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from datetime import datetime, timedelta
 from collections import defaultdict
+
+# --- NEW WEB SERVER IMPORTS ---
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 
 import pytz
 import pdfplumber
@@ -41,7 +44,7 @@ from telegram.ext import (
 )
 
 # ---------------------------------------------------------------------------
-# I. CORE CONFIGURATION & KEEP-ALIVE
+# I. CORE CONFIGURATION & KEEP-ALIVE (UPGRADED TO FLASK WEB API)
 # ---------------------------------------------------------------------------
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", 
@@ -56,22 +59,47 @@ PORT = int(os.environ.get("PORT", 8080))
 IST = pytz.timezone('Asia/Kolkata')
 BACKUP_CHANNEL_ID = -1004296302955
 
-class DummyHandler(BaseHTTPRequestHandler):
-    def do_HEAD(self): 
-        self.send_response(200)
-        self.end_headers()
-        
-    def do_GET(self): 
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"J.A.R.V.I.S. Titan Core Active.")
+# --- FLASK WEB SERVER CONFIGURATION ---
+flask_app = Flask(__name__)
+CORS(flask_app)
 
-def start_keep_alive():
-    server = HTTPServer(('0.0.0.0', PORT), DummyHandler)
-    server.serve_forever()
+@flask_app.route('/')
+def health_check():
+    return "J.A.R.V.I.S. Titan Core Web Interface Active."
 
-threading.Thread(target=start_keep_alive, daemon=True).start()
+@flask_app.route('/api/chat', methods=['POST'])
+def api_chat():
+    data = request.json
+    user_input = data.get('command', '')
+    action = data.get('action', 'chat')
+    
+    response_text = ""
 
+    # Execute Mini App Tactical Macros
+    if action == "OVERRIDE":
+        response_text = "🚨 VERONICA PROTOCOL ENGAGED: Security lockdown logic triggered."
+    elif action == "SYS_TOOLS":
+        response_text = "de1984 Package Manager accessed. Ready for system commands."
+    elif action == "COMMS":
+        response_text = "Global Broadcast channel open. Awaiting transmission data."
+    elif action == "PURGE":
+        response_text = "⚠️ RED ALERT EXECUTION: Purging temporary memory caches."
+    else:
+        # Standard Terminal Chat Processing
+        if "creator" in user_input.lower():
+            response_text = "I am Jarvis created by Abhishek and also know as DHANUSH V N"
+        else:
+            response_text = f"Command received: {user_input}. Neural routing active..."
+            
+    return jsonify({"status": "success", "response": response_text})
+
+def start_web_server():
+    flask_app.run(host='0.0.0.0', port=PORT, use_reloader=False)
+
+# Start Flask in the background to handle Mini App requests and keep Render awake
+threading.Thread(target=start_web_server, daemon=True).start()
+
+# --- SECURITY CYPHER ---
 cipher_suite = Fernet(ENCRYPTION_KEY.encode())
 
 def encrypt_data(text: str) -> str: 
@@ -1076,6 +1104,7 @@ async def post_init(app: Application):
         boot_msg = (
             "✨ **God Core (Titan Build V5) Online.**\n"
             "• Infinite Cloud Save: Armed (-1004296302955)\n"
+            "• Web UI Telemetry API: Active\n"
             "• Classified DM Router: Active\n"
             "• Encryption Fallback: Stabilized\n"
             "• Edit & Visual Interceptors: Active"
