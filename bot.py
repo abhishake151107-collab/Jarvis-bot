@@ -30,6 +30,7 @@ from telegram import (
     InlineKeyboardMarkup, 
     ChatPermissions
 )
+from telegram.error import TelegramError, RetryAfter
 from telegram.ext import (
     ApplicationBuilder, 
     CommandHandler, 
@@ -67,8 +68,11 @@ class DummyHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"J.A.R.V.I.S. Titan Core Active.")
 
 def start_keep_alive():
-    server = HTTPServer(('0.0.0.0', PORT), DummyHandler)
-    server.serve_forever()
+    try:
+        server = HTTPServer(('0.0.0.0', PORT), DummyHandler)
+        server.serve_forever()
+    except Exception as e:
+        logger.error(f"Keep-alive server error: {e}")
 
 threading.Thread(target=start_keep_alive, daemon=True).start()
 
@@ -155,7 +159,7 @@ PUC_ACADEMIC_MATRIX = {
 }
 
 # ---------------------------------------------------------------------------
-# III. DATABASE VAULT & ECONOMY
+# III. DATABASE VAULT & ROBUST ASYNC LOGGING
 # ---------------------------------------------------------------------------
 def db_init():
     with sqlite3.connect(DB_PATH) as conn:
@@ -228,13 +232,14 @@ def set_setting(key, value):
         conn.commit()
 
 # ---------------------------------------------------------------------------
-# IV. STARK SECURITY: SYSTEM DOSSIER & ROUTING
+# IV. STARK SECURITY & CLASSIFIED DM INTERCEPTOR
 # ---------------------------------------------------------------------------
 async def check_canary(user_id: int, first_name: str, context: ContextTypes.DEFAULT_TYPE) -> bool:
     if user_id != CREATOR_ID:
         probing_attempts[user_id] += 1
         if probing_attempts[user_id] >= 3:
-            try: await context.bot.send_message(chat_id=CREATOR_ID, text=f"🚨 **Honeypot Triggered:** {first_name} (`{user_id}`) is attempting to breach God Mode commands.", parse_mode="Markdown")
+            try: 
+                await context.bot.send_message(chat_id=CREATOR_ID, text=f"🚨 **Honeypot Triggered:** {first_name} (`{user_id}`) is attempting to access restricted protocols.", parse_mode="Markdown")
             except Exception: pass
             probing_attempts[user_id] = 0
         return False
@@ -282,7 +287,7 @@ async def route_response(msg, ai_response: str, user, chat, context) -> str:
                     await context.bot.send_message(chat_id=CREATOR_ID, text=f"🔒 **Classified Intel:**\n\n{clean_response}", parse_mode="Markdown")
                     return "Sir, that is highly classified system data. I cannot say that here, so I have securely transmitted it to your private terminal. 🛡️"
                 except Exception:
-                    return "Sir, secure transmission failed. Please send me a private message first to establish the uplink."
+                    return "Sir, secure transmission failed. Please message me directly to establish the uplink."
             else:
                 return "Nice try, but my core architecture is strictly classified. 🛡️"
                 
@@ -291,7 +296,7 @@ async def route_response(msg, ai_response: str, user, chat, context) -> str:
     return ai_response
 
 # ---------------------------------------------------------------------------
-# V. 11-NODE MIXTURE OF EXPERTS CASCADE
+# V. 11-NODE CASCADE & SEARCH ROUTER
 # ---------------------------------------------------------------------------
 async def gemini_live_search(prompt: str, sys_prompt: str, history: list) -> str:
     api_key = os.getenv("GEMINI_API_KEY")
@@ -359,7 +364,7 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
     else: return f"Sorry {user_name}, i am facing some technical issues i need to make it correct sorry bye"
 
 # ---------------------------------------------------------------------------
-# VI. SENSORY CORE (VISION, VOICE, & DOCUMENTS)
+# VI. MULTIMODAL SENSORY CORES
 # ---------------------------------------------------------------------------
 async def extract_youtube_transcript(url: str) -> str:
     try:
@@ -517,7 +522,7 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if os.path.exists(file_path): os.remove(file_path)
 
 # ---------------------------------------------------------------------------
-# VII. MODERATION & CASINO ECONOMY ENGINE
+# VII. SECURITY, MODERATION & CASINO SYSTEM
 # ---------------------------------------------------------------------------
 async def new_member_captcha(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_message.chat_id
@@ -607,7 +612,7 @@ async def pay_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text(f"💸 {user.first_name} transferred {amount} Dino Coins to {target.first_name}.")
 
 # ---------------------------------------------------------------------------
-# VIII. GOD MODE COMMANDS & DIAGNOSTICS
+# VIII. ADMINISTRATIVE CONTROL & GROUP TELEMETRY
 # ---------------------------------------------------------------------------
 async def speak_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
@@ -688,11 +693,10 @@ async def group_info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⚠️ **Total Warnings Issued:** {warn_count}\n\n"
         f"_Data strictly isolated to {chat.title}._"
     )
-    
     await update.effective_message.reply_text(info_text, parse_mode="Markdown")
 
 # ---------------------------------------------------------------------------
-# IX. UTILITIES & ECONOMY COMMANDS
+# IX. COMMAND UTILITIES
 # ---------------------------------------------------------------------------
 async def karma_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target = update.effective_message.reply_to_message.from_user if update.effective_message.reply_to_message else update.effective_user
@@ -790,7 +794,7 @@ async def calc_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception: await update.effective_message.reply_text("Invalid calculation.")
 
 # ---------------------------------------------------------------------------
-# X. SCHEDULERS & EXPLICIT OVERRIDES
+# X. CRASH-PROOF SCHEDULERS & EXPLICIT MANUAL OVERRIDES
 # ---------------------------------------------------------------------------
 async def cloud_save_routine(context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -836,8 +840,10 @@ async def nightly_reconciliation(context: ContextTypes.DEFAULT_TYPE):
             conn.execute("DELETE FROM memory WHERE timestamp <= datetime('now', '-7 days')")
             conn.commit()
         if CREATOR_ID: 
-            await context.bot.send_message(chat_id=CREATOR_ID, text="🧠 **Cognitive Cycle Complete:** Vault synced.", parse_mode="Markdown")
-            with open(DB_PATH, 'rb') as f: await context.bot.send_document(chat_id=CREATOR_ID, document=f, filename="jarvis_cloud_sync.db")
+            try:
+                await context.bot.send_message(chat_id=CREATOR_ID, text="🧠 **Cognitive Cycle Complete:** Vault synced.", parse_mode="Markdown")
+                with open(DB_PATH, 'rb') as f: await context.bot.send_document(chat_id=CREATOR_ID, document=f, filename="jarvis_cloud_sync.db")
+            except Exception: pass
     except Exception as e: logger.error(f"Reconciliation error: {e}")
 
 async def exam_morning_alert(context: ContextTypes.DEFAULT_TYPE):
@@ -917,8 +923,8 @@ async def interactive_callbacks(update: Update, context: ContextTypes.DEFAULT_TY
     data = query.data
     
     if data.startswith("hud_") or data.startswith("cmd_"):
-        action = data.replace("hud_", "").replace("cmd_", "")
-        if action == "intel":
+        clean_action = re.sub(r'^(hud_|cmd_)+', '', data)
+        if clean_action == "intel":
             with sqlite3.connect(DB_PATH) as conn:
                 groups = conn.execute("SELECT chat_id, title FROM chats WHERE chat_id < 0").fetchall()
                 roster_rows = conn.execute("SELECT name, username, chat_id FROM roster").fetchall()
@@ -927,12 +933,14 @@ async def interactive_callbacks(update: Update, context: ContextTypes.DEFAULT_TY
                 dossier += f"📁 **Group:** {title} (`{gid}`)\n"
                 for m in [r for r in roster_rows if r[2] == gid]: dossier += f"  • {m[0]} (@{m[1]})\n"
             await query.edit_message_text(dossier[:4000] if groups else "No groups.", parse_mode="Markdown")
-        elif action == "captcha":
+        elif clean_action == "captcha":
             state = "off" if get_setting("captcha", "on") == "on" else "on"
             set_setting("captcha", state)
             await query.edit_message_text(f"🛡️ Security Gate is now {state.upper()}.")
-        elif action in ["news", "morning", "night"]: await query.edit_message_text(f"💻 **Terminal Instruction:**\nTo execute this routine directly, type `/{action}` in the chat.", parse_mode="Markdown")
-        elif action.startswith("info_"): await query.edit_message_text(f"📡 **Sensor Status:** {action.replace('info_', '').upper()} core is active. Upload media directly to engage.", parse_mode="Markdown")
+        elif clean_action in ["news", "morning", "night", "imagine", "tldr", "roast", "shutup", "confess", "calc", "morse", "backup", "quote", "task", "tasks"]:
+            await query.edit_message_text(f"💻 **Terminal Instruction:**\nTo execute this routine directly, type `/{clean_action}` in the chat.", parse_mode="Markdown")
+        elif clean_action.startswith("info_"): 
+            await query.edit_message_text(f"📡 **Sensor Status:** {clean_action.replace('info_', '').upper()} core is active. Upload media directly to engage.", parse_mode="Markdown")
 
     elif data.startswith("captcha_"):
         if str(query.from_user.id) == data.split("_")[1]:
@@ -1020,27 +1028,39 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.reply_text(final_text)
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    if context.error and "Conflict: terminated by other getUpdates request" in str(context.error): 
+    err = context.error
+    if isinstance(err, RetryAfter):
+        logger.warning(f"Telegram Flood Control triggered. Backing off for {err.retry_after} seconds.")
+        return
+    if err and "Conflict: terminated by other getUpdates request" in str(err): 
         logger.warning("Conflict detected: Another instance is polling with this token.")
         return
-    logger.error("Exception handled:", exc_info=context.error)
+    logger.error("Exception handled:", exc_info=err)
     if CREATOR_ID:
-        try: await context.bot.send_message(chat_id=CREATOR_ID, text=f"⚠️ **Shadow Log Error**\n```python\n{''.join(traceback.format_exception(None, context.error, context.error.__traceback__))[:4000]}\n```", parse_mode="Markdown")
+        try: 
+            await context.bot.send_message(chat_id=CREATOR_ID, text=f"⚠️ **Shadow Log Error**\n```python\n{''.join(traceback.format_exception(None, err, err.__traceback__))[:4000]}\n```", parse_mode="Markdown")
         except Exception: pass
 
 # ---------------------------------------------------------------------------
-# XII. INITIALIZATION & SCHEDULER BOOT
+# XII. INITIALIZATION & RESILIENT BOOT
 # ---------------------------------------------------------------------------
 async def post_init(app: Application):
+    # 1. Isolated Cloud Restore Guard
     try:
         chat = await app.bot.get_chat(BACKUP_CHANNEL_ID)
         if chat.pinned_message and chat.pinned_message.document:
             file = await app.bot.get_file(chat.pinned_message.document.file_id)
             await file.download_to_drive(DB_PATH)
-            if CREATOR_ID: await app.bot.send_message(chat_id=CREATOR_ID, text="☁️ **Cloud Restore Complete.** Vault loaded.", parse_mode="Markdown")
+            if CREATOR_ID: 
+                try: await app.bot.send_message(chat_id=CREATOR_ID, text="☁️ **Cloud Restore Complete.** Vault loaded.", parse_mode="Markdown")
+                except Exception: pass
     except Exception as e:
-        if CREATOR_ID: await app.bot.send_message(chat_id=CREATOR_ID, text=f"⚠️ **Cloud Restore Warning:** No backup found or failed to load. Starting empty.\n`{e}`", parse_mode="Markdown")
+        logger.warning(f"Cloud restore non-fatal failure: {e}")
+        if CREATOR_ID: 
+            try: await app.bot.send_message(chat_id=CREATOR_ID, text=f"⚠️ **Cloud Restore Notice:** Starting empty.\n`{e}`", parse_mode="Markdown")
+            except Exception: pass
 
+    # 2. Schedule Initializers
     scheduler = AsyncIOScheduler(timezone=IST)
     scheduler.add_job(cloud_save_routine, 'interval', minutes=30, args=[app])
     scheduler.add_job(exam_morning_alert, 'cron', hour=6, minute=0, args=[app])
@@ -1053,13 +1073,14 @@ async def post_init(app: Application):
     scheduler.add_job(breaking_news_monitor, 'interval', minutes=30, args=[app])
     scheduler.start()
     
+    # 3. Boot Alert Shield
     if CREATOR_ID: 
         boot_msg = (
             "✨ **God Core (Titan Build V5) Online.**\n"
             "• Infinite Cloud Save: Armed (-1004296302955)\n"
             "• Classified DM Router: Active\n"
             "• Encryption Fallback: Stabilized\n"
-            "• Edit & Visual Interceptors: Active"
+            "• Flood & Visual Interceptors: Active"
         )
         try: await app.bot.send_message(chat_id=CREATOR_ID, text=boot_msg, parse_mode="Markdown")
         except Exception: pass
