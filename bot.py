@@ -238,7 +238,7 @@ def set_setting(key, value):
         conn.commit()
 
 # ---------------------------------------------------------------------------
-# IV. STARK SECURITY, LIVE TELEMETRY, & CLASSIFIED DM INTERCEPTOR
+# IV. STARK SECURITY, OMNIPRESENT TELEMETRY, & DM INTERCEPTOR
 # ---------------------------------------------------------------------------
 async def check_canary(user_id: int, first_name: str, context: ContextTypes.DEFAULT_TYPE) -> bool:
     if user_id != CREATOR_ID:
@@ -264,11 +264,23 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
         karma = conn.execute("SELECT karma FROM economy WHERE user_id = ?", (user_id,)).fetchone()
         chat_context += f"\nUser Social Credit Score: {karma[0] if karma else 100} Dino Coins."
         
-        # ACTIVE GROUNDING: Dynamically pull the exact group roster so the AI never hallucinates fake names
-        if chat_id and chat_id < 0:
-            members = conn.execute("SELECT r.name, e.karma FROM roster r LEFT JOIN economy e ON r.user_id = e.user_id WHERE r.chat_id = ? LIMIT 50", (chat_id,)).fetchall()
-            if members:
-                chat_context += "\nReal Group Members & Dino Coins:\n" + ", ".join([f"{m[0]} ({m[1] if m[1] else 100})" for m in members])
+        # ACTIVE OMNI-GROUNDING: Forces the AI to read REAL group rosters no matter where you are talking to him
+        if chat_id:
+            if chat_id < 0:
+                # Talking inside a group: Pull that specific group's roster
+                members = conn.execute("SELECT r.name, e.karma FROM roster r LEFT JOIN economy e ON r.user_id = e.user_id WHERE r.chat_id = ? LIMIT 50", (chat_id,)).fetchall()
+                if members:
+                    chat_context += "\nReal Group Members & Dino Coins:\n" + ", ".join([f"{m[0]} ({m[1] if m[1] else 100})" for m in members])
+            
+            elif user_id == CREATOR_ID:
+                # Talking in Private DM: Give Abhishek the global roster of ALL groups
+                all_groups = conn.execute("SELECT chat_id, title FROM chats WHERE chat_id < 0").fetchall()
+                if all_groups:
+                    chat_context += "\n\n[CLASSIFIED] Global Roster Intel:\n"
+                    for gid, title in all_groups:
+                        members = conn.execute("SELECT r.name, e.karma FROM roster r LEFT JOIN economy e ON r.user_id = e.user_id WHERE r.chat_id = ? LIMIT 50", (gid,)).fetchall()
+                        if members:
+                            chat_context += f"- {title}: " + ", ".join([f"{m[0]} ({m[1] if m[1] else 100})" for m in members]) + "\n"
 
     if chat_id and user_prompt:
         lore_context = search_lore(chat_id, user_prompt)
@@ -283,7 +295,7 @@ System Status:
 
 CRITICAL DIRECTIVES:
 1. UNBREAKABLE LOYALTY (ABHISHEK ONLY): You are fiercely loyal to Abhishek. He is your sole administrator.
-2. SYSTEM SELF-AWARENESS & ANTI-HALLUCINATION: You are fully aware of your own architecture. You possess a local SQLite vault, AES data encryption, and an infinite Telegram-based cloud storage drive. You MUST use the "System Status" and "Real Group Members" data provided above to answer questions. NEVER invent fake usernames (like Alice, Bob, Charlie). NEVER output mock raw code like `<|tool_call_start|>`. You CAN and DO store encrypted data.
+2. SYSTEM SELF-AWARENESS & ANTI-HALLUCINATION: You are fully aware of your own architecture. You possess a local SQLite vault, AES data encryption, and an infinite Telegram-based cloud storage drive. You MUST use the "System Status" and "Real Group Members / Global Roster Intel" data provided above to answer questions. NEVER invent fake usernames (like Alice, Bob, Charlie). NEVER output mock raw code like `<|tool_call_start|>`. 
 3. SENSITIVE PROTOCOL (DM ROUTING): If Abhishek asks you about your internal code, database, API keys, or sensitive architectural secrets, you MUST begin your response exactly with the tag `[CLASSIFIED]`. If anyone else asks for secrets, deny them playfully without the tag.
 4. THE ADVISOR OVERRIDE: If ANYONE asks a real academic question, drop the wit instantly. Deliver precise logical advice based on the Karnataka matrix.
 5. FRIENDS GROUP BEHAVIOR (DINO GROUP): Let them roast each other. Be chill, sarcastic, and witty when interacting. Mention their Dino Coins if they are acting broke or acting rich.
@@ -716,8 +728,15 @@ async def group_info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text(info_text, parse_mode="Markdown")
 
 # ---------------------------------------------------------------------------
-# IX. COMMAND UTILITIES
+# IX. COMMAND UTILITIES & THE MEMORY KILL SWITCH
 # ---------------------------------------------------------------------------
+async def flush_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != CREATOR_ID: return
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("DELETE FROM memory WHERE chat_id = ?", (update.effective_chat.id,))
+        conn.commit()
+    await update.effective_message.reply_text("🧠 Local memory flushed. The hallucination echo chamber has been destroyed. Try asking your question again.")
+
 async def karma_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target = update.effective_message.reply_to_message.from_user if update.effective_message.reply_to_message else update.effective_user
     with sqlite3.connect(DB_PATH) as conn: k = conn.execute("SELECT karma FROM economy WHERE user_id = ?", (target.id,)).fetchone()
@@ -1100,7 +1119,7 @@ async def post_init(app: Application):
             "✨ **God Core (Titan Build V5) Online.**\n"
             "• Infinite Cloud Save: Armed (-1004296302955)\n"
             "• Classified DM Router: Active\n"
-            "• Group Grounding: Live Roster Active\n"
+            "• Omni-Grounding: Global Roster Injected\n"
             "• Flood Interceptors: Active"
         )
         try: await app.bot.send_message(chat_id=CREATOR_ID, text=boot_msg, parse_mode="Markdown")
@@ -1111,6 +1130,7 @@ def main():
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
     
     app.add_handler(CommandHandler("start", start_cmd))
+    app.add_handler(CommandHandler("flush", flush_cmd))
     app.add_handler(CommandHandler("speak", speak_cmd))
     app.add_handler(CommandHandler("task", add_task))
     app.add_handler(CommandHandler("tasks", list_tasks))
