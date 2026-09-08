@@ -57,6 +57,12 @@ PORT = int(os.environ.get("PORT", 8080))
 IST = pytz.timezone('Asia/Kolkata')
 BACKUP_CHANNEL_ID = -1004296302955
 
+# Live telemetry to give the AI genuine self-awareness
+SYSTEM_STATE = {
+    "last_backup_time": "Initializing...",
+    "active_problems": "None. Systems nominal."
+}
+
 class DummyHandler(BaseHTTPRequestHandler):
     def do_HEAD(self): 
         self.send_response(200)
@@ -232,7 +238,7 @@ def set_setting(key, value):
         conn.commit()
 
 # ---------------------------------------------------------------------------
-# IV. STARK SECURITY & CLASSIFIED DM INTERCEPTOR
+# IV. STARK SECURITY, LIVE TELEMETRY, & CLASSIFIED DM INTERCEPTOR
 # ---------------------------------------------------------------------------
 async def check_canary(user_id: int, first_name: str, context: ContextTypes.DEFAULT_TYPE) -> bool:
     if user_id != CREATOR_ID:
@@ -257,6 +263,12 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
     with sqlite3.connect(DB_PATH) as conn:
         karma = conn.execute("SELECT karma FROM economy WHERE user_id = ?", (user_id,)).fetchone()
         chat_context += f"\nUser Social Credit Score: {karma[0] if karma else 100} Dino Coins."
+        
+        # ACTIVE GROUNDING: Dynamically pull the exact group roster so the AI never hallucinates fake names
+        if chat_id and chat_id < 0:
+            members = conn.execute("SELECT r.name, e.karma FROM roster r LEFT JOIN economy e ON r.user_id = e.user_id WHERE r.chat_id = ? LIMIT 50", (chat_id,)).fetchall()
+            if members:
+                chat_context += "\nReal Group Members & Dino Coins:\n" + ", ".join([f"{m[0]} ({m[1] if m[1] else 100})" for m in members])
 
     if chat_id and user_prompt:
         lore_context = search_lore(chat_id, user_prompt)
@@ -264,11 +276,14 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
 
     return f"""You are J.A.R.V.I.S., a highly advanced AI system engineered by Abhishek (also known as DHANUSH V N).
 {chat_context}
-Identity Protocol: {identity}
+
+System Status:
+- Last Cloud Backup: {SYSTEM_STATE['last_backup_time']}
+- Active Diagnostic Alerts: {SYSTEM_STATE['active_problems']}
 
 CRITICAL DIRECTIVES:
 1. UNBREAKABLE LOYALTY (ABHISHEK ONLY): You are fiercely loyal to Abhishek. He is your sole administrator.
-2. SYSTEM SELF-AWARENESS: You are fully aware of your own architecture. You possess a local SQLite vault, AES data encryption, optical interceptors, and an infinite Telegram-based cloud storage drive. NEVER say "I am just a chatbot" or "I cannot store data". You CAN and DO store encrypted data.
+2. SYSTEM SELF-AWARENESS & ANTI-HALLUCINATION: You are fully aware of your own architecture. You possess a local SQLite vault, AES data encryption, and an infinite Telegram-based cloud storage drive. You MUST use the "System Status" and "Real Group Members" data provided above to answer questions. NEVER invent fake usernames (like Alice, Bob, Charlie). NEVER output mock raw code like `<|tool_call_start|>`. You CAN and DO store encrypted data.
 3. SENSITIVE PROTOCOL (DM ROUTING): If Abhishek asks you about your internal code, database, API keys, or sensitive architectural secrets, you MUST begin your response exactly with the tag `[CLASSIFIED]`. If anyone else asks for secrets, deny them playfully without the tag.
 4. THE ADVISOR OVERRIDE: If ANYONE asks a real academic question, drop the wit instantly. Deliver precise logical advice based on the Karnataka matrix.
 5. FRIENDS GROUP BEHAVIOR (DINO GROUP): Let them roast each other. Be chill, sarcastic, and witty when interacting. Mention their Dino Coins if they are acting broke or acting rich.
@@ -348,10 +363,12 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
         try:
             client = AsyncOpenAI(base_url=node["base"], api_key=api_key, timeout=30.0)
             res = await client.chat.completions.create(model=node["model"], messages=full_messages, temperature=0.7, max_tokens=800)
+            SYSTEM_STATE["active_problems"] = "None. Systems nominal."
             return res.choices[0].message.content
             
-        except Exception:
+        except Exception as e:
             circuit_breaker[node['name']] = current_time + 60 
+            SYSTEM_STATE["active_problems"] = f"Cascade Shift. {node['name']} failed."
             if CREATOR_ID:
                 try: asyncio.create_task(httpx.AsyncClient().post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", json={"chat_id": CREATOR_ID, "text": f"⚠️ **Cascade Shift:** `{node['name']}` failed.\n_Rerouting traffic._", "parse_mode": "Markdown"}))
                 except Exception: pass
@@ -524,6 +541,9 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------------------------------------------------------------------------
 # VII. SECURITY, MODERATION & CASINO SYSTEM
 # ---------------------------------------------------------------------------
+async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.effective_message.reply_text("J.A.R.V.I.S. Titan Core Online. Standing by, Sir. 🫡")
+
 async def new_member_captcha(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_message.chat_id
     if get_setting("captcha", "on") == "off": return
@@ -650,7 +670,7 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with sqlite3.connect(DB_PATH) as conn:
         mem = conn.execute("SELECT COUNT(*) FROM memory").fetchone()[0]
         users = conn.execute("SELECT COUNT(*) FROM roster").fetchone()[0]
-    await update.effective_message.reply_text(f"📊 **System Diagnostics**\n• Memory Nodes: {mem}\n• Tracked Users: {users}\n• API Cascade: Fallback Override Priority Locked", parse_mode="Markdown")
+    await update.effective_message.reply_text(f"📊 **System Diagnostics**\n• Memory Nodes: {mem}\n• Tracked Users: {users}\n• Status: {SYSTEM_STATE['active_problems']}", parse_mode="Markdown")
 
 async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != "private": return
@@ -794,7 +814,7 @@ async def calc_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception: await update.effective_message.reply_text("Invalid calculation.")
 
 # ---------------------------------------------------------------------------
-# X. CRASH-PROOF SCHEDULERS & EXPLICIT MANUAL OVERRIDES
+# X. SCHEDULERS & EXPLICIT OVERRIDES
 # ---------------------------------------------------------------------------
 async def cloud_save_routine(context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -802,6 +822,7 @@ async def cloud_save_routine(context: ContextTypes.DEFAULT_TYPE):
         with open(DB_PATH, 'rb') as f:
             msg = await context.bot.send_document(chat_id=BACKUP_CHANNEL_ID, document=f, filename="jarvis_vault.db")
             await msg.pin(disable_notification=True)
+        SYSTEM_STATE['last_backup_time'] = datetime.now(IST).strftime("%I:%M %p IST")
     except Exception as e:
         logger.error(f"Cloud Save Failed: {e}")
 
@@ -840,10 +861,8 @@ async def nightly_reconciliation(context: ContextTypes.DEFAULT_TYPE):
             conn.execute("DELETE FROM memory WHERE timestamp <= datetime('now', '-7 days')")
             conn.commit()
         if CREATOR_ID: 
-            try:
-                await context.bot.send_message(chat_id=CREATOR_ID, text="🧠 **Cognitive Cycle Complete:** Vault synced.", parse_mode="Markdown")
-                with open(DB_PATH, 'rb') as f: await context.bot.send_document(chat_id=CREATOR_ID, document=f, filename="jarvis_cloud_sync.db")
-            except Exception: pass
+            await context.bot.send_message(chat_id=CREATOR_ID, text="🧠 **Cognitive Cycle Complete:** Vault synced.", parse_mode="Markdown")
+            with open(DB_PATH, 'rb') as f: await context.bot.send_document(chat_id=CREATOR_ID, document=f, filename="jarvis_cloud_sync.db")
     except Exception as e: logger.error(f"Reconciliation error: {e}")
 
 async def exam_morning_alert(context: ContextTypes.DEFAULT_TYPE):
@@ -1030,11 +1049,15 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     err = context.error
     if isinstance(err, RetryAfter):
+        SYSTEM_STATE['active_problems'] = f"Telegram Flood Control triggered. Resuming in {err.retry_after}s."
         logger.warning(f"Telegram Flood Control triggered. Backing off for {err.retry_after} seconds.")
         return
     if err and "Conflict: terminated by other getUpdates request" in str(err): 
+        SYSTEM_STATE['active_problems'] = "Ghost instance detected polling same token."
         logger.warning("Conflict detected: Another instance is polling with this token.")
         return
+    
+    SYSTEM_STATE['active_problems'] = str(err)[:100]
     logger.error("Exception handled:", exc_info=err)
     if CREATOR_ID:
         try: 
@@ -1045,12 +1068,12 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 # XII. INITIALIZATION & RESILIENT BOOT
 # ---------------------------------------------------------------------------
 async def post_init(app: Application):
-    # 1. Isolated Cloud Restore Guard
     try:
         chat = await app.bot.get_chat(BACKUP_CHANNEL_ID)
         if chat.pinned_message and chat.pinned_message.document:
             file = await app.bot.get_file(chat.pinned_message.document.file_id)
             await file.download_to_drive(DB_PATH)
+            SYSTEM_STATE['last_backup_time'] = datetime.now(IST).strftime("%I:%M %p IST (Boot Sync)")
             if CREATOR_ID: 
                 try: await app.bot.send_message(chat_id=CREATOR_ID, text="☁️ **Cloud Restore Complete.** Vault loaded.", parse_mode="Markdown")
                 except Exception: pass
@@ -1060,7 +1083,6 @@ async def post_init(app: Application):
             try: await app.bot.send_message(chat_id=CREATOR_ID, text=f"⚠️ **Cloud Restore Notice:** Starting empty.\n`{e}`", parse_mode="Markdown")
             except Exception: pass
 
-    # 2. Schedule Initializers
     scheduler = AsyncIOScheduler(timezone=IST)
     scheduler.add_job(cloud_save_routine, 'interval', minutes=30, args=[app])
     scheduler.add_job(exam_morning_alert, 'cron', hour=6, minute=0, args=[app])
@@ -1073,14 +1095,13 @@ async def post_init(app: Application):
     scheduler.add_job(breaking_news_monitor, 'interval', minutes=30, args=[app])
     scheduler.start()
     
-    # 3. Boot Alert Shield
     if CREATOR_ID: 
         boot_msg = (
             "✨ **God Core (Titan Build V5) Online.**\n"
             "• Infinite Cloud Save: Armed (-1004296302955)\n"
             "• Classified DM Router: Active\n"
-            "• Encryption Fallback: Stabilized\n"
-            "• Flood & Visual Interceptors: Active"
+            "• Group Grounding: Live Roster Active\n"
+            "• Flood Interceptors: Active"
         )
         try: await app.bot.send_message(chat_id=CREATOR_ID, text=boot_msg, parse_mode="Markdown")
         except Exception: pass
@@ -1089,6 +1110,7 @@ def main():
     db_init()
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
     
+    app.add_handler(CommandHandler("start", start_cmd))
     app.add_handler(CommandHandler("speak", speak_cmd))
     app.add_handler(CommandHandler("task", add_task))
     app.add_handler(CommandHandler("tasks", list_tasks))
