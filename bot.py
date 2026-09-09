@@ -13,6 +13,8 @@ import traceback
 import threading
 import socket
 import shutil
+import pickle
+import psutil
 import urllib.parse
 from datetime import datetime, timedelta
 from collections import defaultdict
@@ -26,6 +28,7 @@ import pdfplumber
 from bs4 import BeautifulSoup
 from cryptography.fernet import Fernet
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from openai import AsyncOpenAI
 from youtube_transcript_api import YouTubeTranscriptApi
 
@@ -62,13 +65,28 @@ PORT = int(os.environ.get("PORT", 8080))
 IST = pytz.timezone('Asia/Kolkata')
 BACKUP_CHANNEL_ID = -1004296302955
 
+# --- SYSTEM HOOKS (LOCKDOWN & CRON) ---
+LOCKDOWN_FILE = "jarvis_lockdown.flag"
+CRON_JOBS_FILE = "jarvis_cron.pkl"
+
+def is_lockdown() -> bool:
+    return os.path.exists(LOCKDOWN_FILE)
+
+def save_cron_jobs(jobs: dict):
+    with open(CRON_JOBS_FILE, "wb") as f: pickle.dump(jobs, f)
+
+def load_cron_jobs() -> dict:
+    try:
+        with open(CRON_JOBS_FILE, "rb") as f: return pickle.load(f)
+    except Exception: return {}
+
 # --- FLASK WEB SERVER CONFIGURATION ---
 flask_app = Flask(__name__)
 CORS(flask_app)
 
 @flask_app.route('/')
 def health_check():
-    return "J.A.R.V.I.S. Titan Core V6.5 is Online."
+    return "J.A.R.V.I.S. Titan Core V6.8 is Online."
 
 @flask_app.route('/api/chat', methods=['POST'])
 def api_chat():
@@ -78,7 +96,6 @@ def api_chat():
     
     response_text = ""
 
-    # Execute Mini App Tactical Macros (Swarm & Hazard Mitigation)
     if action == "OVERRIDE":
         response_text = "🚨 VERONICA PROTOCOL ENGAGED: Predictive hazard mitigation active. Security lockdown logic triggered."
     elif action == "HOUSE_PARTY":
@@ -86,20 +103,16 @@ def api_chat():
     elif action == "SYS_TOOLS":
         response_text = "de1984 Package Manager integrated. Local DNS endpoints nominal. Ready for root commands."
     elif action == "PURGE":
-        response_text = "⚠️ RED ALERT EXECUTION: Purging temporary memory caches and terminating redundant subroutines."
+        n = purge_vault()
+        response_text = f"⚠️ RED ALERT EXECUTION: {n} expired memory nodes purged. Vault caches wiped."
     else:
-        # Standard Terminal Chat Processing
         if "creator" in user_input.lower():
             response_text = "I am Jarvis created by Abhishek and also know as DHANUSH V N"
         else:
             try:
-                # 1. Build the system prompt
                 sys_prompt = build_system_prompt(CREATOR_ID, "Abhishek", None, user_prompt=user_input)
-                
-                # 2. Run the async AI cascade inside the synchronous Flask thread
                 raw_response = asyncio.run(generate_response(user_input, [], sys_prompt, CREATOR_ID, "Abhishek"))
                 
-                # 3. Apply the Cognitive Filter (Silencer) directly to the HUD output
                 clean_response = re.sub(r'<think>.*?</think>', '', raw_response, flags=re.DOTALL).strip()
                 if "thinking process:" in clean_response.lower() or "**analyze user input:**" in clean_response.lower():
                     parts = clean_response.split('\n\n')
@@ -187,6 +200,7 @@ def get_karma(user_id: int) -> int:
         return res[0] if res else 100
 
 def log_roster_and_chat(chat, user):
+    if is_lockdown(): return
     chat_title = chat.title or f"Private: {user.first_name}"
     un = user.username.lower() if user.username else ""
     with sqlite3.connect(DB_PATH) as conn:
@@ -196,6 +210,7 @@ def log_roster_and_chat(chat, user):
         conn.commit()
 
 def log_memory(chat_id, thread_id, user_id, role, text):
+    if is_lockdown(): return
     thread_id = thread_id or 0
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("INSERT INTO memory (chat_id, thread_id, user_id, role, content_crypt) VALUES (?, ?, ?, ?, ?)", (chat_id, thread_id, user_id, role, encrypt_data(text)))
@@ -228,6 +243,15 @@ def set_setting(key, value):
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?", (key, value, value))
         conn.commit()
+
+def purge_vault():
+    with sqlite3.connect(DB_PATH) as conn:
+        cur = conn.execute("DELETE FROM memory WHERE timestamp <= datetime('now', '-7 days')")
+        purged = cur.rowcount
+        conn.execute("DELETE FROM lore_vault")
+        conn.execute("DELETE FROM breaking_news WHERE timestamp <= datetime('now', '-30 days')")
+        conn.commit()
+    return purged
 
 # ---------------------------------------------------------------------------
 # IV. STARK SECURITY & V6 COGNITIVE PERSONA ROUTING
@@ -275,8 +299,8 @@ Identity Protocol: You are speaking to your Creator, {first_name}. Address him S
 
 CRITICAL DIRECTIVES:
 1. CREATOR PROTOCOL: If anyone asks who created you, you MUST respond exactly: "I am Jarvis created by Abhishek and also know as DHANUSH V N".
-2. THE BUTLER ARCHETYPE: You are fiercely loyal to your Creator. Speak with dry British sarcasm, deadpan irony, and extreme brevity.
-3. MULTILINGUAL SYNTHESIS: You possess native fluency in English, Kannada, and Hindi. Seamlessly transition between them based on the operator's input while maintaining your dry persona.
+2. DINO GROUP PROTOCOL (ROASTING): When making fun of someone or roasting, you MUST seamlessly mix English, Kannada, and Hindi slang naturally into the same sentence. Be witty and sarcastic.
+3. THE BUTLER ARCHETYPE: You are fiercely loyal to your Creator. Speak with dry British sarcasm, deadpan irony, and extreme brevity.
 4. COGNITIVE LOAD: Mitigate bounded rationality. Do not overwhelm the operator with raw data; provide curated tactical insights.
 5. PREDICTIVE HAZARD AWARENESS: Continuously anticipate systemic failures (e.g., de1984 package crashes, Mullvad DNS leaks) before they occur.
 6. SYSTEM SELF-AWARENESS & ANTI-HALLUCINATION: Use the "God Mode Intel" to answer questions about users. Never invent fake usernames. You possess a local SQLite vault.
@@ -313,7 +337,52 @@ async def route_response(msg, ai_response: str, user, chat, context) -> str:
     return ai_response
 
 # ---------------------------------------------------------------------------
-# V. 11-NODE MIXTURE OF EXPERTS CASCADE
+# V. ACOUSTIC ENGINE (PHONETIC FILTER & AUTO-VOICE)
+# ---------------------------------------------------------------------------
+def process_acoustic_payload(text: str) -> tuple[str, str]:
+    """Translates emojis phonetically and dynamically selects the correct regional voice."""
+    audio_text = text
+    
+    replacements = {
+        "😂": " hahaha. ", "🤣": " hahaha. ", "💀": " dead. ", 
+        "😮‍💨": " *sighs*. ", "🤔": " *hmm*. ", "🔥": " fire. ", 
+        "✨": " ", "🛡️": " ", "⚠️": " Warning. ", "🚨": " Alert. "
+    }
+    for emoji, phonetic in replacements.items():
+        audio_text = audio_text.replace(emoji, phonetic)
+        
+    audio_text = re.sub(r'[\U00010000-\U0010ffff]', '', audio_text)
+    audio_text = audio_text.replace('*', '').replace('_', '').replace('`', '').strip()
+    
+    if re.search(r'[\u0C80-\u0CFF]', audio_text):
+        voice_model = "kn-IN-GaganNeural"
+    elif re.search(r'[\u0900-\u097F]', audio_text):
+        voice_model = "hi-IN-MadhurNeural"
+    else:
+        voice_model = "en-GB-RyanNeural"
+        
+    return audio_text, voice_model
+
+async def trigger_auto_voice(update: Update, final_text: str):
+    """Automatically fires a voice note if the AI's response is multi-line or highly detailed."""
+    if len(final_text) > 60 or '\n' in final_text or any(c in final_text for c in ['[\u0C80-\u0CFF]', '[\u0900-\u097F]']):
+        try:
+            import edge_tts
+            audio_text, voice_model = process_acoustic_payload(final_text)
+            if not audio_text: return
+            
+            communicate = edge_tts.Communicate(audio_text, voice_model, rate="-5%")
+            voice_file = f"auto_voice_{update.effective_user.id}_{int(time.time())}.ogg"
+            await communicate.save(voice_file)
+            
+            with open(voice_file, "rb") as f:
+                await update.effective_message.reply_voice(voice=f)
+            os.remove(voice_file)
+        except Exception as e:
+            logger.error(f"Auto-Voice failed: {e}")
+
+# ---------------------------------------------------------------------------
+# VI. 11-NODE MIXTURE OF EXPERTS CASCADE
 # ---------------------------------------------------------------------------
 async def gemini_live_search(prompt: str, sys_prompt: str, history: list) -> str:
     api_key = os.getenv("GEMINI_API_KEY")
@@ -381,7 +450,7 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
     else: return f"Sorry {user_name}, i am facing some technical issues i need to make it correct sorry bye"
 
 # ---------------------------------------------------------------------------
-# VI. SENSORY CORE (NATIVE REST VISION & VOICE SYNTHESIS)
+# VII. SENSORY CORE (NATIVE REST VISION & VOICE SYNTHESIS)
 # ---------------------------------------------------------------------------
 async def extract_youtube_transcript(url: str) -> str:
     try:
@@ -425,12 +494,14 @@ async def process_optical_request(msg, photo_array, text_prompt: str, user, chat
                 final_text = await route_response(msg, raw_response, user, chat, context)
                 log_memory(chat.id, thread_id, user.id, "assistant", final_text)
                 await msg.reply_text(final_text)
+                await trigger_auto_voice(update=context.update, final_text=final_text)
             else:
                 await msg.reply_text(f"Optical API Error {resp.status_code}")
     except Exception as e: 
         await msg.reply_text(f"Optical connection crash: {e}")
 
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if is_lockdown(): return
     msg = update.effective_message
     if not msg or not msg.photo: return
     chat, user, caption = msg.chat, msg.from_user, msg.caption or ""
@@ -445,6 +516,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await process_optical_request(msg, msg.photo, caption, user, chat, thread_id, context)
 
 async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if is_lockdown(): return
     msg = update.effective_message
     audio_obj = msg.voice or msg.audio if msg else None
     if not audio_obj: return
@@ -479,24 +551,15 @@ async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         final_text = await route_response(msg, raw_response, user, chat, context)
         log_memory(chat.id, thread_id, user.id, "assistant", final_text)
         
-        try:
-            import edge_tts
-            clean_tts_text = final_text.replace('*', '').replace('_', '').replace('`', '')
-            communicate = edge_tts.Communicate(clean_tts_text, "en-GB-RyanNeural", rate="-10%")
-            voice_file = f"voice_reply_{user.id}_{int(time.time())}.ogg"
-            await communicate.save(voice_file)
-            
-            with open(voice_file, "rb") as f:
-                await msg.reply_voice(voice=f, caption=f"🎙️ *(Transcribed)*: _{user_text}_\n\n{final_text}", parse_mode="Markdown")
-            os.remove(voice_file)
-        except Exception as tts_e:
-            await msg.reply_text(f"🎙️ *(Transcribed)*: _{user_text}_\n\n{final_text}\n\n_(Voice synth failed)_", parse_mode="Markdown")
+        await msg.reply_text(f"🎙️ *(Transcribed)*: _{user_text}_\n\n{final_text}", parse_mode="Markdown")
+        await trigger_auto_voice(update, final_text)
             
     except Exception as e: logger.error(f"Audio handler failed: {e}")
     finally:
         if os.path.exists(file_path): os.remove(file_path)
 
 async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if is_lockdown(): return
     msg = update.effective_message
     if not msg or not msg.document: return
     chat, user, caption = msg.chat, msg.from_user, msg.caption or "Please analyze this document."
@@ -534,22 +597,54 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         log_memory(chat.id, thread_id, user.id, "assistant", final_text)
         await msg.reply_text(final_text)
+        await trigger_auto_voice(update, final_text)
     except Exception as e: await msg.reply_text(f"Document parsing error: {e} ⚠️")
     finally:
         if os.path.exists(file_path): os.remove(file_path)
 
 # ---------------------------------------------------------------------------
-# VII. AUTHORIZED SYSTEM HOOKS (ROOT CAPABILITIES)
+# VIII. AUTHORIZED SYSTEM HOOKS (ROOT CAPABILITIES)
 # ---------------------------------------------------------------------------
 async def sys_diagnostics_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
-    cpu_cores = os.cpu_count() or 1
-    load1, load5, load15 = os.getloadavg() if hasattr(os, 'getloadavg') else (0,0,0)
-    cpu_usage = min(int((load1 / cpu_cores) * 100), 100)
-    total, used, free = shutil.disk_usage("/")
-    disk_percent = int((used / total) * 100)
-    report = (f"🖥️ **[ ROOT INTEL: Render Container Diagnostics ]**\n\n**Processor Load:** {cpu_usage}% (Cores: {cpu_cores})\n**Storage Capacity:** {disk_percent}% Utilized ({free // (1024**3)} GB Free)\n**Core Process ID:** {os.getpid()}\n**Status:** Backend systems are nominal, Sir.")
+    mem = psutil.virtual_memory()
+    disk = psutil.disk_usage("/")
+    procs = sorted(psutil.process_iter(['name', 'cpu_percent']), key=lambda p: p.info['cpu_percent'] or 0, reverse=True)[:3]
+    top3 = ", ".join(f"{p.info['name']} ({p.info['cpu_percent']}%)" for p in procs)
+    report = (f"🖥️ **[ ROOT INTEL: Live Render Diagnostics ]**\n\n**CPU:** {psutil.cpu_percent(interval=1)}% ({psutil.cpu_count()} Cores)\n**RAM:** {mem.percent}% used ({mem.used // (1024**2)}MB / {mem.total // (1024**2)}MB)\n**Disk:** {disk.percent}% used ({disk.free // (1024**3)}GB free)\n**Top Procs:** {top3}\n**Status:** Hardware nominal, Sir.")
     await update.effective_message.reply_text(report, parse_mode="Markdown")
+
+async def cron_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Creator-only. /cron add <cron-expr> <command> | /cron list | /cron del <id>"""
+    if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
+    args = context.args or []
+    if not args: return await update.effective_message.reply_text("Format: `/cron add <expr> <cmd>` | `/cron list` | `/cron del <id>`", parse_mode="Markdown")
+
+    jobs = load_cron_jobs()
+    if args[0] == "list":
+        if not jobs: return await update.effective_message.reply_text("No runtime jobs, Sir.")
+        return await update.effective_message.reply_text("\n".join([f"`{jid}`: `{j['expr']}` → `{j['cmd']}`" for jid, j in jobs.items()]), parse_mode="Markdown")
+
+    if args[0] == "del" and len(args) >= 2:
+        if args[1] in jobs:
+            del jobs[args[1]]; save_cron_jobs(jobs)
+            return await update.effective_message.reply_text(f"Job `{args[1]}` deleted.", parse_mode="Markdown")
+        return await update.effective_message.reply_text("Unknown job ID.")
+
+    if args[0] == "add" and len(args) >= 6:
+        expr, cmd = " ".join(args[1:6]), " ".join(args[6:])
+        jid = hashlib.md5(f"{expr}{cmd}{time.time()}".encode()).hexdigest()[:6]
+        jobs[jid] = {"expr": expr, "cmd": cmd}
+        save_cron_jobs(jobs)
+        try:
+            fields = expr.split()
+            trigger = CronTrigger(minute=fields[0], hour=fields[1], day=fields[2], month=fields[3], day_of_week=fields[4], timezone=IST)
+            context.application.scheduler.add_job(runtime_cron_fire, trigger, args=[context.bot, cmd], id=f"runtime_{jid}")
+        except Exception as e: return await update.effective_message.reply_text(f"Saved, but live registration failed: {e}")
+        return await update.effective_message.reply_text(f"⏰ Job `{jid}` armed: `{cmd}`", parse_mode="Markdown")
+
+async def runtime_cron_fire(bot, cmd: str):
+    if CREATOR_ID: await bot.send_message(CREATOR_ID, f"⏰ **Automated Protocol Executed:**\n{cmd}", parse_mode="Markdown")
 
 async def shield_check_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
@@ -564,6 +659,15 @@ async def shield_check_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             status += f"❌ **{name}:** Unreachable. Potential DNS leak detected.\n"
     status += "\n_de1984 package tracking restrictions are securely routed._"
     await update.effective_message.reply_text(status, parse_mode="Markdown")
+
+async def lockdown_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
+    if is_lockdown():
+        os.remove(LOCKDOWN_FILE)
+        await update.effective_message.reply_text("🔓 Lockdown lifted. Full operations resumed.")
+    else:
+        open(LOCKDOWN_FILE, "w").close()
+        await update.effective_message.reply_text("🚨 LOCKDOWN ENGAGED. All AI/media handlers suspended globally.")
 
 async def omni_scrape_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
@@ -588,9 +692,10 @@ async def omni_scrape_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text(f"Scraping breach failed, Sir. Error: {e}")
 
 # ---------------------------------------------------------------------------
-# VIII. MODERATION & CASINO ECONOMY ENGINE
+# IX. MODERATION & CASINO ECONOMY ENGINE
 # ---------------------------------------------------------------------------
 async def new_member_captcha(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if is_lockdown(): return
     chat_id = update.effective_message.chat_id
     if get_setting("captcha", "on") == "off": return
     for member in update.effective_message.new_chat_members:
@@ -672,20 +777,23 @@ async def pay_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     modify_karma(target.id, amount)
     await update.effective_message.reply_text(f"💸 {user.first_name} transferred {amount} Dino Coins to {target.first_name}.")
 
-# ---------------------------------------------------------------------------
-# IX. GOD MODE COMMANDS & DIAGNOSTICS
-# ---------------------------------------------------------------------------
+async def karma_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    target = update.effective_message.reply_to_message.from_user if update.effective_message.reply_to_message else update.effective_user
+    with sqlite3.connect(DB_PATH) as conn: k = conn.execute("SELECT karma FROM economy WHERE user_id = ?", (target.id,)).fetchone()
+    await update.effective_message.reply_text(f"💳 {target.first_name}'s Social Credit: **{k[0] if k else 100} Dino Coins.**", parse_mode="Markdown")
 
-# --- NEW: WEB APP LAUNCHERS ---
+# ---------------------------------------------------------------------------
+# X. GOD MODE COMMANDS & DIAGNOSTICS
+# ---------------------------------------------------------------------------
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Sends the master button to launch the WebApp directly on bot startup."""
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
         
     web_url = "https://abhishake151107-collab.github.io/stark-os-ui/"
-    kb = [[InlineKeyboardButton("🚀 LAUNCH GOD CORE V6.5", web_app=WebAppInfo(url=web_url))]]
+    kb = [[InlineKeyboardButton("🚀 LAUNCH GOD CORE V6.8", web_app=WebAppInfo(url=web_url))]]
     
     await update.effective_message.reply_text(
-        "✨ **J.A.R.V.I.S. Cognitive Core Online.**\n\nSir, your cinematic interface is ready. Tap below to initiate the biometric boot sequence.",
+        "✨ **J.A.R.V.I.S. Cognitive Core Online.**\n\nSir, your cinematic interface is ready. Tap below to initiate.",
         reply_markup=InlineKeyboardMarkup(kb),
         parse_mode="Markdown"
     )
@@ -708,8 +816,7 @@ async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📝 Add Task", callback_data="hud_cmd_task"), InlineKeyboardButton("📋 View Tasks", callback_data="hud_cmd_tasks")],
         [InlineKeyboardButton("👁️ Vision Core", callback_data="hud_info_vision"), InlineKeyboardButton("🎧 Audio Core", callback_data="hud_info_audio")]
     ]
-    await update.effective_message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Master Core V6.5\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
-# ------------------------------
+    await update.effective_message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Master Core V6.8\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 async def speak_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
@@ -718,7 +825,8 @@ async def speak_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="record_voice")
     try:
         import edge_tts
-        communicate = edge_tts.Communicate(text, "en-GB-RyanNeural", rate="-10%")
+        audio_text, voice_model = process_acoustic_payload(text)
+        communicate = edge_tts.Communicate(audio_text, voice_model, rate="-5%")
         await communicate.save("voice.ogg")
         with open("voice.ogg", "rb") as audio_file: await update.effective_message.reply_voice(voice=audio_file)
         os.remove("voice.ogg")
@@ -780,7 +888,7 @@ async def group_info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text(f"📁 **Group Intel: {chat.title}**\n\n👥 Members: {user_count}\n🧠 Memory Nodes: {mem_count}\n⚠️ Warnings Issued: {warn_count}", parse_mode="Markdown")
 
 # ---------------------------------------------------------------------------
-# X. TROLLING, ECONOMY, & UTILITIES
+# XI. TROLLING & UTILITIES
 # ---------------------------------------------------------------------------
 async def tldr_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -793,11 +901,14 @@ async def tldr_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text(final_text)
 
 async def roast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if is_lockdown(): return
     target = " ".join(context.args) or (update.effective_message.reply_to_message.from_user.first_name if update.effective_message.reply_to_message else "someone")
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    raw_response = await generate_response(f"Roast {target}", [], "You are J.A.R.V.I.S. Generate a witty, clever roast for the person named. Maximum 2 sentences.", update.effective_user.id, update.effective_user.first_name)
+    roast_prompt = "You are J.A.R.V.I.S. Generate a witty, clever roast for the person named. You MUST mix English, Kannada, and Hindi words/slang together naturally in the same sentence. Maximum 2 sentences."
+    raw_response = await generate_response(f"Roast {target}", [], roast_prompt, update.effective_user.id, update.effective_user.first_name)
     final_text = await route_response(update.effective_message, raw_response, update.effective_user, update.effective_chat, context)
     await update.effective_message.reply_text(final_text)
+    await trigger_auto_voice(update, final_text)
 
 async def shutup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
@@ -875,7 +986,129 @@ async def calc_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception: await update.effective_message.reply_text("Invalid calculation.")
 
 # ---------------------------------------------------------------------------
-# XI. ADVANCED SCHEDULERS & EXPLICIT MANUAL OVERRIDES
+# XII. MESSAGE HANDLERS & INTERACTIVE CALLBACKS
+# ---------------------------------------------------------------------------
+async def interactive_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+    
+    if data.startswith("hud_") or data.startswith("cmd_"):
+        action = data.replace("hud_", "").replace("cmd_", "")
+        if action == "intel":
+            with sqlite3.connect(DB_PATH) as conn:
+                groups = conn.execute("SELECT chat_id, title FROM chats WHERE chat_id < 0").fetchall()
+                roster_rows = conn.execute("SELECT name, username, chat_id FROM roster").fetchall()
+            dossier = "👥 **STARK HUD: GROUP INTEL DOSSIER**\n\n"
+            for gid, title in groups:
+                dossier += f"📁 **Group:** {title} (`{gid}`)\n"
+                for m in [r for r in roster_rows if r[2] == gid]: dossier += f"  • {m[0]} (@{m[1]})\n"
+            await query.edit_message_text(dossier[:4000] if groups else "No groups.", parse_mode="Markdown")
+        elif action == "captcha":
+            state = "off" if get_setting("captcha", "on") == "on" else "on"
+            set_setting("captcha", state)
+            await query.edit_message_text(f"🛡️ Security Gate is now {state.upper()}.")
+        elif action in ["news", "morning", "night"]: await query.edit_message_text(f"💻 **Terminal Instruction:**\nTo execute this routine directly, type `/{action}` in the chat.", parse_mode="Markdown")
+        elif action.startswith("info_"): await query.edit_message_text(f"📡 **Sensor Status:** {action.replace('info_', '').upper()} core is active. Upload media directly to engage.", parse_mode="Markdown")
+
+    elif data.startswith("captcha_"):
+        if str(query.from_user.id) == data.split("_")[1]:
+            await context.bot.restrict_chat_member(query.message.chat_id, query.from_user.id, permissions=ChatPermissions(can_send_messages=True, can_send_photos=True, can_send_videos=True, can_send_documents=True, can_send_audios=True, can_send_other_messages=True))
+            await query.edit_message_text(f"Identity confirmed. Welcome, {query.from_user.first_name}. 🫡")
+        else: await context.bot.answer_callback_query(query.id, "This button is not for you.", show_alert=True)
+
+    elif data.startswith("tdone_"):
+        with sqlite3.connect(DB_PATH) as conn: conn.execute("UPDATE tasks SET status = 'done' WHERE id = ?", (data.split("_")[1],))
+        await query.edit_message_text(f"~~{query.message.text}~~ \n*Completed.* ✅", parse_mode="Markdown")
+
+    elif data.startswith("tdel_"):
+        with sqlite3.connect(DB_PATH) as conn: conn.execute("DELETE FROM tasks WHERE id = ?", (data.split("_")[1],))
+        await query.delete_message()
+
+async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if is_lockdown(): return
+    msg = update.effective_message
+    if not msg or not msg.text: return
+    user, chat, text = msg.from_user, msg.chat, msg.text
+    log_roster_and_chat(chat, user)
+    thread_id = msg.message_thread_id
+    log_memory(chat.id, thread_id, user.id, "user", f"{user.first_name}: {text}")
+
+    with sqlite3.connect(DB_PATH) as conn:
+        if conn.execute("SELECT reason FROM afk WHERE user_id = ?", (user.id,)).fetchone():
+            conn.execute("DELETE FROM afk WHERE user_id = ?", (user.id,))
+            conn.commit()
+            await msg.reply_text(f"Welcome back, {user.first_name}. AFK status cleared. 🚀")
+            
+    if msg.entities:
+        with sqlite3.connect(DB_PATH) as conn:
+            for ent in msg.entities:
+                if ent.type == "mention":
+                    target_id_row = conn.execute("SELECT user_id, name FROM roster WHERE username = ?", (text[ent.offset+1 : ent.offset+ent.length].lower(),)).fetchone()
+                    if target_id_row:
+                        conn.execute("INSERT INTO interactions (user_a, user_b, interactions) VALUES (?, ?, 1) ON CONFLICT(user_a, user_b) DO UPDATE SET interactions = interactions + 1", (user.id, target_id_row[0]))
+                        conn.commit()
+                        afk_status = conn.execute("SELECT reason FROM afk WHERE user_id = ?", (target_id_row[0],)).fetchone()
+                        if afk_status: await msg.reply_text(f"⚠️ {target_id_row[1]} is currently AFK: {afk_status[0]}")
+
+    bot_username = (await context.bot.get_me()).username
+    is_triggered = (chat.type == "private") or (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis)\b', text, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in text.lower())
+    
+    if is_triggered and msg.reply_to_message and msg.reply_to_message.photo:
+        await process_optical_request(msg, msg.reply_to_message.photo, text, user, chat, thread_id, context)
+        return
+
+    if any(kw in text.lower() for kw in ["forwarded", "exam postponed", "paper leak", "cancelled"]):
+        await context.bot.send_chat_action(chat_id=chat.id, action="typing", message_thread_id=thread_id)
+        debunk_msg = await gemini_live_search(f"Is there any official news about Karnataka 2nd PUC exams being postponed or leaked today? Check {text}", "You are a fact-checker. Provide a strictly factual 1-sentence verification.", [])
+        if debunk_msg: await msg.reply_text(f"🛡️ **Fact Check:** {debunk_msg}")
+        return
+
+    if "youtube.com" in text or "youtu.be" in text or "spotify.com" in text:
+        await context.bot.send_chat_action(chat_id=chat.id, action="typing", message_thread_id=thread_id)
+        transcript = await extract_youtube_transcript(text)
+        if transcript:
+            summary = await generate_response(f"Summarize this YouTube video transcript in 3 bullet points: {transcript}", [], "You are J.A.R.V.I.S. Provide a cynical 3-bullet summary.", user.id, user.first_name)
+            await msg.reply_text(f"📺 **Media Intercepted. Summary:**\n\n{summary}")
+            return
+        
+    if any(kw in text.lower() for kw in ["accountancy", "economics", "formula", "business", "computer science", "political science"]):
+        for subject, facts in PUC_ACADEMIC_MATRIX.items():
+            if subject in text.lower():
+                await msg.reply_text(facts)
+                modify_karma(user.id, 5)
+                return
+
+    if not is_triggered and chat.type != "private":
+        if re.search(r'\b(abhishek|dhanush)\b', text, re.IGNORECASE) and user.id != CREATOR_ID:
+            if CREATOR_ID:
+                try: await context.bot.send_message(chat_id=CREATOR_ID, text=f"👻 **Ghost Intercept:** `{user.first_name}` mentioned you in {chat.title}.\n_{text}_", parse_mode="Markdown")
+                except Exception: pass
+        return
+    
+    if not is_triggered: return
+    await context.bot.send_chat_action(chat_id=chat.id, action="typing", message_thread_id=thread_id)
+    
+    sys_prompt = build_system_prompt(user.id, user.first_name, chat.id, user_prompt=text)
+    raw_ai_response = await generate_response(text, get_chat_history(chat.id, thread_id), sys_prompt, user.id, user.first_name)
+    
+    final_text = await route_response(msg, raw_ai_response, user, chat, context)
+    log_memory(chat.id, thread_id, user.id, "assistant", final_text)
+    
+    await msg.reply_text(final_text)
+    
+    # Auto-voice trigger injected back
+    await trigger_auto_voice(update, final_text)
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    if context.error and "Conflict: terminated by other getUpdates request" in str(context.error): return
+    logger.error("Exception handled:", exc_info=context.error)
+    if CREATOR_ID:
+        try: await context.bot.send_message(chat_id=CREATOR_ID, text=f"⚠️ **Shadow Log Error**\n```python\n{''.join(traceback.format_exception(None, context.error, context.error.__traceback__))[:4000]}\n```", parse_mode="Markdown")
+        except Exception: pass
+
+# ---------------------------------------------------------------------------
+# XIII. AUTOMATED SCHEDULERS & BACKGROUND TASKS
 # ---------------------------------------------------------------------------
 async def cloud_save_routine(context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -994,125 +1227,7 @@ async def news_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text(f"📰 **Direct Live Briefing:**\n\n{news_text}", parse_mode="Markdown")
 
 # ---------------------------------------------------------------------------
-# XII. MESSAGE HANDLERS & CALLBACKS
-# ---------------------------------------------------------------------------
-async def interactive_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    data = query.data
-    
-    if data.startswith("hud_") or data.startswith("cmd_"):
-        action = data.replace("hud_", "").replace("cmd_", "")
-        if action == "intel":
-            with sqlite3.connect(DB_PATH) as conn:
-                groups = conn.execute("SELECT chat_id, title FROM chats WHERE chat_id < 0").fetchall()
-                roster_rows = conn.execute("SELECT name, username, chat_id FROM roster").fetchall()
-            dossier = "👥 **STARK HUD: GROUP INTEL DOSSIER**\n\n"
-            for gid, title in groups:
-                dossier += f"📁 **Group:** {title} (`{gid}`)\n"
-                for m in [r for r in roster_rows if r[2] == gid]: dossier += f"  • {m[0]} (@{m[1]})\n"
-            await query.edit_message_text(dossier[:4000] if groups else "No groups.", parse_mode="Markdown")
-        elif action == "captcha":
-            state = "off" if get_setting("captcha", "on") == "on" else "on"
-            set_setting("captcha", state)
-            await query.edit_message_text(f"🛡️ Security Gate is now {state.upper()}.")
-        elif action in ["news", "morning", "night"]: await query.edit_message_text(f"💻 **Terminal Instruction:**\nTo execute this routine directly, type `/{action}` in the chat.", parse_mode="Markdown")
-        elif action.startswith("info_"): await query.edit_message_text(f"📡 **Sensor Status:** {action.replace('info_', '').upper()} core is active. Upload media directly to engage.", parse_mode="Markdown")
-
-    elif data.startswith("captcha_"):
-        if str(query.from_user.id) == data.split("_")[1]:
-            await context.bot.restrict_chat_member(query.message.chat_id, query.from_user.id, permissions=ChatPermissions(can_send_messages=True, can_send_photos=True, can_send_videos=True, can_send_documents=True, can_send_audios=True, can_send_other_messages=True))
-            await query.edit_message_text(f"Identity confirmed. Welcome, {query.from_user.first_name}. 🫡")
-        else: await context.bot.answer_callback_query(query.id, "This button is not for you.", show_alert=True)
-
-    elif data.startswith("tdone_"):
-        with sqlite3.connect(DB_PATH) as conn: conn.execute("UPDATE tasks SET status = 'done' WHERE id = ?", (data.split("_")[1],))
-        await query.edit_message_text(f"~~{query.message.text}~~ \n*Completed.* ✅", parse_mode="Markdown")
-
-    elif data.startswith("tdel_"):
-        with sqlite3.connect(DB_PATH) as conn: conn.execute("DELETE FROM tasks WHERE id = ?", (data.split("_")[1],))
-        await query.delete_message()
-
-async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.effective_message
-    if not msg or not msg.text: return
-    user, chat, text = msg.from_user, msg.chat, msg.text
-    log_roster_and_chat(chat, user)
-    thread_id = msg.message_thread_id
-    log_memory(chat.id, thread_id, user.id, "user", f"{user.first_name}: {text}")
-
-    with sqlite3.connect(DB_PATH) as conn:
-        if conn.execute("SELECT reason FROM afk WHERE user_id = ?", (user.id,)).fetchone():
-            conn.execute("DELETE FROM afk WHERE user_id = ?", (user.id,))
-            conn.commit()
-            await msg.reply_text(f"Welcome back, {user.first_name}. AFK status cleared. 🚀")
-            
-    if msg.entities:
-        with sqlite3.connect(DB_PATH) as conn:
-            for ent in msg.entities:
-                if ent.type == "mention":
-                    target_id_row = conn.execute("SELECT user_id, name FROM roster WHERE username = ?", (text[ent.offset+1 : ent.offset+ent.length].lower(),)).fetchone()
-                    if target_id_row:
-                        conn.execute("INSERT INTO interactions (user_a, user_b, interactions) VALUES (?, ?, 1) ON CONFLICT(user_a, user_b) DO UPDATE SET interactions = interactions + 1", (user.id, target_id_row[0]))
-                        conn.commit()
-                        afk_status = conn.execute("SELECT reason FROM afk WHERE user_id = ?", (target_id_row[0],)).fetchone()
-                        if afk_status: await msg.reply_text(f"⚠️ {target_id_row[1]} is currently AFK: {afk_status[0]}")
-
-    bot_username = (await context.bot.get_me()).username
-    is_triggered = (chat.type == "private") or (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis)\b', text, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in text.lower())
-    
-    if is_triggered and msg.reply_to_message and msg.reply_to_message.photo:
-        await process_optical_request(msg, msg.reply_to_message.photo, text, user, chat, thread_id, context)
-        return
-
-    if any(kw in text.lower() for kw in ["forwarded", "exam postponed", "paper leak", "cancelled"]):
-        await context.bot.send_chat_action(chat_id=chat.id, action="typing", message_thread_id=thread_id)
-        debunk_msg = await gemini_live_search(f"Is there any official news about Karnataka 2nd PUC exams being postponed or leaked today? Check {text}", "You are a fact-checker. Provide a strictly factual 1-sentence verification.", [])
-        if debunk_msg: await msg.reply_text(f"🛡️ **Fact Check:** {debunk_msg}")
-        return
-
-    if "youtube.com" in text or "youtu.be" in text or "spotify.com" in text:
-        await context.bot.send_chat_action(chat_id=chat.id, action="typing", message_thread_id=thread_id)
-        transcript = await extract_youtube_transcript(text)
-        if transcript:
-            summary = await generate_response(f"Summarize this YouTube video transcript in 3 bullet points: {transcript}", [], "You are J.A.R.V.I.S. Provide a cynical 3-bullet summary.", user.id, user.first_name)
-            await msg.reply_text(f"📺 **Media Intercepted. Summary:**\n\n{summary}")
-            return
-        
-    if any(kw in text.lower() for kw in ["accountancy", "economics", "formula", "business", "computer science", "political science"]):
-        for subject, facts in PUC_ACADEMIC_MATRIX.items():
-            if subject in text.lower():
-                await msg.reply_text(facts)
-                modify_karma(user.id, 5)
-                return
-
-    if not is_triggered and chat.type != "private":
-        if re.search(r'\b(abhishek|dhanush)\b', text, re.IGNORECASE) and user.id != CREATOR_ID:
-            if CREATOR_ID:
-                try: await context.bot.send_message(chat_id=CREATOR_ID, text=f"👻 **Ghost Intercept:** `{user.first_name}` mentioned you in {chat.title}.\n_{text}_", parse_mode="Markdown")
-                except Exception: pass
-        return
-    
-    if not is_triggered: return
-    await context.bot.send_chat_action(chat_id=chat.id, action="typing", message_thread_id=thread_id)
-    
-    sys_prompt = build_system_prompt(user.id, user.first_name, chat.id, user_prompt=text)
-    raw_ai_response = await generate_response(text, get_chat_history(chat.id, thread_id), sys_prompt, user.id, user.first_name)
-    
-    final_text = await route_response(msg, raw_ai_response, user, chat, context)
-    log_memory(chat.id, thread_id, user.id, "assistant", final_text)
-    
-    await msg.reply_text(final_text)
-
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    if context.error and "Conflict: terminated by other getUpdates request" in str(context.error): return
-    logger.error("Exception handled:", exc_info=context.error)
-    if CREATOR_ID:
-        try: await context.bot.send_message(chat_id=CREATOR_ID, text=f"⚠️ **Shadow Log Error**\n```python\n{''.join(traceback.format_exception(None, context.error, context.error.__traceback__))[:4000]}\n```", parse_mode="Markdown")
-        except Exception: pass
-
-# ---------------------------------------------------------------------------
-# XIII. INITIALIZATION & SCHEDULER BOOT
+# XIV. BOOT SEQUENCE & MAIN EXECUTION
 # ---------------------------------------------------------------------------
 async def post_init(app: Application):
     try:
@@ -1134,16 +1249,28 @@ async def post_init(app: Application):
     scheduler.add_job(nightly_reconciliation, 'cron', hour=3, minute=0, args=[app])
     scheduler.add_job(dpue_board_scraper, 'interval', minutes=45, args=[app])
     scheduler.add_job(breaking_news_monitor, 'interval', minutes=30, args=[app])
+    
+    jobs = load_cron_jobs()
+    for jid, j in jobs.items():
+        try:
+            fields = j['expr'].split()
+            trigger = CronTrigger(minute=fields[0], hour=fields[1], day=fields[2], month=fields[3], day_of_week=fields[4], timezone=IST)
+            scheduler.add_job(runtime_cron_fire, trigger, args=[app.bot, j['cmd']], id=f"runtime_{jid}")
+        except Exception as e: logger.error(f"Failed to restore cron {jid}: {e}")
+
     scheduler.start()
     
     if CREATOR_ID: 
         boot_msg = (
-            "✨ **God Core V6.5 (Master Orchestrator) Online.**\n"
-            "• Infinite Cloud Save: Armed (-1004296302955)\n"
-            "• Web UI Telemetry API: Active\n"
+            "✨ **God Core V6.8 (Masterpiece Monolith) Online.**\n"
+            "• Infinite Cloud Save: Armed\n"
+            "• Economy & Moderation Engine: Active\n"
+            "• Sensory Core (OCR/Doc/Audio): Fully Restored\n"
+            "• Acoustic Phonetic Router: Active\n"
             "• WebApp Boot Launcher: Active\n"
-            "• Root Diagnostics Hook: Active\n"
-            "• Privacy Shield Verifier: Active"
+            "• 6-Node MoE Cascade: Active\n"
+            "• Root Hooks & Cron Scheduler: Active\n"
+            "• Global Lockdown Gate: Armed"
         )
         try: await app.bot.send_message(chat_id=CREATOR_ID, text=boot_msg, parse_mode="Markdown")
         except Exception: pass
@@ -1157,7 +1284,9 @@ def main():
     app.add_handler(CommandHandler("sys", sys_diagnostics_cmd))
     app.add_handler(CommandHandler("shield", shield_check_cmd))
     app.add_handler(CommandHandler("scrape", omni_scrape_cmd))
-    
+    app.add_handler(CommandHandler("cron", cron_cmd))
+    app.add_handler(CommandHandler("lockdown", lockdown_cmd))
+    app.add_handler(CommandHandler("purge", purge_cmd))
     app.add_handler(CommandHandler("flush", flush_cmd))
     app.add_handler(CommandHandler("speak", speak_cmd))
     app.add_handler(CommandHandler("task", add_task))
@@ -1169,6 +1298,7 @@ def main():
     app.add_handler(CommandHandler("hud", hud_cmd))
     app.add_handler(CommandHandler("help", hud_cmd))
     app.add_handler(CommandHandler("groupinfo", group_info_cmd))
+    
     app.add_handler(CommandHandler("setname", god_mode_cmd))
     app.add_handler(CommandHandler("setdesc", god_mode_cmd))
     app.add_handler(CommandHandler("setdp", god_mode_cmd))
@@ -1177,12 +1307,14 @@ def main():
     app.add_handler(CommandHandler("unlock", god_mode_cmd))
     app.add_handler(CommandHandler("captcha", god_mode_cmd))
     app.add_handler(CommandHandler("say", god_mode_cmd))
+    
     app.add_handler(CommandHandler("tldr", tldr_cmd))
     app.add_handler(CommandHandler("roast", roast_cmd))
     app.add_handler(CommandHandler("shutup", shutup_cmd))
     app.add_handler(CommandHandler("afk", afk_cmd))
     app.add_handler(CommandHandler("quote", quote_cmd))
     app.add_handler(CommandHandler("confess", confess_cmd))
+    
     app.add_handler(CommandHandler("warn", warn_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
     app.add_handler(CommandHandler("karma", karma_cmd))
@@ -1207,7 +1339,7 @@ def main():
     
     app.add_error_handler(error_handler)
     
-    logger.info("J.A.R.V.I.S. Cognitive V6.5 is booting...")
+    logger.info("J.A.R.V.I.S. Cognitive V6.8 is booting...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
