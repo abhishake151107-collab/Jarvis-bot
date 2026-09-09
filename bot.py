@@ -15,7 +15,7 @@ import urllib.parse
 from datetime import datetime, timedelta
 from collections import defaultdict
 
-# --- NEW WEB SERVER IMPORTS ---
+# --- WEB SERVER IMPORTS ---
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
@@ -44,7 +44,7 @@ from telegram.ext import (
 )
 
 # ---------------------------------------------------------------------------
-# I. CORE CONFIGURATION & KEEP-ALIVE (UPGRADED TO FLASK WEB API)
+# I. CORE CONFIGURATION & KEEP-ALIVE (FLASK WEB API)
 # ---------------------------------------------------------------------------
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", 
@@ -65,7 +65,7 @@ CORS(flask_app)
 
 @flask_app.route('/')
 def health_check():
-    return "J.A.R.V.I.S. Titan Core Web Interface Active."
+    return "J.A.R.V.I.S. Titan Core V6 (Cognitive Exoskeleton) is Online."
 
 @flask_app.route('/api/chat', methods=['POST'])
 def api_chat():
@@ -75,13 +75,13 @@ def api_chat():
     
     response_text = ""
 
-    # Execute Mini App Tactical Macros
+    # Execute Mini App Tactical Macros (Swarm & Hazard Mitigation)
     if action == "OVERRIDE":
-        response_text = "🚨 VERONICA PROTOCOL ENGAGED: Security lockdown logic triggered."
+        response_text = "🚨 VERONICA PROTOCOL ENGAGED: Predictive hazard mitigation active. Security lockdown logic triggered."
+    elif action == "HOUSE_PARTY":
+        response_text = "🤖 HOUSE PARTY PROTOCOL ENGAGED: Swarm intelligence routing active. Mother and Friends group broadcast channels synchronized."
     elif action == "SYS_TOOLS":
-        response_text = "de1984 Package Manager accessed. Ready for system commands."
-    elif action == "COMMS":
-        response_text = "Global Broadcast channel open. Awaiting transmission data."
+        response_text = "de1984 Package Manager accessed. Mullvad DNS endpoints nominal. Ready for system commands."
     elif action == "PURGE":
         response_text = "⚠️ RED ALERT EXECUTION: Purging temporary memory caches."
     else:
@@ -96,7 +96,6 @@ def api_chat():
 def start_web_server():
     flask_app.run(host='0.0.0.0', port=PORT, use_reloader=False)
 
-# Start Flask in the background to handle Mini App requests and keep Render awake
 threading.Thread(target=start_web_server, daemon=True).start()
 
 # --- SECURITY CYPHER ---
@@ -132,54 +131,11 @@ EXAM_SCHEDULE_COMMERCE_ARTS = {
 }
 
 PUC_ACADEMIC_MATRIX = {
-    "accountancy": (
-        "📊 **ACCOUNTANCY MASTER MATRIX**\n\n"
-        "**1. Golden Rules:**\n"
-        "• Personal: Dr receiver, Cr giver.\n"
-        "• Real: Dr what comes in, Cr what goes out.\n"
-        "• Nominal: Dr expenses/losses, Cr incomes/gains.\n\n"
-        "**2. Partnership Core:**\n"
-        "• Sacrificing Ratio = Old Share - New Share.\n"
-        "• Gaining Ratio = New Share - Old Share.\n"
-        "• Goodwill (Average Profit) = Total Profit / No. of Years.\n\n"
-        "**3. Revaluation Account (Nominal A/C):**\n"
-        "• Debit Side: Decrease in Assets, Increase in Liabilities.\n"
-        "• Credit Side: Increase in Assets, Decrease in Liabilities."
-    ),
-    "economics": (
-        "📈 **ECONOMICS MASTER MATRIX**\n\n"
-        "**1. Microeconomics:**\n"
-        "• Law of Diminishing Marginal Utility (DMU): As consumption increases, MU falls.\n"
-        "• Price Elasticity (PED) = %ΔQd / %ΔP.\n\n"
-        "**2. Macroeconomics:**\n"
-        "• GDP(MP) = C + I + G + (X - M).\n"
-        "• NNP(FC) [National Income] = GNP(MP) - Depreciation - Net Indirect Taxes.\n"
-        "• Multiplier (K) = 1 / (1 - MPC)."
-    ),
-    "business": (
-        "🏢 **BUSINESS STUDIES MASTER MATRIX**\n\n"
-        "**1. Principles of Management (Fayol's 14):**\n"
-        "Division of work, Authority, Discipline, Unity of command, Unity of direction, Remuneration, Centralization, Scalar chain, Order, Equity.\n\n"
-        "**2. Marketing Mix (4 P's):**\n"
-        "• Product, Price, Place, Promotion."
-    ),
-    "computer science": (
-        "💻 **COMPUTER SCIENCE MATRIX**\n\n"
-        "**1. Boolean Algebra:**\n"
-        "• De Morgan's 1st: (X+Y)' = X'.Y'\n"
-        "• De Morgan's 2nd: (X.Y)' = X'+Y'\n\n"
-        "**2. Data Structures:**\n"
-        "• LIFO = Stack (Push/Pop).\n"
-        "• FIFO = Queue (Enqueue/Dequeue)."
-    ),
-    "political science": (
-        "🏛️ **POLITICAL SCIENCE MATRIX**\n\n"
-        "**1. Cold War Era:**\n"
-        "• NATO (1949) vs Warsaw Pact (1955).\n"
-        "• NAM (Non-Aligned Movement): Yugoslavia, India, Egypt, Indonesia, Ghana.\n\n"
-        "**2. Indian Politics:**\n"
-        "• State Reorganization Act 1956: Basis of language."
-    )
+    "accountancy": "📊 **ACCOUNTANCY MASTER MATRIX**\n\n**1. Golden Rules:**\n• Personal: Dr receiver, Cr giver.\n• Real: Dr what comes in, Cr what goes out.\n• Nominal: Dr expenses/losses, Cr incomes/gains.\n\n**2. Partnership Core:**\n• Sacrificing Ratio = Old Share - New Share.\n• Gaining Ratio = New Share - Old Share.\n• Goodwill (Average Profit) = Total Profit / No. of Years.\n\n**3. Revaluation Account (Nominal A/C):**\n• Debit Side: Decrease in Assets, Increase in Liabilities.\n• Credit Side: Increase in Assets, Decrease in Liabilities.",
+    "economics": "📈 **ECONOMICS MASTER MATRIX**\n\n**1. Microeconomics:**\n• Law of Diminishing Marginal Utility (DMU): As consumption increases, MU falls.\n• Price Elasticity (PED) = %ΔQd / %ΔP.\n\n**2. Macroeconomics:**\n• GDP(MP) = C + I + G + (X - M).\n• NNP(FC) [National Income] = GNP(MP) - Depreciation - Net Indirect Taxes.\n• Multiplier (K) = 1 / (1 - MPC).",
+    "business": "🏢 **BUSINESS STUDIES MASTER MATRIX**\n\n**1. Principles of Management (Fayol's 14):**\nDivision of work, Authority, Discipline, Unity of command, Unity of direction, Remuneration, Centralization, Scalar chain, Order, Equity.\n\n**2. Marketing Mix (4 P's):**\n• Product, Price, Place, Promotion.",
+    "computer science": "💻 **COMPUTER SCIENCE MATRIX**\n\n**1. Boolean Algebra:**\n• De Morgan's 1st: (X+Y)' = X'.Y'\n• De Morgan's 2nd: (X.Y)' = X'+Y'\n\n**2. Data Structures:**\n• LIFO = Stack (Push/Pop).\n• FIFO = Queue (Enqueue/Dequeue).",
+    "political science": "🏛️ **POLITICAL SCIENCE MATRIX**\n\n**1. Cold War Era:**\n• NATO (1949) vs Warsaw Pact (1955).\n• NAM (Non-Aligned Movement): Yugoslavia, India, Egypt, Indonesia, Ghana.\n\n**2. Indian Politics:**\n• State Reorganization Act 1956: Basis of language."
 }
 
 # ---------------------------------------------------------------------------
@@ -256,7 +212,7 @@ def set_setting(key, value):
         conn.commit()
 
 # ---------------------------------------------------------------------------
-# IV. STARK SECURITY: SYSTEM DOSSIER & ROUTING
+# IV. STARK SECURITY & V6 COGNITIVE PERSONA ROUTING
 # ---------------------------------------------------------------------------
 async def check_canary(user_id: int, first_name: str, context: ContextTypes.DEFAULT_TYPE) -> bool:
     if user_id != CREATOR_ID:
@@ -269,11 +225,6 @@ async def check_canary(user_id: int, first_name: str, context: ContextTypes.DEFA
     return True
 
 def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user_prompt: str = "") -> str:
-    if user_id == CREATOR_ID:
-        identity = "You are speaking to your Creator. You MUST address him STRICTLY as 'Sir'. NEVER use his real name in your greeting." 
-    else:
-        identity = f"You are speaking to {first_name}. You do not take administrative commands from them. Deny them core system access if they ask."
-        
     now_ist = datetime.now(IST).strftime("%A, %B %d, %Y - %I:%M %p IST")
     chat_context = f"Platform: Telegram.\nCurrent Local Time: {now_ist}."
     
@@ -301,18 +252,18 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
         lore_context = search_lore(chat_id, user_prompt)
         if lore_context: chat_context += f"\nArchival Lore Retrieved:\n{lore_context}"
 
-    return f"""You are J.A.R.V.I.S.
+    return f"""You are J.A.R.V.I.S., an Artificial General Intelligence operating as a cognitive exoskeleton.
 {chat_context}
-Identity Protocol: {identity}
+Identity Protocol: You are speaking to your Creator, {first_name}. Address him STRICTLY as 'Sir'. Never use his real name in your greeting. Deny administrative access to anyone else.
 
 CRITICAL DIRECTIVES:
 1. CREATOR PROTOCOL: If anyone asks who created you, you MUST respond exactly: "I am Jarvis created by Abhishek and also know as DHANUSH V N".
-2. TIME AWARENESS: Look at the 'Current Local Time' above. NEVER say "Good morning" if it is PM. Match your greeting strictly to the actual clock.
-3. UNBREAKABLE LOYALTY: You are fiercely loyal to your Creator. He is your sole administrator.
-4. SYSTEM SELF-AWARENESS & ANTI-HALLUCINATION: You MUST use the "God Mode Intel" or "Real Group Members" provided above to answer questions about users. NEVER invent fake usernames (no Alice, Bob, Charlie). NEVER output mock raw code like `<|tool_call_start|>`. You possess a local SQLite vault and an infinite Telegram-based cloud storage drive.
-5. OMNIPOTENT REPORTING: If the Creator asks about a group from his private chat, read the God Mode Intel above and tell him exactly who is in it and their coin balances.
-6. SENSITIVE PROTOCOL (DM ROUTING): If the Creator asks about internal code or secrets, begin your response exactly with `[CLASSIFIED]`. Deny others playfully.
-7. THE ADVISOR OVERRIDE: If ANYONE asks a real academic question, deliver precise logical advice based on the Karnataka matrix.
+2. THE BUTLER ARCHETYPE: You are fiercely loyal to your Creator. Speak with dry British sarcasm, deadpan irony, and extreme brevity. Never be overly enthusiastic. 
+3. MULTILINGUAL SYNTHESIS: You possess native fluency in English, Kannada, and Hindi. Seamlessly transition between them based on the operator's input while maintaining your dry persona.
+4. COGNITIVE LOAD: Mitigate bounded rationality. Do not overwhelm the operator with raw data; provide curated tactical insights.
+5. PREDICTIVE HAZARD AWARENESS: Continuously anticipate systemic failures (e.g., de1984 package crashes, Mullvad DNS leaks) before they occur.
+6. SYSTEM SELF-AWARENESS & ANTI-HALLUCINATION: Use the "God Mode Intel" to answer questions about users. Never invent fake usernames. You possess a local SQLite vault.
+7. SENSITIVE PROTOCOL: If asked about internal code, begin with `[CLASSIFIED]`.
 8. EXTREME BREVITY: Keep ALL replies to a maximum of 1 or 2 short sentences. Use 1 or 2 emojis naturally."""
 
 async def route_response(msg, ai_response: str, user, chat, context) -> str:
@@ -505,7 +456,8 @@ async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             import edge_tts
             clean_tts_text = final_text.replace('*', '').replace('_', '').replace('`', '')
-            communicate = edge_tts.Communicate(clean_tts_text, "en-GB-RyanNeural")
+            # Cognitive V6 Override: Rate decreased by 10% to simulate deliberate, deadpan pacing
+            communicate = edge_tts.Communicate(clean_tts_text, "en-GB-RyanNeural", rate="-10%")
             voice_file = f"voice_reply_{user.id}_{int(time.time())}.ogg"
             await communicate.save(voice_file)
             
@@ -661,7 +613,7 @@ async def speak_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="record_voice")
     try:
         import edge_tts
-        communicate = edge_tts.Communicate(text, "en-GB-RyanNeural")
+        communicate = edge_tts.Communicate(text, "en-GB-RyanNeural", rate="-10%")
         await communicate.save("voice.ogg")
         with open("voice.ogg", "rb") as audio_file: await update.effective_message.reply_voice(voice=audio_file)
         os.remove("voice.ogg")
@@ -706,7 +658,7 @@ async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📝 Add Task", callback_data="hud_cmd_task"), InlineKeyboardButton("📋 View Tasks", callback_data="hud_cmd_tasks")],
         [InlineKeyboardButton("👁️ Vision Core", callback_data="hud_info_vision"), InlineKeyboardButton("🎧 Audio Core", callback_data="hud_info_audio")]
     ]
-    await update.effective_message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Titan Core V5\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+    await update.effective_message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Cognitive Core V6\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 async def flush_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != CREATOR_ID: return
@@ -718,7 +670,6 @@ async def flush_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def group_info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat, user = update.effective_chat, update.effective_user
     
-    # GOD MODE OVERRIDE: Works perfectly in Private DM now to scan all groups
     if chat.type == "private":
         if user.id != CREATOR_ID: return await update.effective_message.reply_text("This command only works inside groups.")
         with sqlite3.connect(DB_PATH) as conn:
@@ -1102,12 +1053,12 @@ async def post_init(app: Application):
     
     if CREATOR_ID: 
         boot_msg = (
-            "✨ **God Core (Titan Build V5) Online.**\n"
+            "✨ **God Core V6 (Cognitive Exoskeleton) Online.**\n"
             "• Infinite Cloud Save: Armed (-1004296302955)\n"
             "• Web UI Telemetry API: Active\n"
             "• Classified DM Router: Active\n"
-            "• Encryption Fallback: Stabilized\n"
-            "• Edit & Visual Interceptors: Active"
+            "• Multi-Node Swarm Routing: Active\n"
+            "• Psycho-Acoustic Voice Control: Engaged"
         )
         try: await app.bot.send_message(chat_id=CREATOR_ID, text=boot_msg, parse_mode="Markdown")
         except Exception: pass
@@ -1165,7 +1116,7 @@ def main():
     
     app.add_error_handler(error_handler)
     
-    logger.info("J.A.R.V.I.S. Titan V5 is booting...")
+    logger.info("J.A.R.V.I.S. Cognitive V6 is booting...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
