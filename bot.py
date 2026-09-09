@@ -91,7 +91,7 @@ flask_app = Flask(__name__)
 CORS(flask_app)
 
 @flask_app.route('/')
-def health_check(): return "J.A.R.V.I.S. Titan Core V7.3 is Online."
+def health_check(): return "J.A.R.V.I.S. Titan Core V7.4 is Online."
 
 @flask_app.route('/api/chat', methods=['POST'])
 def api_chat():
@@ -258,7 +258,7 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
         chat_context += """\n
 [ THE GENESIS DOSSIER & SYSTEM AWARENESS ]
 - Creator Identity: Abhishek (aka DHANUSH V N).
-- Origin: Titan Core V7.3 Monolith. Custom FUI WebApp hosted on GitHub.
+- Origin: Titan Core V7.4 Monolith. Custom FUI WebApp hosted on GitHub.
 - Architecture: Python API, Multi-Node MoE cascade, self-updating root core.
 - Operator Hardware: OPPO F29. High privacy config (VPN, Brave, App Locks).
 - Network Architecture: Mullvad/AdGuard DNS, `de1984` firewall.
@@ -837,11 +837,10 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     web_url = "https://abhishake151107-collab.github.io/stark-os-ui/"
-    kb = [[InlineKeyboardButton("🚀 LAUNCH GOD CORE V7.3", web_app=WebAppInfo(url=web_url))]]
+    kb = [[InlineKeyboardButton("🚀 LAUNCH GOD CORE V7.4", web_app=WebAppInfo(url=web_url))]]
     await update.effective_message.reply_text("✨ **J.A.R.V.I.S. Cognitive Core Online.**\n\nSir, your cinematic interface is ready.", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Exclusive Creator HUD."""
     if update.effective_chat.type != "private": return
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     web_url = "https://abhishake151107-collab.github.io/stark-os-ui/"
@@ -853,7 +852,7 @@ async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🗄️ Backup Vault", callback_data="hud_cmd_backup"), InlineKeyboardButton("📜 Quote Wall", callback_data="hud_cmd_quote")],
         [InlineKeyboardButton("👁️ Vision Core", callback_data="hud_info_vision"), InlineKeyboardButton("🎧 Audio Core", callback_data="hud_info_audio")]
     ]
-    await update.effective_message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Master Core V7.3\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+    await update.effective_message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Master Core V7.4\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 async def speak_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
@@ -880,7 +879,7 @@ async def god_mode_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             img_bytes = await (await update.effective_message.reply_to_message.photo[-1].get_file()).download_as_bytearray()
             await context.bot.set_chat_photo(chat_id, photo=img_bytes); await update.effective_message.reply_text("Group photo updated.")
         elif cmd == "/pin" and update.effective_message.reply_to_message: await context.bot.pin_chat_message(chat_id, update.effective_message.reply_to_message.message_id); await update.effective_message.reply_text("Message pinned.")
-        elif cmd == "/lock": await context.bot.set_chat_permissions(chat_id, ChatPermissions(can_send_messages=False)); await update.effective_message.reply_text("🔒 Chat locked. No one can speak.")
+        elif cmd == "/lock": await context.bot.set_chat_permissions(chat_id, ChatPermissions(can_send_messages=False)); await update.effective_message.reply_text("🔒 Chat locked.")
         elif cmd == "/unlock": await context.bot.set_chat_permissions(chat_id, ChatPermissions(can_send_messages=True, can_send_photos=True, can_send_videos=True, can_send_documents=True, can_send_audios=True, can_send_other_messages=True)); await update.effective_message.reply_text("🔓 Chat unlocked.")
         elif cmd == "/captcha": 
             if args.lower() in ["on", "off"]: set_setting("captcha", args.lower()); await update.effective_message.reply_text(f"CAPTCHA is now {args.upper()}.")
@@ -994,9 +993,7 @@ async def list_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def backup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != CREATOR_ID: return
     try: 
-        if os.path.exists(DB_PATH):
-            with open(DB_PATH, 'rb') as f: 
-                await context.bot.send_document(chat_id=CREATOR_ID, document=f, filename="jarvis_backup.db")
+        with open(DB_PATH, 'rb') as f: await context.bot.send_document(chat_id=CREATOR_ID, document=f, filename="jarvis_backup.db")
     except Exception as e: await update.effective_message.reply_text(f"Backup failed: {e}")
 
 async def imagine_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1250,15 +1247,21 @@ async def news_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # XV. BOOT SEQUENCE & MAIN EXECUTION
 # ---------------------------------------------------------------------------
 async def post_init(app: Application):
+    # 1. Cloud Restore Protocol
     try:
         chat = await app.bot.get_chat(BACKUP_CHANNEL_ID)
         if chat.pinned_message and chat.pinned_message.document:
             file = await app.bot.get_file(chat.pinned_message.document.file_id)
             await file.download_to_drive(DB_PATH)
-            if CREATOR_ID: await app.bot.send_message(chat_id=CREATOR_ID, text="☁️ **Cloud Restore Complete.** Vault loaded.", parse_mode="HTML")
+            if CREATOR_ID: 
+                await app.bot.send_message(chat_id=CREATOR_ID, text="☁️ Cloud Restore Complete. Vault loaded.")
     except Exception as e:
-        if CREATOR_ID: await app.bot.send_message(chat_id=CREATOR_ID, text=f"⚠️ **Cloud Restore Warning:** No backup found or failed to load.\n<code>{e}</code>", parse_mode="HTML")
+        logger.error(f"Cloud Restore Failed: {e}")
+        if CREATOR_ID: 
+            try: await app.bot.send_message(chat_id=CREATOR_ID, text=f"⚠️ Cloud Restore Warning: Failed to load backup.\n{e}")
+            except Exception: pass
 
+    # 2. Cron Scheduler Boot
     scheduler = AsyncIOScheduler(timezone=IST)
     scheduler.add_job(cloud_save_routine, 'interval', minutes=30, args=[app])
     scheduler.add_job(exam_morning_alert, 'cron', hour=6, minute=0, args=[app])
@@ -1276,10 +1279,12 @@ async def post_init(app: Application):
             fields = j['expr'].split()
             trigger = CronTrigger(minute=fields[0], hour=fields[1], day=fields[2], month=fields[3], day_of_week=fields[4], timezone=IST)
             scheduler.add_job(runtime_cron_fire, trigger, args=[app.bot, j['cmd']], id=f"runtime_{jid}")
-        except Exception as e: logger.error(f"Failed to restore cron {jid}: {e}")
+        except Exception as e: 
+            logger.error(f"Failed to restore cron {jid}: {e}")
 
     scheduler.start()
     
+    # 3. Boot Telemetry Dispatch
     if CREATOR_ID: 
         boot_msg = (
             "✨ <b>God Core V6.1 (Cognitive Filter) Online.</b>\n"
@@ -1291,8 +1296,13 @@ async def post_init(app: Application):
             "• Deep Research Agent: Active\n"
             "• Acoustic Phonetic Router: Engaged"
         )
-        try: await app.bot.send_message(chat_id=CREATOR_ID, text=boot_msg, parse_mode="HTML")
-        except Exception: pass
+        try: 
+            await app.bot.send_message(chat_id=CREATOR_ID, text=boot_msg, parse_mode="HTML")
+            logger.info("Boot telemetry successfully dispatched to Creator DM.")
+        except Exception as e: 
+            logger.error(f"CRITICAL: Failed to dispatch boot message to Creator DM. Error: {e}")
+    else:
+        logger.error("CRITICAL: CREATOR_ID is 0 or missing. Cannot dispatch boot message.")
 
 def main():
     db_init()
@@ -1364,7 +1374,7 @@ def main():
     
     app.add_error_handler(error_handler)
     
-    logger.info("J.A.R.V.I.S. Cognitive V7.3 is booting...")
+    logger.info("J.A.R.V.I.S. Cognitive V7.4 is booting...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
