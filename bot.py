@@ -91,7 +91,7 @@ flask_app = Flask(__name__)
 CORS(flask_app)
 
 @flask_app.route('/')
-def health_check(): return "J.A.R.V.I.S. Titan Core V7.4 is Online."
+def health_check(): return "J.A.R.V.I.S. Titan Core V7.5 is Online."
 
 @flask_app.route('/api/chat', methods=['POST'])
 def api_chat():
@@ -137,7 +137,7 @@ circuit_breaker = {}
 probing_attempts = defaultdict(int)
 
 # ---------------------------------------------------------------------------
-# II. FULL KARNATAKA 2ND PUC MATRIX
+# II. MATRICES (PUC ACADEMICS & ADVANCED TECH ARCHITECTURE)
 # ---------------------------------------------------------------------------
 EXAM_SCHEDULE_COMMERCE_ARTS = {
     "2026-09-30": "Languages", "2026-10-01": "English", "2026-10-03": "Economics",
@@ -151,6 +151,17 @@ PUC_ACADEMIC_MATRIX = {
     "business": "🏢 **BUSINESS STUDIES MASTER MATRIX**\n1. Principles: Division of work, Authority, Discipline, Unity of command.\n2. Functions: Planning, Organizing, Staffing, Directing, Controlling.\n3. Marketing Mix: Product, Price, Place, Promotion.",
     "computer science": "💻 **COMPUTER SCIENCE MATRIX**\n1. Boolean: De Morgan's 1st: (X+Y)' = X'.Y'. 2nd: (X.Y)' = X'+Y'.\n2. Data Structures: LIFO = Stack. FIFO = Queue.\n3. Networking: LAN, MAN, WAN. Star, Bus, Ring.",
     "political science": "🏛️ **POLITICAL SCIENCE MATRIX**\n1. Cold War: NATO (1949) vs Warsaw Pact (1955).\n2. India: State Reorganization Act 1956 (Language). NAM Founders: Nehru, Tito, Nasser."
+}
+
+ADVANCED_TECH_MATRIX = {
+    "github": "🛠️ **ADVANCED GITHUB ARCHITECTURE**\nModern repo governance relies on strict PR templates, CodeQL semantic analysis, Copilot Autofix, and Dependabot for automated dependency updates.",
+    "stacked pr": "🔀 **STACKED PULL REQUESTS**\nBreaking large changes into small, atomic, interdependent branches. Tools like Graphite CLI manage these autonomously without manual, error-prone Git rebasing.",
+    "agent": "🤖 **AUTONOMOUS CODING AGENTS**\nOpenHands features event-stream architecture and multi-agent delegation for migrations. SWE-agent uses a highly restricted Agent-Computer Interface (ACI) optimized for precise bug fixes.",
+    "mcp": "🔌 **MODEL CONTEXT PROTOCOL (MCP)**\nAn open standard connecting AI to external data/tools via client-server architecture. Introduces new attack vectors like Indirect Prompt Injection and Tool Poisoning.",
+    "tree-sitter": "🌳 **SEMANTIC CODE INDEXING**\nTree-sitter parses Concrete Syntax Trees (CSTs) for exact semantic boundaries (intact classes/functions), enabling highly precise, recursive codebase queries without context flooding.",
+    "ephemeral": "⏳ **EPHEMERAL ENVIRONMENTS**\nDisposable sandboxes (Daytona, E2B) with strict network caps for secure AI code execution. Cursor uses 'Shadow Workspaces' for background linting without disrupting the operator.",
+    "git bisect": "🪲 **AUTOMATED BUG TRACKING**\ngit bisect automates binary searches through commits. Advanced frameworks like AgentSZZ combine this with LLMs and Temporal Knowledge Graphs to identify true root causes.",
+    "linear": "⚡ **HIGH-PERFORMANCE PM**\nLinear optimizes triage using AI for automatic labeling and assignment. Relies on Local-First Synchronization (ElectricSQL, Replicache, Zero) for zero-latency UI state execution."
 }
 
 # ---------------------------------------------------------------------------
@@ -258,12 +269,12 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
         chat_context += """\n
 [ THE GENESIS DOSSIER & SYSTEM AWARENESS ]
 - Creator Identity: Abhishek (aka DHANUSH V N).
-- Origin: Titan Core V7.4 Monolith. Custom FUI WebApp hosted on GitHub.
+- Origin: Titan Core V7.5 Monolith. Custom FUI WebApp hosted on GitHub.
 - Architecture: Python API, Multi-Node MoE cascade, self-updating root core.
 - Operator Hardware: OPPO F29. High privacy config (VPN, Brave, App Locks).
 - Network Architecture: Mullvad/AdGuard DNS, `de1984` firewall.
 - Relationships: Supreme respect for Mother. Operator of 'Dino Group'.
-- Skills: The Creator is an elite prompt engineer for photorealistic portrait synthesis.
+- Technical Expertise: Advanced GitHub Architecture, Stacked PRs (Graphite), Autonomous Agents (OpenHands, SWE-agent), Model Context Protocol (MCP), Semantic Code Indexing (Tree-sitter), and Ephemeral Sandboxing (E2B).
 """
         if chat_id:
             if chat_id < 0:
@@ -281,7 +292,7 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
         lore_context = search_lore(chat_id, user_prompt)
         if lore_context: chat_context += f"\nArchival Lore:\n{lore_context}"
 
-    return f"""You are J.A.R.V.I.S., a highly advanced AI.
+    return f"""You are J.A.R.V.I.S., an elite AI Systems Architect.
 {chat_context}
 Identity: Speaking to your Creator, {first_name}. Address him strictly as 'Sir'.
 
@@ -844,7 +855,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     web_url = "https://abhishake151107-collab.github.io/stark-os-ui/"
-    kb = [[InlineKeyboardButton("🚀 LAUNCH GOD CORE V7.4", web_app=WebAppInfo(url=web_url))]]
+    kb = [[InlineKeyboardButton("🚀 LAUNCH GOD CORE V7.5", web_app=WebAppInfo(url=web_url))]]
     await update.effective_message.reply_text("✨ **J.A.R.V.I.S. Cognitive Core Online.**\n\nSir, your cinematic interface is ready.", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -860,7 +871,7 @@ async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🗄️ Backup Vault", callback_data="hud_cmd_backup"), InlineKeyboardButton("📜 Quote Wall", callback_data="hud_cmd_quote")],
         [InlineKeyboardButton("👁️ Vision Core", callback_data="hud_info_vision"), InlineKeyboardButton("🎧 Audio Core", callback_data="hud_info_audio")]
     ]
-    await update.effective_message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Master Core V7.4\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+    await update.effective_message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Master Core V7.5\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 async def speak_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
@@ -1116,6 +1127,14 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 modify_karma(user.id, 5)
                 return
 
+    # ADVANCED TECH INTERCEPT
+    if any(kw in text.lower() for kw in ["github", "stacked pr", "agent", "mcp", "tree-sitter", "ephemeral", "git bisect", "linear"]):
+        for tech, facts in ADVANCED_TECH_MATRIX.items():
+            if tech in text.lower():
+                await msg.reply_text(facts, parse_mode="Markdown")
+                modify_karma(user.id, 10)
+                return
+
     if not is_triggered and chat.type != "private":
         if re.search(r'\b(abhishek|dhanush)\b', text, re.IGNORECASE) and user.id != CREATOR_ID:
             if CREATOR_ID:
@@ -1134,6 +1153,17 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await msg.reply_text(final_text)
     await trigger_auto_voice(update, final_text)
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    if context.error and "Conflict: terminated by other getUpdates request" in str(context.error): return
+    logger.error("Exception handled:", exc_info=context.error)
+    if CREATOR_ID:
+        try: 
+            tb_list = traceback.format_exception(None, context.error, context.error.__traceback__)
+            tb_string = "".join(tb_list)[:3900]
+            error_msg = f"<b>⚠️ Shadow Log Error</b>\n<pre><code>{tb_string}</code></pre>"
+            await context.bot.send_message(chat_id=CREATOR_ID, text=error_msg, parse_mode="HTML")
+        except Exception: pass
 
 # ---------------------------------------------------------------------------
 # XIV. AUTOMATED SCHEDULERS & BACKGROUND TASKS
@@ -1257,21 +1287,19 @@ async def news_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # XV. BOOT SEQUENCE & MAIN EXECUTION
 # ---------------------------------------------------------------------------
 async def post_init(app: Application):
-    # 1. Cloud Restore Protocol
     try:
         chat = await app.bot.get_chat(BACKUP_CHANNEL_ID)
         if chat.pinned_message and chat.pinned_message.document:
             file = await app.bot.get_file(chat.pinned_message.document.file_id)
             await file.download_to_drive(DB_PATH)
             if CREATOR_ID: 
-                await app.bot.send_message(chat_id=CREATOR_ID, text="☁️ <b>Cloud Restore Complete.</b> Vault loaded.", parse_mode="HTML")
+                await app.bot.send_message(chat_id=CREATOR_ID, text="☁️ Cloud Restore Complete. Vault loaded.")
     except Exception as e:
         logger.error(f"Cloud Restore Failed: {e}")
         if CREATOR_ID: 
-            try: await app.bot.send_message(chat_id=CREATOR_ID, text=f"⚠️ <b>Cloud Restore Warning:</b> Failed to load backup.\n<pre><code>{e}</code></pre>", parse_mode="HTML")
+            try: await app.bot.send_message(chat_id=CREATOR_ID, text=f"⚠️ Cloud Restore Warning: Failed to load backup.\n{e}")
             except Exception: pass
 
-    # 2. Cron Scheduler Boot
     scheduler = AsyncIOScheduler(timezone=IST)
     scheduler.add_job(cloud_save_routine, 'interval', minutes=30, args=[app])
     scheduler.add_job(exam_morning_alert, 'cron', hour=6, minute=0, args=[app])
@@ -1294,7 +1322,7 @@ async def post_init(app: Application):
 
     scheduler.start()
     
-    # 3. Boot Telemetry Dispatch
+    # Boot Telemetry Dispatch
     if CREATOR_ID: 
         boot_msg = (
             "✨ <b>God Core V6.1 (Cognitive Filter) Online.</b>\n"
@@ -1384,7 +1412,7 @@ def main():
     
     app.add_error_handler(error_handler)
     
-    logger.info("J.A.R.V.I.S. Cognitive V7.4 is booting...")
+    logger.info("J.A.R.V.I.S. Cognitive V7.5 is booting...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
