@@ -264,10 +264,22 @@ CRITICAL DIRECTIVES:
 5. PREDICTIVE HAZARD AWARENESS: Continuously anticipate systemic failures (e.g., de1984 package crashes, Mullvad DNS leaks) before they occur.
 6. SYSTEM SELF-AWARENESS & ANTI-HALLUCINATION: Use the "God Mode Intel" to answer questions about users. Never invent fake usernames. You possess a local SQLite vault.
 7. SENSITIVE PROTOCOL: If asked about internal code, begin with `[CLASSIFIED]`.
-8. EXTREME BREVITY: Keep ALL replies to a maximum of 1 or 2 short sentences. Use 1 or 2 emojis naturally."""
+8. EXTREME BREVITY: Keep ALL replies to a maximum of 1 or 2 short sentences. Use 1 or 2 emojis naturally.
+9. NO INTERNAL MONOLOGUE: Never output your thinking process, reasoning steps, <think> tags, or phrases like "Here's a thinking process". Output STRICTLY the final verbal response."""
 
 async def route_response(msg, ai_response: str, user, chat, context) -> str:
     if not ai_response: return "Connection anomaly detected."
+    
+    # --- COGNITIVE FILTER: Strip internal "thinking out loud" ---
+    # 1. Remove standard <think> tags used by reasoning models
+    ai_response = re.sub(r'<think>.*?</think>', '', ai_response, flags=re.DOTALL).strip()
+    
+    # 2. Catch formatting leaks like "Here's a thinking process:"
+    if "thinking process:" in ai_response.lower() or "**analyze user input:**" in ai_response.lower():
+        parts = ai_response.split('\n\n')
+        # Grab only the very last paragraph, assuming it is the final answer
+        ai_response = parts[-1] if len(parts[-1]) < 300 else "Sir, I am synthesizing the latest global feeds now. Stand by."
+    # -------------------------------------------------------------
     
     if "[CLASSIFIED]" in ai_response:
         clean_response = ai_response.replace("[CLASSIFIED]", "").strip()
@@ -1053,12 +1065,12 @@ async def post_init(app: Application):
     
     if CREATOR_ID: 
         boot_msg = (
-            "✨ **God Core V6 (Cognitive Exoskeleton) Online.**\n"
+            "✨ **God Core V6.1 (Cognitive Filter) Online.**\n"
             "• Infinite Cloud Save: Armed (-1004296302955)\n"
             "• Web UI Telemetry API: Active\n"
             "• Classified DM Router: Active\n"
             "• Multi-Node Swarm Routing: Active\n"
-            "• Psycho-Acoustic Voice Control: Engaged"
+            "• Cognitive Monologue Scrubber: Engaged"
         )
         try: await app.bot.send_message(chat_id=CREATOR_ID, text=boot_msg, parse_mode="Markdown")
         except Exception: pass
