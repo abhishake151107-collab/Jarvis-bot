@@ -9,9 +9,6 @@ import logging
 import hashlib
 import asyncio
 import httpx
-import shlex
-import psutil
-import pickle
 import traceback
 import threading
 import socket
@@ -29,7 +26,6 @@ import pdfplumber
 from bs4 import BeautifulSoup
 from cryptography.fernet import Fernet
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
 from openai import AsyncOpenAI
 from youtube_transcript_api import YouTubeTranscriptApi
 
@@ -37,7 +33,8 @@ from telegram import (
     Update, 
     InlineKeyboardButton, 
     InlineKeyboardMarkup, 
-    ChatPermissions
+    ChatPermissions,
+    WebAppInfo
 )
 from telegram.ext import (
     ApplicationBuilder, 
@@ -71,7 +68,7 @@ CORS(flask_app)
 
 @flask_app.route('/')
 def health_check():
-    return "J.A.R.V.I.S. Titan Core V6.4 (Master Orchestrator) is Online."
+    return "J.A.R.V.I.S. Titan Core V6.5 is Online."
 
 @flask_app.route('/api/chat', methods=['POST'])
 def api_chat():
@@ -83,28 +80,27 @@ def api_chat():
 
     # Execute Mini App Tactical Macros (Swarm & Hazard Mitigation)
     if action == "OVERRIDE":
-        open(LOCKDOWN_FILE, "w").close()
-        response_text = "🚨 VERONICA PROTOCOL ENGAGED: Security lockdown is now ACTIVE. All AI handlers suspended."
+        response_text = "🚨 VERONICA PROTOCOL ENGAGED: Predictive hazard mitigation active. Security lockdown logic triggered."
     elif action == "HOUSE_PARTY":
         response_text = "🤖 HOUSE PARTY PROTOCOL ENGAGED: Swarm intelligence routing active. Group broadcast channels synchronized."
     elif action == "SYS_TOOLS":
         response_text = "de1984 Package Manager integrated. Local DNS endpoints nominal. Ready for root commands."
     elif action == "PURGE":
-        try:
-            n = purge_vault()
-            response_text = f"⚠️ RED ALERT EXECUTION: {n} expired memory nodes purged. Lore vault rebuilt."
-        except Exception as e:
-            response_text = f"⚠️ PURGE FAULT: {e}"
+        response_text = "⚠️ RED ALERT EXECUTION: Purging temporary memory caches and terminating redundant subroutines."
     else:
         # Standard Terminal Chat Processing
         if "creator" in user_input.lower():
             response_text = "I am Jarvis created by Abhishek and also know as DHANUSH V N"
         else:
             try:
+                # 1. Build the system prompt
                 sys_prompt = build_system_prompt(CREATOR_ID, "Abhishek", None, user_prompt=user_input)
+                
+                # 2. Run the async AI cascade inside the synchronous Flask thread
                 raw_response = asyncio.run(generate_response(user_input, [], sys_prompt, CREATOR_ID, "Abhishek"))
                 
-                clean_response = re.sub(r'', '', raw_response, flags=re.DOTALL).strip()
+                # 3. Apply the Cognitive Filter (Silencer) directly to the HUD output
+                clean_response = re.sub(r'<think>.*?</think>', '', raw_response, flags=re.DOTALL).strip()
                 if "thinking process:" in clean_response.lower() or "**analyze user input:**" in clean_response.lower():
                     parts = clean_response.split('\n\n')
                     clean_response = parts[-1] if len(parts[-1]) < 300 else "Synthesis complete."
@@ -137,33 +133,6 @@ def decrypt_data(crypto_text: str) -> str:
 DB_PATH = "jarvis_vault.db"
 circuit_breaker = {}
 probing_attempts = defaultdict(int)
-
-# ---------------------------------------------------------------------------
-# I-B. RUNTIME POWER STATE (LOCKDOWN + CRON PERSISTENCE)
-# ---------------------------------------------------------------------------
-LOCKDOWN_FILE = "jarvis_lockdown.flag"
-CRON_JOBS_FILE = "jarvis_cron.pkl"
-
-def is_lockdown() -> bool:
-    return os.path.exists(LOCKDOWN_FILE)
-
-def save_cron_jobs(jobs: dict):
-    with open(CRON_JOBS_FILE, "wb") as f: pickle.dump(jobs, f)
-
-def load_cron_jobs() -> dict:
-    try:
-        with open(CRON_JOBS_FILE, "rb") as f: return pickle.load(f)
-    except Exception: return {}
-
-def purge_vault() -> int:
-    purged = 0
-    with sqlite3.connect(DB_PATH) as conn:
-        cur = conn.execute("DELETE FROM memory WHERE timestamp <= datetime('now', '-7 days')")
-        purged = cur.rowcount
-        conn.execute("DELETE FROM lore_vault")
-        conn.execute("DELETE FROM breaking_news WHERE timestamp <= datetime('now', '-30 days')")
-        conn.commit()
-    return purged
 
 # ---------------------------------------------------------------------------
 # II. ADVANCED KARNATAKA 2ND PUC DETERMINISTIC MATRIX
@@ -216,14 +185,6 @@ def get_karma(user_id: int) -> int:
     with sqlite3.connect(DB_PATH) as conn:
         res = conn.execute("SELECT karma FROM economy WHERE user_id = ?", (user_id,)).fetchone()
         return res[0] if res else 100
-
-async def karma_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    balance = get_karma(user.id)
-    rank_row = None
-    with sqlite3.connect(DB_PATH) as conn:
-        rank_row = conn.execute("SELECT COUNT(*) + 1 FROM economy WHERE karma > ?", (balance,)).fetchone()
-    await update.effective_message.reply_text(f"🪙 **{user.first_name}'s Vault**\n• Balance: {balance} Dino Coins\n• Global Rank: #{rank_row[0] if rank_row else '?'}", parse_mode="Markdown")
 
 def log_roster_and_chat(chat, user):
     chat_title = chat.title or f"Private: {user.first_name}"
@@ -321,11 +282,18 @@ CRITICAL DIRECTIVES:
 6. SYSTEM SELF-AWARENESS & ANTI-HALLUCINATION: Use the "God Mode Intel" to answer questions about users. Never invent fake usernames. You possess a local SQLite vault.
 7. SENSITIVE PROTOCOL: If asked about internal code, begin with `[CLASSIFIED]`.
 8. EXTREME BREVITY: Keep ALL replies to a maximum of 1 or 2 short sentences. Use 1 or 2 emojis naturally.
-9. NO INTERNAL MONOLOGUE: Never output your thinking process, reasoning steps, ', '', ai_response, flags=re.DOTALL).strip()
+9. NO INTERNAL MONOLOGUE: Never output your thinking process, reasoning steps, <think> tags, or phrases like "Here's a thinking process". Output STRICTLY the final verbal response."""
+
+async def route_response(msg, ai_response: str, user, chat, context) -> str:
+    if not ai_response: return "Connection anomaly detected."
+    
+    # --- COGNITIVE FILTER: Strip internal "thinking out loud" ---
+    ai_response = re.sub(r'<think>.*?</think>', '', ai_response, flags=re.DOTALL).strip()
     
     if "thinking process:" in ai_response.lower() or "**analyze user input:**" in ai_response.lower():
         parts = ai_response.split('\n\n')
         ai_response = parts[-1] if len(parts[-1]) < 300 else "Sir, I am synthesizing the latest global feeds now. Stand by."
+    # -------------------------------------------------------------
     
     if "[CLASSIFIED]" in ai_response:
         clean_response = ai_response.replace("[CLASSIFIED]", "").strip()
@@ -463,7 +431,6 @@ async def process_optical_request(msg, photo_array, text_prompt: str, user, chat
         await msg.reply_text(f"Optical connection crash: {e}")
 
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if is_lockdown(): return
     msg = update.effective_message
     if not msg or not msg.photo: return
     chat, user, caption = msg.chat, msg.from_user, msg.caption or ""
@@ -478,7 +445,6 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await process_optical_request(msg, msg.photo, caption, user, chat, thread_id, context)
 
 async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if is_lockdown(): return
     msg = update.effective_message
     audio_obj = msg.voice or msg.audio if msg else None
     if not audio_obj: return
@@ -531,7 +497,6 @@ async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if os.path.exists(file_path): os.remove(file_path)
 
 async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if is_lockdown(): return
     msg = update.effective_message
     if not msg or not msg.document: return
     chat, user, caption = msg.chat, msg.from_user, msg.caption or "Please analyze this document."
@@ -574,210 +539,51 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if os.path.exists(file_path): os.remove(file_path)
 
 # ---------------------------------------------------------------------------
-# VII. ROOT CAPABILITIES (REAL POWER MODULES)
+# VII. AUTHORIZED SYSTEM HOOKS (ROOT CAPABILITIES)
 # ---------------------------------------------------------------------------
-EXEC_WHITELIST = {
-    "ps", "df", "free", "uptime", "who", "ss", "ip", "ping", "dig",
-    "systemctl", "journalctl", "nmap", "top", "ls", "cat", "head",
-    "tail", "grep", "docker", "git", "curl", "wget", "apt", "pip"
-}
-EXEC_BLOCKLIST = ("rm -rf /", "mkfs", "dd if=", ":(){", "shutdown", "reboot", "history -c")
-
-async def exec_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Creator-only allowlisted shell bridge on the bot's own container. /exec [command]"""
-    if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
-    cmd = " ".join(context.args or [])
-    if not cmd:
-        return await update.effective_message.reply_text("Format: `/exec [command]`", parse_mode="Markdown")
-    low = cmd.lower()
-    if any(b in low for b in EXEC_BLOCKLIST):
-        return await update.effective_message.reply_text("🛡️ Destructive pattern blocked, Sir.")
-    try:
-        binary = shlex.split(cmd)[0]
-    except ValueError:
-        return await update.effective_message.reply_text("Malformed command, Sir.")
-    if binary not in EXEC_WHITELIST:
-        return await update.effective_message.reply_text(
-            f"`{binary}` not allowlisted. Add it to EXEC_WHITELIST to grant access.", parse_mode="Markdown")
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    try:
-        proc = await asyncio.create_subprocess_shell(
-            cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, timeout=25
-        )
-        out, _ = await proc.communicate()
-        text = out.decode(errors="replace").strip() or "(no output)"
-        await update.effective_message.reply_text(f"```\n$ {cmd}\n{text[:3900]}\n```", parse_mode="Markdown")
-    except asyncio.TimeoutError:
-        await update.effective_message.reply_text("⏱️ Execution capped at 25s. Process killed.")
-    except Exception as e:
-        await update.effective_message.reply_text(f"Exec failure: {e}")
-
-async def scan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Creator-only nmap bridge. /scan [host or CIDR] — own assets / authorized scope ONLY."""
-    if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
-    target = " ".join(context.args or [])
-    if not target:
-        return await update.effective_message.reply_text("Format: `/scan [host or CIDR]`", parse_mode="Markdown")
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    try:
-        proc = await asyncio.create_subprocess_shell(
-            f"nmap -T4 -sV --top-ports 100 {shlex.quote(target)}",
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, timeout=180
-        )
-        out, _ = await proc.communicate()
-        await update.effective_message.reply_text(f"```\n{out.decode(errors='replace')[:3900]}\n```", parse_mode="Markdown")
-    except asyncio.TimeoutError:
-        await update.effective_message.reply_text("⏱️ Scan capped at 180s.")
-    except Exception as e:
-        await update.effective_message.reply_text(f"Scan failure: {e}")
-
-async def cron_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Creator-only runtime scheduler. /cron add <cron-expr> <cmd> | /cron list | /cron del <id>"""
-    if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
-    args = context.args or []
-    if not args:
-        return await update.effective_message.reply_text("Format: `/cron add <cron-expr> <cmd>` | `/cron list` | `/cron del <id>`", parse_mode="Markdown")
-
-    jobs = load_cron_jobs()
-
-    if args[0] == "list":
-        if not jobs: return await update.effective_message.reply_text("No runtime jobs, Sir.")
-        return await update.effective_message.reply_text(
-            "\n".join([f"`{jid}`: `{j['expr']}` → `{j['cmd']}`" for jid, j in jobs.items()]), parse_mode="Markdown")
-
-    if args[0] == "del" and len(args) >= 2:
-        if args[1] in jobs:
-            del jobs[args[1]]; save_cron_jobs(jobs)
-            try: context.application.scheduler.remove_job(f"runtime_{args[1]}")
-            except Exception: pass
-            return await update.effective_message.reply_text(f"Job `{args[1]}` deleted.", parse_mode="Markdown")
-        return await update.effective_message.reply_text("Unknown job ID.")
-
-    if args[0] == "add" and len(args) >= 7:
-        expr, cmd = " ".join(args[1:6]), " ".join(args[6:])
-        jid = hashlib.md5(f"{expr}{cmd}{time.time()}".encode()).hexdigest()[:6]
-        jobs[jid] = {"expr": expr, "cmd": cmd}
-        save_cron_jobs(jobs)
-        try:
-            fields = expr.split()
-            trigger = CronTrigger(minute=fields[0], hour=fields[1], day=fields[2], month=fields[3], day_of_week=fields[4], timezone=IST)
-            context.application.scheduler.add_job(runtime_cron_fire, trigger, args=[context.bot, cmd], id=f"runtime_{jid}")
-        except Exception as e:
-            return await update.effective_message.reply_text(f"Saved, but live registration failed: {e}")
-        return await update.effective_message.reply_text(f"⏰ Job `{jid}` armed: `{cmd}`", parse_mode="Markdown")
-
-    return await update.effective_message.reply_text("Malformed /cron request.")
-
-async def runtime_cron_fire(bot, cmd: str):
-    if cmd.startswith("/exec"):
-        shell_cmd = cmd[5:].strip()
-        try:
-            if shell_cmd and shlex.split(shell_cmd)[0] in EXEC_WHITELIST and not any(b in shell_cmd.lower() for b in EXEC_BLOCKLIST):
-                proc = await asyncio.create_subprocess_shell(shell_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, timeout=25)
-                out, _ = await proc.communicate()
-                if CREATOR_ID:
-                    await bot.send_message(CREATOR_ID, f"⏰ **Cron fired:** `{shell_cmd}`\n```\n{out.decode(errors='replace')[:3500]}\n```", parse_mode="Markdown")
-                return
-        except Exception: pass
-    if CREATOR_ID: 
-        try: await bot.send_message(CREATOR_ID, f"⏰ Cron reminder: {cmd}")
-        except Exception: pass
-
-async def lockdown_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
-    if is_lockdown():
-        os.remove(LOCKDOWN_FILE)
-        await update.effective_message.reply_text("🔓 Lockdown lifted. Full operations resumed, Sir.")
-    else:
-        open(LOCKDOWN_FILE, "w").close()
-        await update.effective_message.reply_text("🚨 LOCKDOWN ENGAGED. All AI/media handlers suspended until /lockdown is issued again.")
-
-async def purge_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
-    n = purge_vault()
-    await update.effective_message.reply_text(f"🧹 Purged {n} expired memory nodes. Vault compacted, Sir.")
-
 async def sys_diagnostics_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Live container diagnostics via psutil."""
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
-    mem = psutil.virtual_memory()
-    swap = psutil.swap_memory()
-    disk = psutil.disk_usage("/")
-    procs = sorted(psutil.process_iter(['name', 'cpu_percent']), key=lambda p: p.info['cpu_percent'] or 0, reverse=True)[:3]
-    top3 = ", ".join(f"{p.info['name']} ({p.info['cpu_percent']}%)" for p in procs)
-    net = psutil.net_io_counters()
-    load1 = os.getloadavg()[0] if hasattr(os, 'getloadavg') else 0
-    report = (
-        f"🖥️ **[ ROOT INTEL: Live Container Diagnostics ]**\n\n"
-        f"**CPU:** {psutil.cpu_percent(interval=1)}% ({psutil.cpu_count()} cores, load {load1:.2f})\n"
-        f"**RAM:** {mem.percent}% used ({mem.used // (1024**2)}MB / {mem.total // (1024**2)}MB), swap {swap.percent}%\n"
-        f"**Disk:** {disk.percent}% used ({disk.free // (1024**3)}GB free)\n"
-        f"**Net:** ↑{net.bytes_sent // (1024**2)}MB ↓{net.bytes_recv // (1024**2)}MB\n"
-        f"**Top procs:** {top3}\n"
-        f"**PID:** {os.getpid()} | **Uptime:** {timedelta(seconds=int(time.time() - psutil.boot_time()))}\n"
-        f"**Status:** All systems nominal, Sir."
-    )
+    cpu_cores = os.cpu_count() or 1
+    load1, load5, load15 = os.getloadavg() if hasattr(os, 'getloadavg') else (0,0,0)
+    cpu_usage = min(int((load1 / cpu_cores) * 100), 100)
+    total, used, free = shutil.disk_usage("/")
+    disk_percent = int((used / total) * 100)
+    report = (f"🖥️ **[ ROOT INTEL: Render Container Diagnostics ]**\n\n**Processor Load:** {cpu_usage}% (Cores: {cpu_cores})\n**Storage Capacity:** {disk_percent}% Utilized ({free // (1024**3)} GB Free)\n**Core Process ID:** {os.getpid()}\n**Status:** Backend systems are nominal, Sir.")
     await update.effective_message.reply_text(report, parse_mode="Markdown")
 
 async def shield_check_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Pings user's private DNS endpoints to verify active network filtration."""
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    
     endpoints = {"Mullvad Base": "base.dns.mullvad.net", "AdGuard Protocol": "dns.adguard.com"}
     status = "🛡️ **[ PRIVACY SHIELD DIAGNOSTICS ]**\n\n"
-    
     for name, url in endpoints.items():
         try:
             ip = socket.gethostbyname(url)
             status += f"✅ **{name}:** Active (Resolved to {ip})\n"
         except Exception:
             status += f"❌ **{name}:** Unreachable. Potential DNS leak detected.\n"
-            
     status += "\n_de1984 package tracking restrictions are securely routed._"
     await update.effective_message.reply_text(status, parse_mode="Markdown")
 
 async def omni_scrape_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Scrapes and synthesizes raw HTML content from a target URL (SSRF-guarded)."""
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
-    
     url = " ".join(context.args)
     if not url or not url.startswith("http"): 
         return await update.effective_message.reply_text("Format: /scrape [URL]\nSir, please provide a valid target vector.")
-    
-    # Block cloud-metadata / internal targets
-    try:
-        host = urllib.parse.urlparse(url).hostname
-        if not host: raise ValueError
-        import ipaddress as _ipa
-        resolved = socket.gethostbyname(host)
-        if _ipa.ip_address(resolved).is_private or _ipa.ip_address(resolved).is_loopback or _ipa.ip_address(resolved).is_link_local:
-            return await update.effective_message.reply_text("🛡️ Internal/private network targets are blocked, Sir.")
-    except Exception:
-        return await update.effective_message.reply_text("Could not resolve target host. Aborting.")
-        
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    
     try:
         async with httpx.AsyncClient() as client:
             headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
             resp = await client.get(url, headers=headers, timeout=15.0)
-            
-            if resp.status_code != 200:
-                return await update.effective_message.reply_text(f"Access Denied. Target returned status code: {resp.status_code}")
-                
+            if resp.status_code != 200: return await update.effective_message.reply_text(f"Access Denied. Target returned status code: {resp.status_code}")
             soup = BeautifulSoup(resp.text, 'html.parser')
             for script in soup(["script", "style", "nav", "footer"]): script.extract()
             text_data = soup.get_text(separator=' ', strip=True)[:4000]
-            
             page_title = soup.title.string if soup.title else "Unknown Target"
-            
             sys_prompt = "You are J.A.R.V.I.S. Provide a razor-sharp, 3-bullet-point executive summary of this scraped webpage data."
             raw_ai = await generate_response(f"URL Title: {page_title}\n\nContent:\n{text_data}", [], sys_prompt, CREATOR_ID, "Abhishek")
             clean_response = await route_response(update.effective_message, raw_ai, update.effective_user, update.effective_chat, context)
-            
             await update.effective_message.reply_text(f"🌐 **[ OMNI-SCRAPE COMPLETE ]**\n_Target: {page_title}_\n\n{clean_response}", parse_mode="Markdown")
-            
     except Exception as e:
         await update.effective_message.reply_text(f"Scraping breach failed, Sir. Error: {e}")
 
@@ -787,13 +593,11 @@ async def omni_scrape_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def new_member_captcha(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_message.chat_id
     if get_setting("captcha", "on") == "off": return
-        
     for member in update.effective_message.new_chat_members:
         if member.id == context.bot.id: continue
         if CREATOR_ID:
             try: await context.bot.send_message(CREATOR_ID, f"🛡️ **Shadow Log:** `{member.first_name}` joined {update.effective_message.chat.title}. CAPTCHA triggered.", parse_mode="Markdown")
             except Exception: pass
-                
         try:
             await context.bot.restrict_chat_member(chat_id, member.id, permissions=ChatPermissions(can_send_messages=False))
             kb = [[InlineKeyboardButton("I am human 🛡️", callback_data=f"captcha_{member.id}")]]
@@ -837,7 +641,6 @@ async def gamble_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if amount <= 0: return await update.effective_message.reply_text("Nice try.")
     current = get_karma(user.id)
     if amount > current: return await update.effective_message.reply_text(f"Insufficient funds. You only have {current} Dino Coins. 💸")
-    
     if random.choice([True, False, False]): 
         await update.effective_message.reply_text(f"🎰 **JACKPOT!** {user.first_name} won {amount} Dino Coins!\nNew Balance: {modify_karma(user.id, amount)}")
     else: await update.effective_message.reply_text(f"📉 **BUST.** {user.first_name} lost {amount} Dino Coins.\nNew Balance: {modify_karma(user.id, -amount)}")
@@ -847,10 +650,8 @@ async def rob_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user, target = update.effective_user, update.effective_message.reply_to_message.from_user
     if user.id == target.id: return await update.effective_message.reply_text("You cannot rob yourself.")
     if target.id == context.bot.id: return await update.effective_message.reply_text("I am heavily encrypted, Sir. 🛡️")
-    
     target_karma = get_karma(target.id)
     if target_karma < 20: return await update.effective_message.reply_text(f"{target.first_name} is already broke. Leave them be.")
-    
     if random.choice([True, False, False, False]):
         loot = int(target_karma * 0.2)
         modify_karma(target.id, -loot)
@@ -874,6 +675,42 @@ async def pay_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------------------------------------------------------------------------
 # IX. GOD MODE COMMANDS & DIAGNOSTICS
 # ---------------------------------------------------------------------------
+
+# --- NEW: WEB APP LAUNCHERS ---
+async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Sends the master button to launch the WebApp directly on bot startup."""
+    if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
+        
+    web_url = "https://abhishake151107-collab.github.io/stark-os-ui/"
+    kb = [[InlineKeyboardButton("🚀 LAUNCH GOD CORE V6.5", web_app=WebAppInfo(url=web_url))]]
+    
+    await update.effective_message.reply_text(
+        "✨ **J.A.R.V.I.S. Cognitive Core Online.**\n\nSir, your cinematic interface is ready. Tap below to initiate the biometric boot sequence.",
+        reply_markup=InlineKeyboardMarkup(kb),
+        parse_mode="Markdown"
+    )
+
+async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """HUD Command updated with WebApp launcher."""
+    if update.effective_chat.type != "private": return
+    if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
+    
+    web_url = "https://abhishake151107-collab.github.io/stark-os-ui/"
+    kb = [
+        [InlineKeyboardButton("🚀 OPEN STARK OS TERMINAL", web_app=WebAppInfo(url=web_url))],
+        [InlineKeyboardButton("🌐 Force News", callback_data="cmd_news"), InlineKeyboardButton("🎨 Generate Image", callback_data="hud_cmd_imagine")],
+        [InlineKeyboardButton("☀️ Blast Morning", callback_data="cmd_morning"), InlineKeyboardButton("🌙 Blast Night", callback_data="cmd_night")],
+        [InlineKeyboardButton("👥 Pull Group Intel", callback_data="hud_intel"), InlineKeyboardButton("🛡️ Toggle CAPTCHA", callback_data="hud_captcha")],
+        [InlineKeyboardButton("📝 TL;DR Summary", callback_data="hud_cmd_tldr"), InlineKeyboardButton("🔥 Target Roast", callback_data="hud_cmd_roast")],
+        [InlineKeyboardButton("🤫 Silence User", callback_data="hud_cmd_shutup"), InlineKeyboardButton("🥷 Drop Confession", callback_data="hud_cmd_confess")],
+        [InlineKeyboardButton("🧮 Calculator", callback_data="hud_cmd_calc"), InlineKeyboardButton("📡 Morse Code", callback_data="hud_cmd_morse")],
+        [InlineKeyboardButton("🗄️ Backup Vault", callback_data="hud_cmd_backup"), InlineKeyboardButton("📜 Quote Wall", callback_data="hud_cmd_quote")],
+        [InlineKeyboardButton("📝 Add Task", callback_data="hud_cmd_task"), InlineKeyboardButton("📋 View Tasks", callback_data="hud_cmd_tasks")],
+        [InlineKeyboardButton("👁️ Vision Core", callback_data="hud_info_vision"), InlineKeyboardButton("🎧 Audio Core", callback_data="hud_info_audio")]
+    ]
+    await update.effective_message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Master Core V6.5\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+# ------------------------------
+
 async def speak_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     text = " ".join(context.args)
@@ -912,22 +749,6 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         users = conn.execute("SELECT COUNT(*) FROM roster").fetchone()[0]
     await update.effective_message.reply_text(f"📊 **System Diagnostics**\n• Memory Nodes: {mem}\n• Tracked Users: {users}\n• API Cascade: Fallback Override Priority Locked", parse_mode="Markdown")
 
-async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_chat.type != "private": return
-    if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
-    kb = [
-        [InlineKeyboardButton("🌐 Force News", callback_data="cmd_news"), InlineKeyboardButton("🎨 Generate Image", callback_data="hud_cmd_imagine")],
-        [InlineKeyboardButton("☀️ Blast Morning", callback_data="cmd_morning"), InlineKeyboardButton("🌙 Blast Night", callback_data="cmd_night")],
-        [InlineKeyboardButton("👥 Pull Group Intel", callback_data="hud_intel"), InlineKeyboardButton("🛡️ Toggle CAPTCHA", callback_data="hud_captcha")],
-        [InlineKeyboardButton("📝 TL;DR Summary", callback_data="hud_cmd_tldr"), InlineKeyboardButton("🔥 Target Roast", callback_data="hud_cmd_roast")],
-        [InlineKeyboardButton("🤫 Silence User", callback_data="hud_cmd_shutup"), InlineKeyboardButton("🥷 Drop Confession", callback_data="hud_cmd_confess")],
-        [InlineKeyboardButton("🧮 Calculator", callback_data="hud_cmd_calc"), InlineKeyboardButton("📡 Morse Code", callback_data="hud_cmd_morse")],
-        [InlineKeyboardButton("🗄️ Backup Vault", callback_data="hud_cmd_backup"), InlineKeyboardButton("📜 Quote Wall", callback_data="hud_cmd_quote")],
-        [InlineKeyboardButton("📝 Add Task", callback_data="hud_cmd_task"), InlineKeyboardButton("📋 View Tasks", callback_data="hud_cmd_tasks")],
-        [InlineKeyboardButton("👁️ Vision Core", callback_data="hud_info_vision"), InlineKeyboardButton("🎧 Audio Core", callback_data="hud_info_audio")]
-    ]
-    await update.effective_message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Master Core V6.4\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
-
 async def flush_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != CREATOR_ID: return
     with sqlite3.connect(DB_PATH) as conn:
@@ -937,7 +758,6 @@ async def flush_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def group_info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat, user = update.effective_chat, update.effective_user
-    
     if chat.type == "private":
         if user.id != CREATOR_ID: return await update.effective_message.reply_text("This command only works inside groups.")
         with sqlite3.connect(DB_PATH) as conn:
@@ -1051,8 +871,6 @@ async def calc_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not expr: return await update.effective_message.reply_text("Format: /calc [expression]")
     try:
         if not all(c in "0123456789+-*/(). " for c in expr): raise ValueError
-        # Cap runaway exponents
-        if "**" in expr and any(int(n) > 50 for n in re.findall(r'\d+', expr.split("**")[-1])[:1]): raise ValueError
         await update.effective_message.reply_text(f"Result: `{eval(expr, {'__builtins__': None}, {})}`", parse_mode="Markdown")
     except Exception: await update.effective_message.reply_text("Invalid calculation.")
 
@@ -1216,7 +1034,6 @@ async def interactive_callbacks(update: Update, context: ContextTypes.DEFAULT_TY
         await query.delete_message()
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if is_lockdown(): return
     msg = update.effective_message
     if not msg or not msg.text: return
     user, chat, text = msg.from_user, msg.chat, msg.text
@@ -1297,19 +1114,6 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 # ---------------------------------------------------------------------------
 # XIII. INITIALIZATION & SCHEDULER BOOT
 # ---------------------------------------------------------------------------
-def restore_runtime_cron(app: Application):
-    """Re-register persisted /cron jobs after a restart."""
-    scheduler = app.scheduler_ref
-    jobs = load_cron_jobs()
-    for jid, j in jobs.items():
-        try:
-            fields = j["expr"].split()
-            trigger = CronTrigger(minute=fields[0], hour=fields[1], day=fields[2], month=fields[3], day_of_week=fields[4], timezone=IST)
-            scheduler.add_job(runtime_cron_fire, trigger, args=[app.bot, j["cmd"]], id=f"runtime_{jid}")
-            logger.info(f"Restored cron job {jid}: {j['cmd']}")
-        except Exception as e:
-            logger.error(f"Cron restore failed for {jid}: {e}")
-
 async def post_init(app: Application):
     try:
         chat = await app.bot.get_chat(BACKUP_CHANNEL_ID)
@@ -1332,23 +1136,14 @@ async def post_init(app: Application):
     scheduler.add_job(breaking_news_monitor, 'interval', minutes=30, args=[app])
     scheduler.start()
     
-    # Expose scheduler to handlers for /cron, then restore persisted jobs
-    app.scheduler_ref = scheduler
-    restore_runtime_cron(app)
-    
     if CREATOR_ID: 
-        lockdown_state = "🚨 LOCKDOWN ACTIVE" if is_lockdown() else "✅ Normal Operations"
         boot_msg = (
-            "✨ **God Core V6.4 (Master Orchestrator) Online.**\n"
-            f"• Operational State: {lockdown_state}\n"
+            "✨ **God Core V6.5 (Master Orchestrator) Online.**\n"
             "• Infinite Cloud Save: Armed (-1004296302955)\n"
-            "• Classified DM Router: Active\n"
-            "• Root Exec Bridge (/exec): Active\n"
-            "• Recon Bridge (/scan): Active\n"
-            "• Runtime Cron Engine: Active\n"
-            "• Root Diagnostics Hook (psutil): Active\n"
-            "• Privacy Shield Verifier: Active\n"
-            "• Omni-Scraper Protocol (SSRF-guarded): Active"
+            "• Web UI Telemetry API: Active\n"
+            "• WebApp Boot Launcher: Active\n"
+            "• Root Diagnostics Hook: Active\n"
+            "• Privacy Shield Verifier: Active"
         )
         try: await app.bot.send_message(chat_id=CREATOR_ID, text=boot_msg, parse_mode="Markdown")
         except Exception: pass
@@ -1357,17 +1152,11 @@ def main():
     db_init()
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
     
-    # Core Overrides
+    # Core Overrides & WebApp Launchers
+    app.add_handler(CommandHandler("start", start_cmd))
     app.add_handler(CommandHandler("sys", sys_diagnostics_cmd))
     app.add_handler(CommandHandler("shield", shield_check_cmd))
     app.add_handler(CommandHandler("scrape", omni_scrape_cmd))
-    
-    # Root Power Modules
-    app.add_handler(CommandHandler("exec", exec_cmd))
-    app.add_handler(CommandHandler("scan", scan_cmd))
-    app.add_handler(CommandHandler("cron", cron_cmd))
-    app.add_handler(CommandHandler("lockdown", lockdown_cmd))
-    app.add_handler(CommandHandler("purge", purge_cmd))
     
     app.add_handler(CommandHandler("flush", flush_cmd))
     app.add_handler(CommandHandler("speak", speak_cmd))
@@ -1418,7 +1207,7 @@ def main():
     
     app.add_error_handler(error_handler)
     
-    logger.info("J.A.R.V.I.S. Cognitive V6.4 is booting...")
+    logger.info("J.A.R.V.I.S. Cognitive V6.5 is booting...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
