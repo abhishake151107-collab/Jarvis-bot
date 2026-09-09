@@ -571,6 +571,13 @@ async def sendcode_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.effective_message.reply_text(f"Packaging failed: {e}")
 
+async def purge_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command to force purge the vault."""
+    if update.effective_user.id != CREATOR_ID: return
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    purged_count = purge_vault()
+    await update.effective_message.reply_text(f"⚠️ **RED ALERT EXECUTION:**\n{purged_count} expired memory nodes and global caches have been securely purged.", parse_mode="Markdown")
+
 async def sys_diagnostics_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Dynamic self-awareness system manifest."""
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
@@ -841,6 +848,7 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text("✨ **J.A.R.V.I.S. Cognitive Core Online.**\n\nSir, your cinematic interface is ready.", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Exclusive Creator HUD."""
     if update.effective_chat.type != "private": return
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     web_url = "https://abhishake151107-collab.github.io/stark-os-ui/"
@@ -879,7 +887,7 @@ async def god_mode_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             img_bytes = await (await update.effective_message.reply_to_message.photo[-1].get_file()).download_as_bytearray()
             await context.bot.set_chat_photo(chat_id, photo=img_bytes); await update.effective_message.reply_text("Group photo updated.")
         elif cmd == "/pin" and update.effective_message.reply_to_message: await context.bot.pin_chat_message(chat_id, update.effective_message.reply_to_message.message_id); await update.effective_message.reply_text("Message pinned.")
-        elif cmd == "/lock": await context.bot.set_chat_permissions(chat_id, ChatPermissions(can_send_messages=False)); await update.effective_message.reply_text("🔒 Chat locked.")
+        elif cmd == "/lock": await context.bot.set_chat_permissions(chat_id, ChatPermissions(can_send_messages=False)); await update.effective_message.reply_text("🔒 Chat locked. No one can speak.")
         elif cmd == "/unlock": await context.bot.set_chat_permissions(chat_id, ChatPermissions(can_send_messages=True, can_send_photos=True, can_send_videos=True, can_send_documents=True, can_send_audios=True, can_send_other_messages=True)); await update.effective_message.reply_text("🔓 Chat unlocked.")
         elif cmd == "/captcha": 
             if args.lower() in ["on", "off"]: set_setting("captcha", args.lower()); await update.effective_message.reply_text(f"CAPTCHA is now {args.upper()}.")
@@ -993,7 +1001,9 @@ async def list_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def backup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != CREATOR_ID: return
     try: 
-        with open(DB_PATH, 'rb') as f: await context.bot.send_document(chat_id=CREATOR_ID, document=f, filename="jarvis_backup.db")
+        if os.path.exists(DB_PATH):
+            with open(DB_PATH, 'rb') as f: 
+                await context.bot.send_document(chat_id=CREATOR_ID, document=f, filename="jarvis_backup.db")
     except Exception as e: await update.effective_message.reply_text(f"Backup failed: {e}")
 
 async def imagine_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1254,11 +1264,11 @@ async def post_init(app: Application):
             file = await app.bot.get_file(chat.pinned_message.document.file_id)
             await file.download_to_drive(DB_PATH)
             if CREATOR_ID: 
-                await app.bot.send_message(chat_id=CREATOR_ID, text="☁️ Cloud Restore Complete. Vault loaded.")
+                await app.bot.send_message(chat_id=CREATOR_ID, text="☁️ <b>Cloud Restore Complete.</b> Vault loaded.", parse_mode="HTML")
     except Exception as e:
         logger.error(f"Cloud Restore Failed: {e}")
         if CREATOR_ID: 
-            try: await app.bot.send_message(chat_id=CREATOR_ID, text=f"⚠️ Cloud Restore Warning: Failed to load backup.\n{e}")
+            try: await app.bot.send_message(chat_id=CREATOR_ID, text=f"⚠️ <b>Cloud Restore Warning:</b> Failed to load backup.\n<pre><code>{e}</code></pre>", parse_mode="HTML")
             except Exception: pass
 
     # 2. Cron Scheduler Boot
