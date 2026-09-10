@@ -18,6 +18,7 @@ import pickle
 import psutil
 import shlex
 import urllib.parse
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from collections import defaultdict
 
@@ -34,7 +35,7 @@ from apscheduler.triggers.cron import CronTrigger
 from openai import AsyncOpenAI
 from youtube_transcript_api import YouTubeTranscriptApi
 
-# --- NEW INTELLIGENCE IMPORTS (Must be in requirements.txt) ---
+# --- NEW INTELLIGENCE IMPORTS ---
 import wikipedia
 from geopy.geocoders import Nominatim
 
@@ -389,62 +390,51 @@ async def trigger_auto_voice(update: Update, final_text: str):
     except Exception as e: logger.error(f"Auto-Voice failed: {e}")
 
 # ---------------------------------------------------------------------------
-# VI. DUAL-ENGINE TRUTH ARCHIVE & GEOSPATIAL RADAR
+# VI. DUAL-ENGINE TRUTH ARCHIVE (ZERO-KEY RSS BYPASS)
 # ---------------------------------------------------------------------------
 async def global_intel_engine(topic: str, status_msg=None) -> str:
-    """Executes the SearXNG FOSS + Wikipedia Verification Protocol with Geocoding."""
+    """Executes the Zero-Key RSS Bypass + Wikipedia Verification Protocol."""
     master_intel = f"**[ LIVE INTEL FEED: {datetime.now(IST).strftime('%A, %b %d, %Y')} ]**\n\n"
     
     if status_msg:
-        try: await status_msg.edit_text(f"`[SYSTEM]: Bypassing corporate limits... Routing via FOSS SearXNG nodes for '{topic}'...`", parse_mode="Markdown")
+        try: await status_msg.edit_text(f"`[SYSTEM]: Bypassing corporate blocks... Accessing Global RSS XML for '{topic}'...`", parse_mode="Markdown")
         except: pass
 
-    # 1. SearXNG FOSS Scrape (Rate-limit bypass)
     search_results = []
-    searxng_nodes = [
-        "https://searx.be", 
-        "https://searx.tiekoetter.com", 
-        "https://search.ononoki.org", 
-        "https://searx.work", 
-        "https://searx.ro"
-    ]
+    is_breaking = any(w in topic.lower() for w in ["news", "latest", "today", "now", "crisis"])
     
     try:
-        is_news = any(w in topic.lower() for w in ["news", "latest", "today", "now", "crisis"])
-        category = "news" if is_news else "general"
-        
         async with httpx.AsyncClient() as client:
-            random.shuffle(searxng_nodes)
-            for node in searxng_nodes:
-                try:
-                    resp = await client.get(
-                        f"{node}/search", 
-                        params={"q": topic, "format": "json", "categories": category, "language": "en"},
-                        timeout=8.0
-                    )
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        search_results = data.get('results', [])[:5]
-                        if search_results: break
-                except Exception: continue
+            if is_breaking and "tech" not in topic.lower():
+                # BBC World News RSS
+                resp = await client.get("http://feeds.bbci.co.uk/news/world/rss.xml", timeout=10.0)
+            else:
+                # Google News RSS Search
+                clean_query = urllib.parse.quote(topic)
+                resp = await client.get(f"https://news.google.com/rss/search?q={clean_query}&hl=en-US&gl=US&ceid=US:en", timeout=10.0)
                 
+            if resp.status_code == 200:
+                root = ET.fromstring(resp.text)
+                for item in root.findall('.//item')[:5]:
+                    title = item.find('title').text if item.find('title') is not None else 'Unknown'
+                    link = item.find('link').text if item.find('link') is not None else ''
+                    desc = item.find('description').text if item.find('description') is not None else ''
+                    desc = re.sub(r'<[^>]+>', '', desc) # Strip HTML
+                    search_results.append({'title': title, 'url': link, 'content': desc})
     except Exception as e:
-        return f"Sir, live intelligence relay is currently offline. Error: {e}"
+        return f"Sir, live RSS syndication is offline. Error: {e}"
 
-    if not search_results:
-        return "Sir, no raw intel found on that vector, or all FOSS nodes are currently congested."
+    if not search_results: return "Sir, no raw intel found via RSS vectors."
 
     if status_msg:
         try: await status_msg.edit_text("`[SYSTEM]: Cross-referencing entities with Wikipedia Archive & Triangulating Coordinates...`", parse_mode="Markdown")
         except: pass
 
-    # 2. Process Results and feed to MISTRAL for formatting
     raw_text_dump = f"Topic: {topic}\n\n"
-    for idx, item in enumerate(search_results):
-        title = item.get('title', 'Unknown Event')
-        body = item.get('content', '')[:250]
-        parsed = item.get('parsed_url')
-        source = parsed[0] if isinstance(parsed, list) and parsed else item.get('url', 'Web')
+    for item in search_results:
+        title = item.get('title')
+        source = item.get('url')
+        body = item.get('content')[:250]
         
         verification_tag = "[UNVERIFIED - RUMOR]"
         try:
@@ -471,6 +461,37 @@ async def global_intel_engine(topic: str, status_msg=None) -> str:
 
     return master_intel + final_report
 
+async def extract_youtube_transcript(url: str) -> str:
+    try:
+        video_id = ""
+        if "v=" in url: video_id = url.split("v=")[1].split("&")[0]
+        elif "youtu.be/" in url: video_id = url.split("youtu.be/")[1].split("?")[0]
+        if not video_id: return ""
+        transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+        transcript = " ".join([t['text'] for t in transcript_list])
+        return transcript[:5000]
+    except Exception as e:
+        logger.error(f"YouTube parse error: {e}")
+        return ""
+
+async def gemini_live_search(prompt: str, sys_prompt: str, history: list) -> str:
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key: return ""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    payload = {
+        "contents": [{"role": "user", "parts": [{"text": f"Search real-time news to answer this: {prompt}"}]}],
+        "systemInstruction": {"parts": [{"text": sys_prompt}]},
+        "tools": [{"googleSearch": {}}]
+    }
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, json=payload, timeout=20.0)
+            if resp.status_code == 200:
+                data = resp.json()
+                return data['candidates'][0]['content']['parts'][0]['text']
+    except Exception as e: logger.error(f"Gemini Live Search failed: {e}")
+    return ""
+
 async def generate_response(prompt: str, history: list, sys_prompt: str, user_id: int, user_name: str, status_msg=None, skip_search=False, force_provider=None) -> str:
     current_time = time.time()
     
@@ -482,22 +503,23 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
             except: pass
         return await global_intel_engine(prompt, status_msg)
 
-    # The Multi-Agent API Matrix
+    # ---------------------------------------------------------------------------
+    # VII. THE 10-NODE MULTI-AGENT SWARM (ROUTER)
+    # ---------------------------------------------------------------------------
     moe_cascade = []
     
-    # [ SWARM DELEGATION LOGIC ]
     if force_provider == "Mistral":
         moe_cascade = [{"name": "Mistral", "base": "https://api.mistral.ai/v1", "key": get_api_key(["MISTRAL_API_KEY"]), "model": "mistral-large-latest"}]
     elif force_provider == "NVIDIA":
         moe_cascade = [{"name": "NVIDIA", "base": "https://integrate.api.nvidia.com/v1", "key": get_api_key(["NVIDIA_API_KEY"]), "model": "meta/llama-3.1-70b-instruct"}]
     elif force_provider == "Cohere":
-        moe_cascade = [{"name": "Cohere (via OpenRouter)", "base": "https://openrouter.ai/api/v1/", "key": get_api_key(["OPENROUTER_API_KEY"]), "model": "cohere/command-r-plus"}]
+        moe_cascade = [{"name": "Cohere", "base": "https://api.cohere.ai/v1", "key": get_api_key(["COHERE_API_KEY"]), "model": "command-r-plus"}]
     elif force_provider == "OpenRouter":
-        moe_cascade = [{"name": "OpenRouter (Deep Research)", "base": "https://openrouter.ai/api/v1/", "key": get_api_key(["OPENROUTER_API_KEY"]), "model": "openrouter/free"}]
+        moe_cascade = [{"name": "OpenRouter", "base": "https://openrouter.ai/api/v1/", "key": get_api_key(["OPENROUTER_API_KEY"]), "model": "openrouter/free"}]
     elif force_provider == "GitHub":
-        moe_cascade = [{"name": "GitHub Models (Exec Briefing)", "base": "https://models.inference.ai.azure.com", "key": get_api_key(["GITHUB_TOKEN"]), "model": "gpt-4o-mini"}]
+        moe_cascade = [{"name": "GitHub Models", "base": "https://models.inference.ai.azure.com", "key": get_api_key(["GITHUB_TOKEN"]), "model": "gpt-4o-mini"}]
     elif force_provider == "HuggingFace":
-        moe_cascade = [{"name": "HuggingFace (Lore Archivist)", "base": "https://api-inference.huggingface.co/v1/", "key": get_api_key(["HUGGINGFACE_API_KEY", "HUGGINGFACE_A"]), "model": "meta-llama/Meta-Llama-3-8B-Instruct"}]
+        moe_cascade = [{"name": "HuggingFace", "base": "https://api-inference.huggingface.co/v1/", "key": get_api_key(["HUGGINGFACE_API_KEY"]), "model": "meta-llama/Meta-Llama-3-8B-Instruct"}]
     else:
         # The Main Speed Cascade (General Chat - Prioritizing Cerebras & SambaNova)
         moe_cascade = [
@@ -506,11 +528,10 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
             {"name": "Groq", "base": "https://api.groq.com/openai/v1/", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama-3.1-70b-versatile"}
         ]
         
-    # Inject fallback if forced provider fails
     if force_provider:
         moe_cascade.extend([
             {"name": "Groq Fallback", "base": "https://api.groq.com/openai/v1/", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama-3.1-70b-versatile"},
-            {"name": "Cerebras Fallback", "base": "https://api.cerebras.ai/v1", "key": get_api_key(["CEREBRAS_API_KEY", "CEREBRAS_OFFICIAL_KEY", "CEREBRAS_OFF"]), "model": "llama3.1-70b"}
+            {"name": "Cerebras Fallback", "base": "https://api.cerebras.ai/v1", "key": get_api_key(["CEREBRAS_API_KEY"]), "model": "llama3.1-70b"}
         ])
     
     full_messages = [{"role": "system", "content": sys_prompt}] + history + [{"role": "user", "content": prompt}]
@@ -832,7 +853,7 @@ async def omni_scrape_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await status_msg.edit_text(f"🌐 **[ OMNI-SCRAPE ]**\n_Target: {page_title}_\n\n{raw_ai}", parse_mode="Markdown")
     except Exception as e: await status_msg.edit_text(f"Scraping failed: {e}")
 
-# --- DEEP RESEARCH & HUD DIRECTORY ---
+# ---------------------------------------------------------------------------
 # IX. DEEP RESEARCH & HUD DIRECTORY
 # ---------------------------------------------------------------------------
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1377,7 +1398,7 @@ async def nightly_reconciliation(context: ContextTypes.DEFAULT_TYPE):
             for chat_id, data in conn.execute("SELECT chat_id, GROUP_CONCAT(content_crypt, ' | ') FROM memory WHERE timestamp > datetime('now', '-1 day') GROUP BY chat_id").fetchall():
                 decrypted = decrypt_data(data)
                 if len(decrypted) > 50: 
-                    # Use HuggingFace to intelligently compress the memory instead of just slicing it
+                    # Use HuggingFace to intelligently compress the memory
                     summary_prompt = f"Compress this chat log into a dense, 2-sentence episodic memory block reflecting the core events and sentiment: {decrypted[:6000]}"
                     compressed_memory = await generate_response(summary_prompt, [], "You are an archivist AI compressing episodic memory.", 0, "System", skip_search=True, force_provider="HuggingFace")
                     
@@ -1427,18 +1448,6 @@ async def creator_morning_briefing(context: ContextTypes.DEFAULT_TYPE):
     try: await context.bot.send_message(chat_id=CREATOR_ID, text=final_report, parse_mode="Markdown")
     except Exception: pass
 
-async def creator_morning_briefing(context: ContextTypes.DEFAULT_TYPE):
-    if not CREATOR_ID: return
-    with sqlite3.connect(DB_PATH) as conn:
-        rows = conn.execute("SELECT task_crypt FROM tasks WHERE status = 'pending' AND user_id = ?", (CREATOR_ID,)).fetchall()
-        groups_count = conn.execute("SELECT COUNT(DISTINCT chat_id) FROM chats WHERE chat_id < 0").fetchone()[0]
-        warn_count = conn.execute("SELECT SUM(count) FROM warnings").fetchone()[0] or 0
-    world_news = await global_intel_engine("top 2 international news today")
-    task_list = "\n".join([f"- {decrypt_data(r[0])}" for r in rows]) if rows else "Clear."
-    report = f"☕ **Morning Executive Briefing**\n\n🛡️ **Group Security Audit:**\n• Monitored Channels: {groups_count}\n• Outstanding Warnings: {warn_count}\n• Security Gate: {get_setting('captcha', 'on').upper()}\n\n🌐 **Intel:**\n{world_news}\n\n📝 **Pending Tasks:**\n{task_list}"
-    try: await context.bot.send_message(chat_id=CREATOR_ID, text=report, parse_mode="Markdown")
-    except Exception: pass
-
 async def group_night_routine(context: ContextTypes.DEFAULT_TYPE):
     tomorrow_exam = EXAM_SCHEDULE_COMMERCE_ARTS.get((datetime.now(IST) + timedelta(days=1)).strftime("%Y-%m-%d"))
     night_msg = "🌙 **Good night, gentlemen.** Systems standing down for evening standby."
@@ -1449,33 +1458,23 @@ async def group_night_routine(context: ContextTypes.DEFAULT_TYPE):
         except Exception: pass
 
 async def breaking_news_monitor(context: ContextTypes.DEFAULT_TYPE):
+    """Zero-Key RSS Background Monitor (Bypasses DuckDuckGo and SearXNG entirely)"""
     if not CREATOR_ID: return
     try:
-        searxng_nodes = ["https://searx.be", "https://searx.tiekoetter.com", "https://search.ononoki.org"]
         async with httpx.AsyncClient() as client:
-            random.shuffle(searxng_nodes)
-            latest = None
-            for node in searxng_nodes:
-                try:
-                    resp = await client.get(
-                        f"{node}/search", 
-                        params={"q": "breaking world crisis news", "format": "json", "categories": "news", "language": "en"}, 
-                        timeout=8.0
-                    )
-                    if resp.status_code == 200:
-                        results = resp.json().get('results', [])
-                        if results:
-                            latest = results[0]
-                            break
-                except Exception: continue
-            
-            if latest:
-                event_hash = hashlib.md5(latest['title'].encode()).hexdigest()
-                with sqlite3.connect(DB_PATH) as conn:
-                    if conn.execute("SELECT id FROM breaking_news WHERE hash = ?", (event_hash,)).fetchone(): return
-                    conn.execute("INSERT INTO breaking_news (hash, headline) VALUES (?, ?)", (event_hash, latest['title']))
-                    conn.commit()
-                await context.bot.send_message(chat_id=CREATOR_ID, text=f"🚨 **EMERGENCY WORLD ALERT**\n\n{latest['title']}\n\n_Dispatched to Stark Terminal via SearXNG FOSS._", parse_mode="Markdown")
+            resp = await client.get("http://feeds.bbci.co.uk/news/world/rss.xml", timeout=10.0)
+            if resp.status_code == 200:
+                root = ET.fromstring(resp.text)
+                items = root.findall('.//item')
+                if items:
+                    latest = items[0]
+                    title = latest.find('title').text
+                    event_hash = hashlib.md5(title.encode()).hexdigest()
+                    with sqlite3.connect(DB_PATH) as conn:
+                        if conn.execute("SELECT id FROM breaking_news WHERE hash = ?", (event_hash,)).fetchone(): return
+                        conn.execute("INSERT INTO breaking_news (hash, headline) VALUES (?, ?)", (event_hash, title))
+                        conn.commit()
+                    await context.bot.send_message(chat_id=CREATOR_ID, text=f"🚨 **EMERGENCY WORLD ALERT**\n\n{title}\n\n_Dispatched to Stark Terminal via Zero-Key RSS._", parse_mode="Markdown")
     except Exception: pass
 
 async def morning_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
