@@ -12,6 +12,5 @@ youtube-transcript-api>=0.6.2
 flask>=3.0.3
 flask-cors>=4.0.1
 psutil>=5.9
-duckduckgo-search>=6.2.0
 wikipedia>=1.4.0
 geopy>=2.4.1
