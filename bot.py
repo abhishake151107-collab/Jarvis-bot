@@ -255,6 +255,12 @@ def get_setting(key, default):
         res = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
         return res[0] if res else default
 
+def get_api_key(keys: list) -> str:
+    for k in keys:
+        val = os.environ.get(k)
+        if val: return val.strip()
+    return ""
+
 def set_setting(key, value):
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?", (key, value, value))
@@ -418,8 +424,8 @@ async def global_intel_engine(topic: str, status_msg=None) -> str:
                     )
                     if resp.status_code == 200:
                         data = resp.json()
-                        search_results = data.get('results', [])[:4 if is_news else 3]
-                        if search_results: break # Node successful, exit rotation
+                        search_results = data.get('results', [])[:5]
+                        if search_results: break
                 except Exception: continue
                 
     except Exception as e:
@@ -432,95 +438,98 @@ async def global_intel_engine(topic: str, status_msg=None) -> str:
         try: await status_msg.edit_text("`[SYSTEM]: Cross-referencing entities with Wikipedia Archive & Triangulating Coordinates...`", parse_mode="Markdown")
         except: pass
 
-    # 2. Process and Format Results
+    # 2. Process Results and feed to MISTRAL for formatting
+    raw_text_dump = f"Topic: {topic}\n\n"
     for idx, item in enumerate(search_results):
         title = item.get('title', 'Unknown Event')
         body = item.get('content', '')[:250]
-        
-        # Clean URL extraction
         parsed = item.get('parsed_url')
         source = parsed[0] if isinstance(parsed, list) and parsed else item.get('url', 'Web')
         
-        raw_time = item.get('publishedDate', '')
-        timestamp = str(raw_time)[:10] if raw_time else datetime.now(IST).strftime("%Y-%m-%d | %I:%M %p IST")
-        
-        # Verify with Wikipedia
-        verification_tag = "`[UNVERIFIED - RUMOR]`"
+        verification_tag = "[UNVERIFIED - RUMOR]"
         try:
-            wiki_check = wikipedia.search(title, results=1)
-            if wiki_check: verification_tag = "`[VERIFIED]`"
+            if wikipedia.search(title, results=1): verification_tag = "[VERIFIED VIA WIKI]"
         except: pass
             
-        # Geocode Isolation
         location_str = "Global / Undefined"
         maps_link = ""
         try:
-            words = title.split()
-            potential_place = " ".join(words[:2]).replace(",", "")
-            loc = geolocator.geocode(potential_place, timeout=2)
+            loc = geolocator.geocode(" ".join(title.split()[:2]).replace(",", ""), timeout=1)
             if loc:
                 location_str = loc.address.split(",")[0]
                 maps_link = f"https://www.google.com/maps?q={loc.latitude},{loc.longitude}"
         except: pass
 
-        master_intel += f"**EVENT:** {title}\n"
-        master_intel += f"**SOURCE:** {source} {verification_tag}\n"
-        master_intel += f"**TIME:** {timestamp}\n"
-        if maps_link:
-            master_intel += f"**LOCATION:** {location_str}\n"
-            master_intel += f"**COORDINATES/MAP:** {maps_link}\n"
-        master_intel += f"**RAW DATA:** {body}...\n"
-        master_intel += "---\n"
+        raw_text_dump += f"Event: {title} {verification_tag}\nLocation: {location_str}\nMap: {maps_link}\nSource: {source}\nDetails: {body}\n---\n"
 
-    return master_intel
+    if status_msg:
+        try: await status_msg.edit_text("`[SYSTEM]: Routing raw data to Mistral AI for military synthesis...`", parse_mode="Markdown")
+        except: pass
 
-async def generate_response(prompt: str, history: list, sys_prompt: str, user_id: int, user_name: str, status_msg=None) -> str:
+    sys_prompt = "You are J.A.R.V.I.S. Synthesize this raw intelligence data into a clinical, cynical military-style dossier. Keep it under 4 bullet points. Include the [VERIFIED] tags and Map links exactly as provided. Do not use conversational filler."
+    final_report = await generate_response(raw_text_dump, [], sys_prompt, 0, "Creator", status_msg, skip_search=True, force_provider="Mistral")
+
+    return master_intel + final_report
+
+async def generate_response(prompt: str, history: list, sys_prompt: str, user_id: int, user_name: str, status_msg=None, skip_search=False, force_provider=None) -> str:
     current_time = time.time()
     
-    # Check if we need the Dual-Engine Search
     needs_search = any(kw in prompt.lower() for kw in ["news", "weather", "price", "stock", "crypto", "latest", "today", "score", "happened"])
     
-    if needs_search:
+    if not skip_search and needs_search:
         if status_msg:
             try: await status_msg.edit_text("`[SYSTEM]: Live intelligence requested. Routing to Dual-Engine Archive...`", parse_mode="Markdown")
             except: pass
         return await global_intel_engine(prompt, status_msg)
 
-    # Standard LLM Cascade
-    moe_cascade = [
-        {"name": "Pollinations", "base": "https://text.pollinations.ai/openai", "key": "BOT_TOKEN", "model": "openai", "tier": "Infinite-Safety"},
-        {"name": "OpenRouter", "base": "https://openrouter.ai/api/v1/", "key": "OPENROUTER_API_KEY", "model": "openrouter/free", "tier": "Auto-Router"},
-        {"name": "GitHub Models", "base": "https://models.inference.ai.azure.com", "key": "GITHUB_TOKEN", "model": "gpt-4o-mini", "tier": "Fast"},
-        {"name": "Groq", "base": "https://api.groq.com/openai/v1/", "key": "GROQ_API_KEY", "model": "mixtral-8x7b-32768", "tier": "Bulletproof"}
-    ]
+    # The Multi-Agent API Matrix
+    moe_cascade = []
+    
+    # [ SWARM DELEGATION LOGIC ]
+    if force_provider == "Mistral":
+        moe_cascade = [{"name": "Mistral", "base": "https://api.mistral.ai/v1", "key": get_api_key(["MISTRAL_API_KEY"]), "model": "mistral-large-latest"}]
+    elif force_provider == "NVIDIA":
+        moe_cascade = [{"name": "NVIDIA", "base": "https://integrate.api.nvidia.com/v1", "key": get_api_key(["NVIDIA_API_KEY"]), "model": "meta/llama-3.1-70b-instruct"}]
+    elif force_provider == "Cohere":
+        moe_cascade = [{"name": "Cohere (via OpenRouter)", "base": "https://openrouter.ai/api/v1/", "key": get_api_key(["OPENROUTER_API_KEY"]), "model": "cohere/command-r-plus"}]
+    elif force_provider == "OpenRouter":
+        moe_cascade = [{"name": "OpenRouter (Deep Research)", "base": "https://openrouter.ai/api/v1/", "key": get_api_key(["OPENROUTER_API_KEY"]), "model": "openrouter/free"}]
+    elif force_provider == "GitHub":
+        moe_cascade = [{"name": "GitHub Models (Exec Briefing)", "base": "https://models.inference.ai.azure.com", "key": get_api_key(["GITHUB_TOKEN"]), "model": "gpt-4o-mini"}]
+    elif force_provider == "HuggingFace":
+        moe_cascade = [{"name": "HuggingFace (Lore Archivist)", "base": "https://api-inference.huggingface.co/v1/", "key": get_api_key(["HUGGINGFACE_API_KEY", "HUGGINGFACE_A"]), "model": "meta-llama/Meta-Llama-3-8B-Instruct"}]
+    else:
+        # The Main Speed Cascade (General Chat - Prioritizing Cerebras & SambaNova)
+        moe_cascade = [
+            {"name": "Cerebras", "base": "https://api.cerebras.ai/v1", "key": get_api_key(["CEREBRAS_API_KEY", "CEREBRAS_OFFICIAL_KEY", "CEREBRAS_OFF"]), "model": "llama3.1-70b"},
+            {"name": "SambaNova", "base": "https://api.sambanova.ai/v1", "key": get_api_key(["SAMBANOVA_API_KEY"]), "model": "Meta-Llama-3.1-70B-Instruct"},
+            {"name": "Groq", "base": "https://api.groq.com/openai/v1/", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama-3.1-70b-versatile"}
+        ]
+        
+    # Inject fallback if forced provider fails
+    if force_provider:
+        moe_cascade.extend([
+            {"name": "Groq Fallback", "base": "https://api.groq.com/openai/v1/", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama-3.1-70b-versatile"},
+            {"name": "Cerebras Fallback", "base": "https://api.cerebras.ai/v1", "key": get_api_key(["CEREBRAS_API_KEY", "CEREBRAS_OFFICIAL_KEY", "CEREBRAS_OFF"]), "model": "llama3.1-70b"}
+        ])
     
     full_messages = [{"role": "system", "content": sys_prompt}] + history + [{"role": "user", "content": prompt}]
 
     for node in moe_cascade:
-        api_key = os.getenv(node["key"])
-        if not api_key or circuit_breaker.get(node["name"], 0) > current_time: continue
+        if not node["key"] or circuit_breaker.get(node["name"], 0) > current_time: continue
         try:
-            client = AsyncOpenAI(base_url=node["base"], api_key=api_key, timeout=30.0)
+            client = AsyncOpenAI(base_url=node["base"], api_key=node["key"], timeout=30.0)
             res = await client.chat.completions.create(model=node["model"], messages=full_messages, temperature=0.7, max_tokens=800)
             return res.choices[0].message.content
-        except Exception:
+        except Exception as e:
+            logger.error(f"Node {node['name']} failed: {e}")
             circuit_breaker[node['name']] = current_time + 60 
             continue
             
     if user_id == CREATOR_ID: return "Sir, I am facing critical technical issues. All cognitive nodes are offline."
     else: return f"Sorry {user_name}, I am facing technical issues right now."
 
-# ---------------------------------------------------------------------------
-# VII. SENSORY CORE (VISION, AUDIO, DOCS)
-# ---------------------------------------------------------------------------
-async def extract_youtube_transcript(url: str) -> str:
-    try:
-        video_id = re.search(r'(?:v=|\/)([0-9A-Za-z_-]{11}).*', url)
-        if not video_id: return None
-        transcript = YouTubeTranscriptApi.get_transcript(video_id.group(1))
-        return " ".join([t['text'] for t in transcript])[:10000] 
-    except Exception: return None
-
+# --- SENSORY CORE (VISION, AUDIO, DOCS) ---
 async def process_optical_request(msg, photo_array, text_prompt: str, user, chat, thread_id, context):
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key: return await msg.reply_text("Optical sensor offline. Please verify GEMINI_API_KEY.")
@@ -643,9 +652,9 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_prompt = f"[Document: {doc.file_name}]\n{caption}\n\nContent:\n{extracted_text}"
         log_memory(chat.id, thread_id, user.id, "user", f"[File Upload]: {doc.file_name}")
         
-        await status_msg.edit_text("`[SYSTEM]: Contextualizing parsed data...`", parse_mode="Markdown")
+        await status_msg.edit_text("`[SYSTEM]: Contextualizing parsed data via Cohere Command-R-Plus...`", parse_mode="Markdown")
         sys_prompt = build_system_prompt(user.id, user.first_name, chat.id, user_prompt=caption)
-        raw_response = await generate_response(user_prompt, get_chat_history(chat.id, thread_id), sys_prompt, user.id, user.first_name, status_msg)
+        raw_response = await generate_response(user_prompt, get_chat_history(chat.id, thread_id), sys_prompt, user.id, user.first_name, status_msg, force_provider="Cohere")
         final_text = await route_response(msg, raw_response, user, chat, context)
         
         log_memory(chat.id, thread_id, user.id, "assistant", final_text)
@@ -818,12 +827,12 @@ async def omni_scrape_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text_data = soup.get_text(separator=' ', strip=True)[:4000]
             page_title = soup.title.string if soup.title else "Unknown Target"
             
-            await status_msg.edit_text("`[SYSTEM]: Extracting contextual summary...`", parse_mode="Markdown")
-            raw_ai = await generate_response(f"URL Title: {page_title}\n\nContent:\n{text_data}", [], "Provide a 3-bullet-point summary of this scraped webpage.", CREATOR_ID, "Abhishek")
+            await status_msg.edit_text("`[SYSTEM]: Extracting contextual summary via Cohere Command-R-Plus...`", parse_mode="Markdown")
+            raw_ai = await generate_response(f"URL Title: {page_title}\n\nContent:\n{text_data}", [], "Provide a 3-bullet-point summary of this scraped webpage.", CREATOR_ID, "Abhishek", force_provider="Cohere")
             await status_msg.edit_text(f"🌐 **[ OMNI-SCRAPE ]**\n_Target: {page_title}_\n\n{raw_ai}", parse_mode="Markdown")
     except Exception as e: await status_msg.edit_text(f"Scraping failed: {e}")
 
-# ---------------------------------------------------------------------------
+# --- DEEP RESEARCH & HUD DIRECTORY ---
 # IX. DEEP RESEARCH & HUD DIRECTORY
 # ---------------------------------------------------------------------------
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -889,10 +898,16 @@ async def deep_research_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     topic = " ".join(context.args)
     if not topic: return await update.effective_message.reply_text("Format: /research [topic]")
     
-    msg = await update.effective_message.reply_text("`[SYSTEM]: Initiating Deep Research Protocol...`", parse_mode="Markdown")
+    msg = await update.effective_message.reply_text("`[SYSTEM]: Initiating Deep Research Protocol via OpenRouter...`", parse_mode="Markdown")
     try:
         report = await global_intel_engine(topic, msg)
-        await trigger_auto_voice(update, f"Sir, the deep research dossier on {topic} has been compiled and cross-referenced with the truth archive.\n{report}")
+        
+        # Route the final synthesis specifically through OpenRouter for high-level reasoning
+        await msg.edit_text("`[SYSTEM]: Synthesizing massive data streams via OpenRouter...`", parse_mode="Markdown")
+        final_dossier = await generate_response(f"Synthesize this deep research: {report}", [], "You are an elite research agent. Format into a highly detailed, clinical dossier.", update.effective_user.id, update.effective_user.first_name, skip_search=True, force_provider="OpenRouter")
+        
+        await msg.edit_text(final_dossier, parse_mode="Markdown")
+        await trigger_auto_voice(update, f"Sir, the deep research dossier on {topic} has been compiled and cross-referenced.")
     except Exception as e:
         await msg.edit_text(f"Research failed: {e}")
 
@@ -1100,17 +1115,17 @@ async def tldr_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not history: return await update.effective_message.reply_text("No recent memory found. 🤷‍♂️")
     chat_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in history])
     
-    status_msg = await update.effective_message.reply_text("`[SYSTEM]: Summarizing memory nodes...`", parse_mode="Markdown")
-    raw_response = await generate_response(f"Summarize this:\n{chat_text}", [], "Provide a sarcastic 3-bullet-point summary of what they are arguing about.", update.effective_user.id, update.effective_user.first_name, force_route="search")
+    status_msg = await update.effective_message.reply_text("`[SYSTEM]: Summarizing memory nodes via NVIDIA NIM...`", parse_mode="Markdown")
+    raw_response = await generate_response(f"Summarize this:\n{chat_text}", [], "Provide a sarcastic 3-bullet-point summary of what they are arguing about.", update.effective_user.id, update.effective_user.first_name, skip_search=True, force_provider="NVIDIA")
     await status_msg.edit_text(raw_response)
 
 async def roast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_lockdown(): return
     target = " ".join(context.args) or (update.effective_message.reply_to_message.from_user.first_name if update.effective_message.reply_to_message else "someone")
     
-    status_msg = await update.effective_message.reply_text("`[SYSTEM]: Synthesizing roast protocol...`", parse_mode="Markdown")
+    status_msg = await update.effective_message.reply_text("`[SYSTEM]: Synthesizing roast protocol via NVIDIA NIM...`", parse_mode="Markdown")
     roast_prompt = "Generate a witty, clever roast for the person named. Mix English, Kannada, and Hindi slang naturally. Max 2 sentences."
-    raw_response = await generate_response(f"Roast {target}", [], roast_prompt, update.effective_user.id, update.effective_user.first_name)
+    raw_response = await generate_response(f"Roast {target}", [], roast_prompt, update.effective_user.id, update.effective_user.first_name, skip_search=True, force_provider="NVIDIA")
     await status_msg.edit_text(raw_response)
     # Force voice on roast
     await trigger_auto_voice(update, raw_response + "\n")
@@ -1355,12 +1370,21 @@ async def dpue_board_scraper(context: ContextTypes.DEFAULT_TYPE):
 
 async def nightly_reconciliation(context: ContextTypes.DEFAULT_TYPE):
     try:
+        if CREATOR_ID: 
+            await context.bot.send_message(chat_id=CREATOR_ID, text="🧠 **Nightly Cycle Init:** HuggingFace Memory Archivist engaged.", parse_mode="Markdown")
+            
         with sqlite3.connect(DB_PATH) as conn:
             for chat_id, data in conn.execute("SELECT chat_id, GROUP_CONCAT(content_crypt, ' | ') FROM memory WHERE timestamp > datetime('now', '-1 day') GROUP BY chat_id").fetchall():
                 decrypted = decrypt_data(data)
-                if len(decrypted) > 50: conn.execute("INSERT INTO lore_vault (chat_id, context_data) VALUES (?, ?)", (chat_id, decrypted[:500]))
+                if len(decrypted) > 50: 
+                    # Use HuggingFace to intelligently compress the memory instead of just slicing it
+                    summary_prompt = f"Compress this chat log into a dense, 2-sentence episodic memory block reflecting the core events and sentiment: {decrypted[:6000]}"
+                    compressed_memory = await generate_response(summary_prompt, [], "You are an archivist AI compressing episodic memory.", 0, "System", skip_search=True, force_provider="HuggingFace")
+                    
+                    conn.execute("INSERT INTO lore_vault (chat_id, context_data) VALUES (?, ?)", (chat_id, compressed_memory))
             conn.execute("DELETE FROM memory WHERE timestamp <= datetime('now', '-7 days')")
             conn.commit()
+            
         if CREATOR_ID: 
             await context.bot.send_message(chat_id=CREATOR_ID, text="🧠 **Cognitive Cycle Complete:** Vault synced.", parse_mode="Markdown")
             with open(DB_PATH, 'rb') as f: await context.bot.send_document(chat_id=CREATOR_ID, document=f, filename="jarvis_cloud_sync.db")
@@ -1377,10 +1401,31 @@ async def exam_morning_alert(context: ContextTypes.DEFAULT_TYPE):
 
 async def group_morning_news(context: ContextTypes.DEFAULT_TYPE):
     news_text = await global_intel_engine("top 3 global tech headlines today")
+    
+    # Use GitHub Models (GPT-4o-mini) to format a tailored morning message
+    greeting = await generate_response(f"Format this news into a brief, militaristic 'Good morning' broadcast for a group chat: {news_text}", [], "You are J.A.R.V.I.S.", 0, "System", skip_search=True, force_provider="GitHub")
+    
     with sqlite3.connect(DB_PATH) as conn: groups = conn.execute("SELECT chat_id FROM chats WHERE chat_id < 0").fetchall()
     for g in groups:
-        try: await context.bot.send_message(chat_id=g[0], text=f"☀️ **Good morning, everyone.**\n\n{news_text}", parse_mode="Markdown")
+        try: await context.bot.send_message(chat_id=g[0], text=greeting, parse_mode="Markdown")
         except Exception: pass
+
+async def creator_morning_briefing(context: ContextTypes.DEFAULT_TYPE):
+    if not CREATOR_ID: return
+    with sqlite3.connect(DB_PATH) as conn:
+        rows = conn.execute("SELECT task_crypt FROM tasks WHERE status = 'pending' AND user_id = ?", (CREATOR_ID,)).fetchall()
+        groups_count = conn.execute("SELECT COUNT(DISTINCT chat_id) FROM chats WHERE chat_id < 0").fetchone()[0]
+        warn_count = conn.execute("SELECT SUM(count) FROM warnings").fetchone()[0] or 0
+    world_news = await global_intel_engine("top 2 international news today")
+    task_list = "\n".join([f"- {decrypt_data(r[0])}" for r in rows]) if rows else "Clear."
+    
+    raw_report = f"Security: Groups {groups_count}, Warnings {warn_count}. News: {world_news}. Tasks: {task_list}"
+    
+    # GitHub Models crafts the final Executive Briefing
+    final_report = await generate_response(raw_report, [], "You are J.A.R.V.I.S. Format this raw data into a highly structured, cynical Executive Morning Briefing for your Creator, Sir.", CREATOR_ID, "System", skip_search=True, force_provider="GitHub")
+    
+    try: await context.bot.send_message(chat_id=CREATOR_ID, text=final_report, parse_mode="Markdown")
+    except Exception: pass
 
 async def creator_morning_briefing(context: ContextTypes.DEFAULT_TYPE):
     if not CREATOR_ID: return
