@@ -1,4 +1,4 @@
-python-telegram-bot21.4
+python-telegram-bot>=22.8
 openai>=1.0.0
 pdfplumber0.11.4
 apscheduler3.10.4
@@ -10,7 +10,7 @@ beautifulsoup44.12.3
 edge-tts6.1.12
 youtube-transcript-api0.6.2
 flask3.0.3
-flask-cors4.0.1
+flask-cors==4.0.1
 psutil>=5.9
 duckduckgo-search>=6.2.0
 wikipedia>=1.4.0
