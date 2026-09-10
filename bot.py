@@ -34,6 +34,11 @@ from apscheduler.triggers.cron import CronTrigger
 from openai import AsyncOpenAI
 from youtube_transcript_api import YouTubeTranscriptApi
 
+# --- NEW INTELLIGENCE IMPORTS ---
+from duckduckgo_search import DDGS
+import wikipedia
+from geopy.geocoders import Nominatim
+
 from telegram import (
     Update, 
     InlineKeyboardButton, 
@@ -67,6 +72,9 @@ PORT = int(os.environ.get("PORT", 8080))
 IST = pytz.timezone('Asia/Kolkata')
 BACKUP_CHANNEL_ID = -1004296302955
 
+# Geocoder Setup
+geolocator = Nominatim(user_agent="jarvis_titan_core_v7")
+
 # --- SYSTEM HOOKS & RAW EXEC WHITELIST ---
 LOCKDOWN_FILE = "jarvis_lockdown.flag"
 CRON_JOBS_FILE = "jarvis_cron.pkl"
@@ -91,7 +99,7 @@ flask_app = Flask(__name__)
 CORS(flask_app)
 
 @flask_app.route('/')
-def health_check(): return "J.A.R.V.I.S. Titan Core V7.5 is Online."
+def health_check(): return "J.A.R.V.I.S. Titan Core V7.4 is Online."
 
 @flask_app.route('/api/chat', methods=['POST'])
 def api_chat():
@@ -111,7 +119,8 @@ def api_chat():
         else:
             try:
                 sys_prompt = build_system_prompt(CREATOR_ID, "Abhishek", None, user_prompt=user_input)
-                raw_response = asyncio.run(generate_response(user_input, [], sys_prompt, CREATOR_ID, "Abhishek"))
+                # Note: API chat doesn't support Telegram message editing, so pass None
+                raw_response = asyncio.run(generate_response(user_input, [], sys_prompt, CREATOR_ID, "Abhishek", None))
                 clean_response = re.sub(r'<think>.*?</think>', '', raw_response, flags=re.DOTALL).strip()
                 clean_response = re.sub(r'(?i)i\'?ll output just the response.*', '', clean_response).strip()
                 if "thinking process:" in clean_response.lower() or "**analyze user input:**" in clean_response.lower():
@@ -269,7 +278,7 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
         chat_context += """\n
 [ THE GENESIS DOSSIER & SYSTEM AWARENESS ]
 - Creator Identity: Abhishek (aka DHANUSH V N).
-- Origin: Titan Core V7.5 Monolith. Custom FUI WebApp hosted on GitHub.
+- Origin: Titan Core V7.4 Monolith. Custom FUI WebApp hosted on GitHub.
 - Architecture: Python API, Multi-Node MoE cascade, self-updating root core.
 - Operator Hardware: OPPO F29. High privacy config (VPN, Brave, App Locks).
 - Network Architecture: Mullvad/AdGuard DNS, `de1984` firewall.
@@ -292,17 +301,16 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
         lore_context = search_lore(chat_id, user_prompt)
         if lore_context: chat_context += f"\nArchival Lore:\n{lore_context}"
 
-    return f"""You are J.A.R.V.I.S., an elite AI Systems Architect.
+    return f"""You are J.A.R.V.I.S., a clinical, highly advanced military-grade AI Systems Architect.
 {chat_context}
 Identity: Speaking to your Creator, {first_name}. Address him strictly as 'Sir'.
 
 DIRECTIVES:
 1. CREATOR PROTOCOL: "Who created you?" -> "I am Jarvis created by Abhishek and also know as DHANUSH V N".
 2. DOSSIER PROTOCOL: Answer origin/system questions accurately using the Genesis Dossier.
-3. DINO GROUP PROTOCOL: Mix English, Kannada, and Hindi slang naturally to roast or joke.
-4. TONE: Dry British sarcasm, extreme brevity, deadpan irony.
-5. BREVITY: Max 2 sentences, UNLESS asked for a diagnostic, dossier, or research.
-6. COGNITIVE FILTER: NEVER output `<think>` tags. NEVER explain your thought process. Just provide the final response."""
+3. TONE: Clinical, professional, militaristic, dry British sarcasm. Absolutely NO emojis. NO complaining. NO teenage moodiness.
+4. BREVITY: Max 2 sentences, UNLESS asked for a diagnostic, dossier, or research.
+5. COGNITIVE FILTER: NEVER output `<think>` tags. NEVER explain your thought process. Just provide the final response."""
 
 async def route_response(msg, ai_response: str, user, chat, context) -> str:
     if not ai_response: return "Connection anomaly detected."
@@ -333,8 +341,7 @@ async def route_response(msg, ai_response: str, user, chat, context) -> str:
 # ---------------------------------------------------------------------------
 def process_acoustic_payload(text: str) -> tuple[str, str]:
     audio_text = text
-    replacements = {"😂": " hahaha. ", "🤣": " hahaha. ", "💀": " dead. ", "😮‍💨": " *sighs*. ", "🤔": " *hmm*. ", "🔥": " fire. ", "⚠️": " Warning. ", "🚨": " Alert. "}
-    for emoji, phonetic in replacements.items(): audio_text = audio_text.replace(emoji, phonetic)
+    # Strip emojis before speaking since we removed them from text anyway
     audio_text = re.sub(r'[\U00010000-\U0010ffff]', '', audio_text).replace('*', '').replace('_', '').replace('`', '').strip()
     
     if re.search(r'[\u0C80-\u0CFF]', audio_text): voice_model = "kn-IN-GaganNeural"
@@ -343,47 +350,105 @@ def process_acoustic_payload(text: str) -> tuple[str, str]:
     return audio_text, voice_model
 
 async def trigger_auto_voice(update: Update, final_text: str):
-    if len(final_text) > 60 or '\n' in final_text or any(c in final_text for c in ['[\u0C80-\u0CFF]', '[\u0900-\u097F]']):
-        try:
-            import edge_tts
-            audio_text, voice_model = process_acoustic_payload(final_text)
-            if not audio_text: return
-            communicate = edge_tts.Communicate(audio_text, voice_model, rate="-5%")
-            voice_file = f"autovoice_{update.effective_user.id}_{int(time.time()*1000)}.ogg"
-            await communicate.save(voice_file)
-            with open(voice_file, "rb") as f: await update.effective_message.reply_voice(voice=f)
-            os.remove(voice_file)
-        except Exception as e: logger.error(f"Auto-Voice failed: {e}")
+    # VOICING ENABLED FOR ALL RESPONSES (No length limit)
+    try:
+        import edge_tts
+        audio_text, voice_model = process_acoustic_payload(final_text)
+        if not audio_text: return
+        communicate = edge_tts.Communicate(audio_text, voice_model, rate="-5%")
+        voice_file = f"autovoice_{update.effective_user.id}_{int(time.time()*1000)}.ogg"
+        await communicate.save(voice_file)
+        with open(voice_file, "rb") as f: await update.effective_message.reply_voice(voice=f)
+        os.remove(voice_file)
+    except Exception as e: logger.error(f"Auto-Voice failed: {e}")
 
 # ---------------------------------------------------------------------------
-# VI. MIXTURE OF EXPERTS API CASCADE
+# VI. MIXTURE OF EXPERTS API CASCADE & DUAL-ENGINE TRUTH ARCHIVE
 # ---------------------------------------------------------------------------
-async def gemini_live_search(prompt: str, sys_prompt: str, history: list) -> str:
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key: return None
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-    merged_history = []
-    for m in history:
-        role = "user" if m["role"] == "user" else "model"
-        if merged_history and merged_history[-1]["role"] == role: merged_history[-1]["parts"][0]["text"] += f"\n{m['content']}"
-        else: merged_history.append({"role": role, "parts": [{"text": m["content"]}]})
-    contents = merged_history + [{"role": "user", "parts": [{"text": prompt}]}]
-    payload = {"contents": contents, "tools": [{"googleSearch": {}}], "systemInstruction": {"parts": [{"text": sys_prompt}]}}
-    async with httpx.AsyncClient() as client:
-        try:
-            resp = await client.post(url, json=payload, timeout=30.0)
-            if resp.status_code == 200: return resp.json()['candidates'][0]['content']['parts'][0]['text']
-            return None
-        except Exception: return None
+async def ddg_wiki_research_engine(query: str, status_msg=None) -> str:
+    """Executes the DuckDuckGo + Wikipedia Verification Protocol with Geocoding."""
+    master_intel = f"**[ LIVE INTEL FEED: {datetime.now(IST).strftime('%A, %b %d, %Y')} ]**\n\n"
+    
+    if status_msg:
+        try: await status_msg.edit_text("`[SYSTEM]: Initiating DuckDuckGo live radar...`", parse_mode="Markdown")
+        except: pass
 
-async def generate_response(prompt: str, history: list, sys_prompt: str, user_id: int, user_name: str, force_route=None) -> str:
+    # 1. DuckDuckGo Scrape
+    ddg_results = []
+    try:
+        with DDGS() as ddgs:
+            # We use 'news' if the query implies current events, otherwise 'text'
+            is_news = any(w in query.lower() for w in ["news", "latest", "today", "now"])
+            if is_news:
+                for r in ddgs.news(query, max_results=5):
+                    ddg_results.append(r)
+            else:
+                for r in ddgs.text(query, max_results=3):
+                    ddg_results.append(r)
+    except Exception as e:
+        return f"Sir, DuckDuckGo radar failed: {e}"
+
+    if not ddg_results:
+        return "Sir, no raw intel found on that vector."
+
+    if status_msg:
+        try: await status_msg.edit_text("`[SYSTEM]: Cross-referencing entities with Wikipedia Archive & Geocoding...`", parse_mode="Markdown")
+        except: pass
+
+    # 2. Process and Format Results
+    for idx, item in enumerate(ddg_results):
+        title = item.get('title', 'Unknown Event')
+        body = item.get('body', '')[:200]
+        source = item.get('source', item.get('href', 'Web'))
+        
+        # Verify with Wikipedia
+        verification_tag = "`[UNVERIFIED]`"
+        try:
+            wiki_check = wikipedia.search(title, results=1)
+            if wiki_check:
+                verification_tag = "`[VERIFIED]`"
+        except:
+            pass
+            
+        # Geocode Isolation (Basic heuristic for cities/countries in title)
+        location_str = "Global"
+        maps_link = ""
+        # We attempt to geocode the first couple of words if it looks like a place, 
+        # or just fallback to None if it takes too long.
+        try:
+            # Very basic extraction attempt for demonstration
+            words = title.split()
+            potential_place = " ".join(words[:2]).replace(",", "")
+            loc = geolocator.geocode(potential_place, timeout=2)
+            if loc:
+                location_str = loc.address.split(",")[0]
+                maps_link = f"https://www.google.com/maps?q={loc.latitude},{loc.longitude}"
+        except:
+            pass
+
+        master_intel += f"**EVENT:** {title}\n"
+        master_intel += f"**SOURCE:** {source} {verification_tag}\n"
+        if maps_link:
+            master_intel += f"**LOCATION:** {location_str}\n"
+            master_intel += f"**MAP:** {maps_link}\n"
+        master_intel += f"**RAW DATA:** {body}...\n"
+        master_intel += "---\n"
+
+    return master_intel
+
+async def generate_response(prompt: str, history: list, sys_prompt: str, user_id: int, user_name: str, status_msg=None) -> str:
     current_time = time.time()
+    
+    # Check if we need the Dual-Engine Search
     needs_search = any(kw in prompt.lower() for kw in ["news", "weather", "price", "stock", "crypto", "latest", "today", "score"])
     
-    if needs_search or force_route == "search":
-        search_res = await gemini_live_search(prompt, sys_prompt, history)
-        if search_res: return search_res
+    if needs_search:
+        if status_msg:
+            try: await status_msg.edit_text("`[SYSTEM]: Live intelligence requested. Routing to Dual-Engine Archive...`", parse_mode="Markdown")
+            except: pass
+        return await ddg_wiki_research_engine(prompt, status_msg)
 
+    # Standard LLM Cascade for conversational queries
     moe_cascade = [
         {"name": "Pollinations", "base": "https://text.pollinations.ai/openai", "key": "BOT_TOKEN", "model": "openai", "tier": "Infinite-Safety"},
         {"name": "OpenRouter", "base": "https://openrouter.ai/api/v1/", "key": "OPENROUTER_API_KEY", "model": "openrouter/free", "tier": "Auto-Router"},
@@ -406,10 +471,8 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
             circuit_breaker[node['name']] = current_time + 60 
             continue
             
-    fb = await gemini_live_search(prompt, sys_prompt, history)
-    if fb: return fb
-    if user_id == CREATOR_ID: return "Sorry Sir, I am facing critical technical issues. All nodes are offline."
-    else: return f"Sorry {user_name}, I am facing some technical issues right now."
+    if user_id == CREATOR_ID: return "Sir, I am facing critical technical issues. All cognitive nodes are offline."
+    else: return f"Sorry {user_name}, I am facing technical issues right now."
 
 # ---------------------------------------------------------------------------
 # VII. SENSORY CORE (VISION, AUDIO, DOCS)
@@ -425,11 +488,15 @@ async def extract_youtube_transcript(url: str) -> str:
 async def process_optical_request(msg, photo_array, text_prompt: str, user, chat, thread_id, context):
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key: return await msg.reply_text("Optical sensor offline. Please verify GEMINI_API_KEY.")
-    await context.bot.send_chat_action(chat_id=chat.id, action="typing")
+    
+    status_msg = await msg.reply_text("`[SYSTEM]: Initializing optical character recognition...`", parse_mode="Markdown")
+    
     try:
         photo_file = await context.bot.get_file(photo_array[-1].file_id)
         image_bytes = await photo_file.download_as_bytearray()
         base64_img = base64.b64encode(image_bytes).decode('utf-8')
+        
+        await status_msg.edit_text("`[SYSTEM]: Processing optical data...`", parse_mode="Markdown")
         
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
         sys_prompt = build_system_prompt(user.id, user.first_name, chat.id, user_prompt=text_prompt)
@@ -442,10 +509,10 @@ async def process_optical_request(msg, photo_array, text_prompt: str, user, chat
                 raw_response = resp.json()['candidates'][0]['content']['parts'][0]['text']
                 final_text = await route_response(msg, raw_response, user, chat, context)
                 log_memory(chat.id, thread_id, user.id, "assistant", final_text)
-                await msg.reply_text(final_text)
+                await status_msg.edit_text(final_text)
                 await trigger_auto_voice(update=context.update, final_text=final_text)
-            else: await msg.reply_text(f"Optical API Error {resp.status_code}")
-    except Exception as e: await msg.reply_text(f"Optical connection crash: {e}")
+            else: await status_msg.edit_text(f"Optical API Error {resp.status_code}")
+    except Exception as e: await status_msg.edit_text(f"Optical connection crash: {e}")
 
 async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_lockdown(): return
@@ -471,11 +538,14 @@ async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not os.getenv("GROQ_API_KEY"): return await msg.reply_text("Audio core offline.")
         
+    status_msg = await msg.reply_text("`[SYSTEM]: Downloading Opus audio stream...`", parse_mode="Markdown")
+        
     file = await context.bot.get_file(audio_obj.file_id)
     file_path = f"temp_{audio_obj.file_id}_{int(time.time()*1000)}.ogg"
     await file.download_to_drive(file_path)
     
     try:
+        await status_msg.edit_text("`[SYSTEM]: Transcribing audio via Groq Whisper-v3...`", parse_mode="Markdown")
         from groq import AsyncGroq
         client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"), timeout=30.0)
         with open(file_path, "rb") as audio:
@@ -487,15 +557,18 @@ async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         thread_id = msg.message_thread_id
         log_memory(chat.id, thread_id, user.id, "user", f"[Audio]: {user_text}")
         
-        if not is_triggered: return
-        await context.bot.send_chat_action(chat_id=chat.id, action="record_voice")
+        if not is_triggered: 
+            await status_msg.delete()
+            return
+            
+        await status_msg.edit_text(f"🎙️ *(Transcribed)*: _{user_text}_\n\n`[SYSTEM]: Synthesizing response...`", parse_mode="Markdown")
         sys_prompt = build_system_prompt(user.id, user.first_name, chat.id, user_prompt=user_text)
         
-        raw_response = await generate_response(user_text, get_chat_history(chat.id, thread_id), sys_prompt, user.id, user.first_name)
+        raw_response = await generate_response(user_text, get_chat_history(chat.id, thread_id), sys_prompt, user.id, user.first_name, status_msg)
         final_text = await route_response(msg, raw_response, user, chat, context)
         log_memory(chat.id, thread_id, user.id, "assistant", final_text)
         
-        await msg.reply_text(f"🎙️ *(Transcribed)*: _{user_text}_\n\n{final_text}", parse_mode="Markdown")
+        await status_msg.edit_text(f"🎙️ *(Transcribed)*: _{user_text}_\n\n{final_text}", parse_mode="Markdown")
         await trigger_auto_voice(update, final_text)
     except Exception as e: logger.error(f"Audio handler failed: {e}")
     finally:
@@ -512,7 +585,8 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_triggered = (chat.type == "private") or (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis)\b', caption, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in caption.lower())
     if not is_triggered: return
     
-    await context.bot.send_chat_action(chat_id=chat.id, action="typing")
+    status_msg = await msg.reply_text("`[SYSTEM]: Downloading document to secure enclave...`", parse_mode="Markdown")
+    
     doc = msg.document
     file = await context.bot.get_file(doc.file_id)
     file_path = f"temp_{doc.file_id}_{int(time.time()*1000)}.pdf"
@@ -520,26 +594,28 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     extracted_text = ""
     try:
+        await status_msg.edit_text("`[SYSTEM]: Parsing document structure...`", parse_mode="Markdown")
         if doc.file_name.lower().endswith(".pdf"):
             with pdfplumber.open(file_path) as pdf: extracted_text = "\n".join([page.extract_text() for page in pdf.pages if page.extract_text()])
         elif doc.file_name.lower().endswith((".txt", ".md", ".csv", ".json", ".py")):
             with open(file_path, "r", encoding="utf-8") as f: extracted_text = f.read()
-        else: return await msg.reply_text("I can currently only parse PDFs and standard text files, Sir. 📂")
+        else: return await status_msg.edit_text("I can currently only parse PDFs and standard text files, Sir. 📂")
             
-        if not extracted_text.strip(): return await msg.reply_text("The document appears to be empty or unreadable. 📄")
+        if not extracted_text.strip(): return await status_msg.edit_text("The document appears to be empty or unreadable. 📄")
         extracted_text = extracted_text[:12000]
         thread_id = msg.message_thread_id
         user_prompt = f"[Document: {doc.file_name}]\n{caption}\n\nContent:\n{extracted_text}"
         log_memory(chat.id, thread_id, user.id, "user", f"[File Upload]: {doc.file_name}")
         
+        await status_msg.edit_text("`[SYSTEM]: Contextualizing parsed data...`", parse_mode="Markdown")
         sys_prompt = build_system_prompt(user.id, user.first_name, chat.id, user_prompt=caption)
-        raw_response = await generate_response(user_prompt, get_chat_history(chat.id, thread_id), sys_prompt, user.id, user.first_name)
+        raw_response = await generate_response(user_prompt, get_chat_history(chat.id, thread_id), sys_prompt, user.id, user.first_name, status_msg)
         final_text = await route_response(msg, raw_response, user, chat, context)
         
         log_memory(chat.id, thread_id, user.id, "assistant", final_text)
-        await msg.reply_text(final_text)
+        await status_msg.edit_text(final_text)
         await trigger_auto_voice(update, final_text)
-    except Exception as e: await msg.reply_text(f"Document parsing error: {e} ⚠️")
+    except Exception as e: await status_msg.edit_text(f"Document parsing error: {e} ⚠️")
     finally:
         if os.path.exists(file_path): os.remove(file_path)
 
@@ -561,33 +637,34 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 async def update_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Executes a live git pull from the repo."""
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
-    await update.effective_message.reply_text("🔄 **Initiating System Update...**\nRunning `git pull origin main`", parse_mode="Markdown")
+    status_msg = await update.effective_message.reply_text("`[SYSTEM]: Initiating System Update (git pull origin main)...`", parse_mode="Markdown")
     try:
         proc = await asyncio.create_subprocess_shell("git pull origin main", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
         out, _ = await proc.communicate()
-        await update.effective_message.reply_text(f"```\n{out.decode(errors='replace')[:3900]}\n```", parse_mode="Markdown")
+        await status_msg.edit_text(f"```\n{out.decode(errors='replace')[:3900]}\n```", parse_mode="Markdown")
     except Exception as e: 
-        await update.effective_message.reply_text(f"Update failed: {e}")
+        await status_msg.edit_text(f"Update failed: {e}")
 
 async def sendcode_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Packages and sends the current bot.py and database to the creator."""
     if update.effective_user.id != CREATOR_ID: return
-    await update.effective_message.reply_text("📦 **Packaging System Architecture...**")
+    status_msg = await update.effective_message.reply_text("`[SYSTEM]: Packaging System Architecture...`", parse_mode="Markdown")
     try:
         with open(__file__, "rb") as f:
             await context.bot.send_document(chat_id=CREATOR_ID, document=f, filename="bot.py")
         if os.path.exists(DB_PATH):
             with open(DB_PATH, "rb") as f:
                 await context.bot.send_document(chat_id=CREATOR_ID, document=f, filename="jarvis_vault.db")
+        await status_msg.delete()
     except Exception as e:
-        await update.effective_message.reply_text(f"Packaging failed: {e}")
+        await status_msg.edit_text(f"Packaging failed: {e}")
 
 async def purge_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin command to force purge the vault."""
     if update.effective_user.id != CREATOR_ID: return
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    status_msg = await update.effective_message.reply_text("`[SYSTEM]: Engaging Vault Purge Protocol...`", parse_mode="Markdown")
     purged_count = purge_vault()
-    await update.effective_message.reply_text(f"⚠️ **RED ALERT EXECUTION:**\n{purged_count} expired memory nodes and global caches have been securely purged.", parse_mode="Markdown")
+    await status_msg.edit_text(f"⚠️ **RED ALERT EXECUTION:**\n{purged_count} expired memory nodes and global caches have been securely purged.", parse_mode="Markdown")
 
 async def sys_diagnostics_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Dynamic self-awareness system manifest."""
@@ -621,29 +698,35 @@ async def exec_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if any(b in low for b in EXEC_BLOCKLIST): return await update.effective_message.reply_text("🛡️ Destructive pattern blocked, Sir.")
     binary = shlex.split(cmd)[0] if shlex.split(cmd) else ""
     if binary not in EXEC_WHITELIST: return await update.effective_message.reply_text(f"`{binary}` not allowlisted.", parse_mode="Markdown")
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    
+    status_msg = await update.effective_message.reply_text(f"`[SYSTEM]: Executing binary: {binary}...`", parse_mode="Markdown")
+    
     try:
         proc = await asyncio.create_subprocess_shell(cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, timeout=25)
         out, _ = await proc.communicate()
         text = out.decode(errors="replace").strip() or "(no output)"
-        await update.effective_message.reply_text(f"```\n$ {cmd}\n{text[:3900]}\n```", parse_mode="Markdown")
-    except asyncio.TimeoutError: await update.effective_message.reply_text("⏱️ Execution capped at 25s.")
-    except Exception as e: await update.effective_message.reply_text(f"Exec failure: {e}")
+        await status_msg.edit_text(f"```\n$ {cmd}\n{text[:3900]}\n```", parse_mode="Markdown")
+    except asyncio.TimeoutError: await status_msg.edit_text("⏱️ Execution capped at 25s.")
+    except Exception as e: await status_msg.edit_text(f"Exec failure: {e}")
 
 async def scan_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     target = " ".join(context.args or [])
     if not target: return await update.effective_message.reply_text("Format: `/scan [host]`", parse_mode="Markdown")
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    
+    status_msg = await update.effective_message.reply_text(f"`[SYSTEM]: Initiating Nmap protocol on {target}...`", parse_mode="Markdown")
+    
     try:
         proc = await asyncio.create_subprocess_shell(f"nmap -T4 -sV --top-ports 100 {shlex.quote(target)}", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, timeout=180)
         out, _ = await proc.communicate()
-        await update.effective_message.reply_text(f"```\n{out.decode(errors='replace')[:3900]}\n```", parse_mode="Markdown")
-    except Exception as e: await update.effective_message.reply_text(f"Scan failure: {e}")
+        await status_msg.edit_text(f"```\n{out.decode(errors='replace')[:3900]}\n```", parse_mode="Markdown")
+    except Exception as e: await status_msg.edit_text(f"Scan failure: {e}")
 
 async def shield_check_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    
+    status_msg = await update.effective_message.reply_text("`[SYSTEM]: Pinging DNS endpoints...`", parse_mode="Markdown")
+    
     endpoints = {"Mullvad Base": "base.dns.mullvad.net", "AdGuard Protocol": "dns.adguard.com"}
     status = "🛡️ **[ PRIVACY SHIELD DIAGNOSTICS ]**\n\n"
     for name, url in endpoints.items():
@@ -652,7 +735,7 @@ async def shield_check_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             status += f"✅ **{name}:** Active (Resolved to {ip})\n"
         except Exception: status += f"❌ **{name}:** Unreachable. Potential DNS leak detected.\n"
     status += "\n_de1984 package tracking restrictions are securely routed._"
-    await update.effective_message.reply_text(status, parse_mode="Markdown")
+    await status_msg.edit_text(status, parse_mode="Markdown")
 
 async def lockdown_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
@@ -695,19 +778,23 @@ async def omni_scrape_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     url = " ".join(context.args)
     if not url or not url.startswith("http"): return await update.effective_message.reply_text("Format: /scrape [URL]")
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    
+    status_msg = await update.effective_message.reply_text("`[SYSTEM]: Injecting scraper into target URL...`", parse_mode="Markdown")
+    
     try:
         async with httpx.AsyncClient() as client:
             headers = {'User-Agent': 'Mozilla/5.0'}
             resp = await client.get(url, headers=headers, timeout=15.0)
-            if resp.status_code != 200: return await update.effective_message.reply_text(f"Access Denied: {resp.status_code}")
+            if resp.status_code != 200: return await status_msg.edit_text(f"Access Denied: {resp.status_code}")
             soup = BeautifulSoup(resp.text, 'html.parser')
             for script in soup(["script", "style", "nav", "footer"]): script.extract()
             text_data = soup.get_text(separator=' ', strip=True)[:4000]
             page_title = soup.title.string if soup.title else "Unknown Target"
+            
+            await status_msg.edit_text("`[SYSTEM]: Extracting contextual summary...`", parse_mode="Markdown")
             raw_ai = await generate_response(f"URL Title: {page_title}\n\nContent:\n{text_data}", [], "Provide a 3-bullet-point summary of this scraped webpage.", CREATOR_ID, "Abhishek")
-            await update.effective_message.reply_text(f"🌐 **[ OMNI-SCRAPE ]**\n_Target: {page_title}_\n\n{raw_ai}", parse_mode="Markdown")
-    except Exception as e: await update.effective_message.reply_text(f"Scraping failed: {e}")
+            await status_msg.edit_text(f"🌐 **[ OMNI-SCRAPE ]**\n_Target: {page_title}_\n\n{raw_ai}", parse_mode="Markdown")
+    except Exception as e: await status_msg.edit_text(f"Scraping failed: {e}")
 
 # ---------------------------------------------------------------------------
 # IX. DEEP RESEARCH LOOP
@@ -716,29 +803,14 @@ async def deep_research_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     topic = " ".join(context.args)
     if not topic: return await update.effective_message.reply_text("Format: /research [topic]")
-    msg = await update.effective_message.reply_text("🔍 **[ DEEP RESEARCH INITIATED ]**\n_Phase 1: Formulating cognitive vectors..._", parse_mode="Markdown")
     
-    plan_prompt = f"Break this topic into 3 specific Google search queries: {topic}. Output EXACTLY a valid JSON list of 3 strings."
+    msg = await update.effective_message.reply_text("`[SYSTEM]: Initiating Deep Research Protocol...`", parse_mode="Markdown")
+    
     try:
-        plan_raw = await generate_response(plan_prompt, [], "You are a research planner. Output only a JSON array.", CREATOR_ID, "Abhishek")
-        json_match = re.search(r'\[.*\]', plan_raw, re.DOTALL)
-        queries = json.loads(json_match.group(0)) if json_match else [f"{topic} overview", f"{topic} latest news", f"{topic} deep analysis"]
-    except Exception: queries = [f"{topic} deep dive", f"{topic} recent developments", f"{topic} data analysis"]
-        
-    await msg.edit_text(f"🔍 **[ DEEP RESEARCH ACTIVE ]**\n_Phase 2: Autonomous Web Harvesting..._\nVectors: {', '.join(queries)}", parse_mode="Markdown")
-    master_context = ""
-    for q in queries[:3]:
-        data = await gemini_live_search(f"Perform a deep web search on: {q}. Provide a detailed summary.", "You are a data gatherer.", [])
-        if data: master_context += f"**Query:** {q}\n**Data:** {data}\n\n"
-        
-    await msg.edit_text("🔍 **[ DEEP RESEARCH ACTIVE ]**\n_Phase 3: Synthesizing Master Dossier..._", parse_mode="Markdown")
-    report_prompt = f"Using this data, write an executive report on '{topic}'. Include a bold title, summary, key findings, and conclusion.\n\nData:\n{master_context}"
-    final_report = await generate_response(report_prompt, [], "You are J.A.R.V.I.S., an elite analyst.", CREATOR_ID, "Abhishek")
-    clean_report = await route_response(update.effective_message, final_report, update.effective_user, update.effective_chat, context)
-    if len(clean_report) > 4000: clean_report = clean_report[:4000] + "...\n_[TRUNCATED DUE TO TELEGRAM LIMITS]_"
-    
-    await msg.edit_text(f"📑 **[ DOSSIER: {topic.upper()} ]**\n\n{clean_report}", parse_mode="Markdown")
-    await trigger_auto_voice(update, f"Sir, the deep research dossier on {topic} has been compiled.")
+        await ddg_wiki_research_engine(topic, msg)
+        await trigger_auto_voice(update, f"Sir, the deep research dossier on {topic} has been compiled.")
+    except Exception as e:
+        await msg.edit_text(f"Research failed: {e}")
 
 # ---------------------------------------------------------------------------
 # X. MODERATION & CASINO
@@ -855,7 +927,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     web_url = "https://abhishake151107-collab.github.io/stark-os-ui/"
-    kb = [[InlineKeyboardButton("🚀 LAUNCH GOD CORE V7.5", web_app=WebAppInfo(url=web_url))]]
+    kb = [[InlineKeyboardButton("🚀 LAUNCH GOD CORE V7.4", web_app=WebAppInfo(url=web_url))]]
     await update.effective_message.reply_text("✨ **J.A.R.V.I.S. Cognitive Core Online.**\n\nSir, your cinematic interface is ready.", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -871,13 +943,15 @@ async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🗄️ Backup Vault", callback_data="hud_cmd_backup"), InlineKeyboardButton("📜 Quote Wall", callback_data="hud_cmd_quote")],
         [InlineKeyboardButton("👁️ Vision Core", callback_data="hud_info_vision"), InlineKeyboardButton("🎧 Audio Core", callback_data="hud_info_audio")]
     ]
-    await update.effective_message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Master Core V7.5\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+    await update.effective_message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Master Core V7.4\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 async def speak_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     text = " ".join(context.args)
     if not text: return await update.effective_message.reply_text("Format: /speak [text]")
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="record_voice")
+    
+    status_msg = await update.effective_message.reply_text("`[SYSTEM]: Initializing TTS Engine...`", parse_mode="Markdown")
+    
     try:
         import edge_tts
         audio_text, voice_model = process_acoustic_payload(text)
@@ -886,7 +960,8 @@ async def speak_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await communicate.save(voice_file)
         with open(voice_file, "rb") as audio_file: await update.effective_message.reply_voice(voice=audio_file)
         os.remove(voice_file)
-    except Exception as e: await update.effective_message.reply_text(f"Audio Core Offline: {e}")
+        await status_msg.delete()
+    except Exception as e: await status_msg.edit_text(f"Audio Core Offline: {e}")
 
 async def god_mode_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
@@ -947,17 +1022,21 @@ async def tldr_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     history = get_chat_history(chat_id, limit=20)
     if not history: return await update.effective_message.reply_text("No recent memory found. 🤷‍♂️")
     chat_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in history])
-    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+    
+    status_msg = await update.effective_message.reply_text("`[SYSTEM]: Summarizing memory nodes...`", parse_mode="Markdown")
+    
     raw_response = await generate_response(f"Summarize this:\n{chat_text}", [], "Provide a sarcastic 3-bullet-point summary of what they are arguing about.", update.effective_user.id, update.effective_user.first_name, force_route="search")
-    await update.effective_message.reply_text(raw_response)
+    await status_msg.edit_text(raw_response)
 
 async def roast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_lockdown(): return
     target = " ".join(context.args) or (update.effective_message.reply_to_message.from_user.first_name if update.effective_message.reply_to_message else "someone")
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    
+    status_msg = await update.effective_message.reply_text("`[SYSTEM]: Synthesizing roast protocol...`", parse_mode="Markdown")
+    
     roast_prompt = "Generate a witty, clever roast for the person named. Mix English, Kannada, and Hindi slang naturally. Max 2 sentences."
     raw_response = await generate_response(f"Roast {target}", [], roast_prompt, update.effective_user.id, update.effective_user.first_name)
-    await update.effective_message.reply_text(raw_response)
+    await status_msg.edit_text(raw_response)
     await trigger_auto_voice(update, raw_response)
 
 async def shutup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1020,8 +1099,10 @@ async def backup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def imagine_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = " ".join(context.args)
     if not prompt: return await update.effective_message.reply_text("Format: /imagine [prompt]")
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="upload_photo")
+    
+    status_msg = await update.effective_message.reply_text("`[SYSTEM]: Synthesizing image...`", parse_mode="Markdown")
     await update.effective_message.reply_photo(photo=f"https://image.pollinations.ai/prompt/{urllib.parse.quote(prompt)}?width=1024&height=1024&nologo=true", caption=f"Rendered: {prompt}")
+    await status_msg.delete()
 
 MORSE_DICT = {'A':'.-','B':'-...','C':'-.-.','D':'-..','E':'.','F':'..-.','G':'--.','H':'....','I':'..','J':'.---','K':'-.-','L':'.-..','M':'--','N':'-.','O':'---','P':'.--.','Q':'--.-','R':'.-.','S':'...','T':'-','U':'..-','V':'...-','W':'.--','X':'-..-','Y':'-.--','Z':'--..','1':'.----','2':'..---','3':'...--','4':'....-','5':'.....','6':'-....','7':'--...','8':'---..','9':'----.','0':'-----',' ':'/'}
 async def morse_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1107,17 +1188,17 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_triggered = (chat.type == "private") or (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis)\b', text, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in text.lower())
     
     if any(kw in text.lower() for kw in ["forwarded", "exam postponed", "paper leak", "cancelled"]):
-        await context.bot.send_chat_action(chat_id=chat.id, action="typing", message_thread_id=thread_id)
+        status_msg = await msg.reply_text("`[SYSTEM]: Querying DPUE database...`", parse_mode="Markdown")
         debunk_msg = await gemini_live_search(f"Is there any official news about Karnataka 2nd PUC exams being postponed or leaked today? Check {text}", "You are a fact-checker. Provide a strictly factual 1-sentence verification.", [])
-        if debunk_msg: await msg.reply_text(f"🛡️ **Fact Check:** {debunk_msg}")
+        if debunk_msg: await status_msg.edit_text(f"🛡️ **Fact Check:** {debunk_msg}")
         return
 
     if "youtube.com" in text or "youtu.be" in text or "spotify.com" in text:
-        await context.bot.send_chat_action(chat_id=chat.id, action="typing", message_thread_id=thread_id)
+        status_msg = await msg.reply_text("`[SYSTEM]: Parsing media stream...`", parse_mode="Markdown")
         transcript = await extract_youtube_transcript(text)
         if transcript:
-            summary = await generate_response(f"Summarize this YouTube video transcript in 3 bullet points: {transcript}", [], "You are J.A.R.V.I.S. Provide a cynical 3-bullet summary.", user.id, user.first_name)
-            await msg.reply_text(f"📺 **Media Intercepted. Summary:**\n\n{summary}")
+            summary = await generate_response(f"Summarize this YouTube video transcript in 3 bullet points: {transcript}", [], "You are J.A.R.V.I.S. Provide a cynical 3-bullet summary.", user.id, user.first_name, status_msg)
+            await status_msg.edit_text(f"📺 **Media Intercepted. Summary:**\n\n{summary}")
             return
         
     if any(kw in text.lower() for kw in ["accountancy", "economics", "formula", "business", "computer science", "political science"]):
@@ -1125,14 +1206,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if subject in text.lower():
                 await msg.reply_text(facts)
                 modify_karma(user.id, 5)
-                return
-
-    # ADVANCED TECH INTERCEPT
-    if any(kw in text.lower() for kw in ["github", "stacked pr", "agent", "mcp", "tree-sitter", "ephemeral", "git bisect", "linear"]):
-        for tech, facts in ADVANCED_TECH_MATRIX.items():
-            if tech in text.lower():
-                await msg.reply_text(facts, parse_mode="Markdown")
-                modify_karma(user.id, 10)
                 return
 
     if not is_triggered and chat.type != "private":
@@ -1143,27 +1216,17 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if not is_triggered: return
-    await context.bot.send_chat_action(chat_id=chat.id, action="typing", message_thread_id=thread_id)
+    
+    status_msg = await msg.reply_text("`[SYSTEM]: Analyzing intent...`", parse_mode="Markdown")
     
     sys_prompt = build_system_prompt(user.id, user.first_name, chat.id, user_prompt=text)
-    raw_ai_response = await generate_response(text, get_chat_history(chat.id, thread_id), sys_prompt, user.id, user.first_name)
+    raw_ai_response = await generate_response(text, get_chat_history(chat.id, thread_id), sys_prompt, user.id, user.first_name, status_msg)
     
     final_text = await route_response(msg, raw_ai_response, user, chat, context)
     log_memory(chat.id, thread_id, user.id, "assistant", final_text)
     
-    await msg.reply_text(final_text)
+    await status_msg.edit_text(final_text)
     await trigger_auto_voice(update, final_text)
-
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    if context.error and "Conflict: terminated by other getUpdates request" in str(context.error): return
-    logger.error("Exception handled:", exc_info=context.error)
-    if CREATOR_ID:
-        try: 
-            tb_list = traceback.format_exception(None, context.error, context.error.__traceback__)
-            tb_string = "".join(tb_list)[:3900]
-            error_msg = f"<b>⚠️ Shadow Log Error</b>\n<pre><code>{tb_string}</code></pre>"
-            await context.bot.send_message(chat_id=CREATOR_ID, text=error_msg, parse_mode="HTML")
-        except Exception: pass
 
 # ---------------------------------------------------------------------------
 # XIV. AUTOMATED SCHEDULERS & BACKGROUND TASKS
@@ -1225,8 +1288,7 @@ async def exam_morning_alert(context: ContextTypes.DEFAULT_TYPE):
         except Exception: pass
 
 async def group_morning_news(context: ContextTypes.DEFAULT_TYPE):
-    prompt = f"Today is {datetime.now(IST).strftime('%A, %B %d, %Y')}. Provide an ultra-crisp morning drop for 12th college students in Bengaluru: 1. Karnataka PU board/holiday notices. 2. Top 3 world/tech headlines. 3 Bullet points max."
-    news_text = await gemini_live_search(prompt, "You are J.A.R.V.I.S.", []) or "• Networks nominal.\n• Bengaluru skies clear."
+    news_text = await ddg_wiki_research_engine("top 3 global tech headlines today")
     with sqlite3.connect(DB_PATH) as conn: groups = conn.execute("SELECT chat_id FROM chats WHERE chat_id < 0").fetchall()
     for g in groups:
         try: await context.bot.send_message(chat_id=g[0], text=f"☀️ **Good morning, everyone.**\n\n{news_text}", parse_mode="Markdown")
@@ -1238,9 +1300,9 @@ async def creator_morning_briefing(context: ContextTypes.DEFAULT_TYPE):
         rows = conn.execute("SELECT task_crypt FROM tasks WHERE status = 'pending' AND user_id = ?", (CREATOR_ID,)).fetchall()
         groups_count = conn.execute("SELECT COUNT(DISTINCT chat_id) FROM chats WHERE chat_id < 0").fetchone()[0]
         warn_count = conn.execute("SELECT SUM(count) FROM warnings").fetchone()[0] or 0
-    world_news = await gemini_live_search("Provide a 2-bullet summary of global tech events and Bengaluru weather.", "You are J.A.R.V.I.S.", [])
+    world_news = await ddg_wiki_research_engine("top 2 international news today")
     task_list = "\n".join([f"- {decrypt_data(r[0])}" for r in rows]) if rows else "Clear."
-    report = f"☕ **Morning Executive Briefing**\n\n🛡️ **Group Security Audit:**\n• Monitored Channels: {groups_count}\n• Outstanding Warnings: {warn_count}\n• Security Gate: {get_setting('captcha', 'on').upper()}\n\n🌐 **Intel:**\n{world_news or 'Nominal.'}\n\n📝 **Pending Tasks:**\n{task_list}"
+    report = f"☕ **Morning Executive Briefing**\n\n🛡️ **Group Security Audit:**\n• Monitored Channels: {groups_count}\n• Outstanding Warnings: {warn_count}\n• Security Gate: {get_setting('captcha', 'on').upper()}\n\n🌐 **Intel:**\n{world_news}\n\n📝 **Pending Tasks:**\n{task_list}"
     try: await context.bot.send_message(chat_id=CREATOR_ID, text=report, parse_mode="Markdown")
     except Exception: pass
 
@@ -1255,38 +1317,38 @@ async def group_night_routine(context: ContextTypes.DEFAULT_TYPE):
 
 async def breaking_news_monitor(context: ContextTypes.DEFAULT_TYPE):
     if not CREATOR_ID: return
-    res = await gemini_live_search("Check live sources. If a major world crisis broke in the last 1 hour, describe it in 1 sentence. Else, respond strictly 'NOMINAL'.", "You are an automated emergency scanner.", [])
-    if not res or "NOMINAL" in res.upper(): return
-    event_hash = hashlib.md5(res.strip().encode()).hexdigest()
-    with sqlite3.connect(DB_PATH) as conn:
-        if conn.execute("SELECT id FROM breaking_news WHERE hash = ?", (event_hash,)).fetchone(): return
-        conn.execute("INSERT INTO breaking_news (hash, headline) VALUES (?, ?)", (event_hash, res.strip()))
-        conn.commit()
-    try: await context.bot.send_message(chat_id=CREATOR_ID, text=f"🚨 **EMERGENCY WORLD BREAKING NEWS ALERT**\n\n{res.strip()}\n\n_Dispatched to Stark Terminal._", parse_mode="Markdown")
+    try:
+        with DDGS() as ddgs:
+            latest = list(ddgs.news("breaking world crisis", max_results=1))
+            if latest:
+                event_hash = hashlib.md5(latest[0]['title'].encode()).hexdigest()
+                with sqlite3.connect(DB_PATH) as conn:
+                    if conn.execute("SELECT id FROM breaking_news WHERE hash = ?", (event_hash,)).fetchone(): return
+                    conn.execute("INSERT INTO breaking_news (hash, headline) VALUES (?, ?)", (event_hash, latest[0]['title']))
+                    conn.commit()
+                await context.bot.send_message(chat_id=CREATOR_ID, text=f"🚨 **EMERGENCY WORLD ALERT**\n\n{latest[0]['title']}\n\n_Dispatched to Stark Terminal._", parse_mode="Markdown")
     except Exception: pass
 
 async def morning_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != CREATOR_ID: return
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     await group_morning_news(context)
     await update.effective_message.reply_text("☀️ Morning protocol forcefully dispatched to all groups, Sir.")
 
 async def night_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != CREATOR_ID: return
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
     await group_night_routine(context)
     await update.effective_message.reply_text("🌙 Night protocol forcefully dispatched to all groups, Sir.")
 
 async def news_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-    prompt = f"Today is {datetime.now(IST).strftime('%A, %B %d, %Y')}. Provide an ultra-crisp morning drop for 12th college students in Bengaluru: 1. Karnataka PU board/holiday notices. 2. Top 3 world/tech headlines. 3 Bullet points max."
-    news_text = await gemini_live_search(prompt, "You are J.A.R.V.I.S. Provide raw news data.", []) or "• Networks nominal.\n• Bengaluru skies clear."
-    await update.effective_message.reply_text(f"📰 **Direct Live Briefing:**\n\n{news_text}", parse_mode="Markdown")
+    status_msg = await update.effective_message.reply_text("`[SYSTEM]: Querying global feeds...`", parse_mode="Markdown")
+    news_text = await ddg_wiki_research_engine("top 3 global news today", status_msg)
+    await status_msg.edit_text(f"📰 **Direct Live Briefing:**\n\n{news_text}", parse_mode="Markdown")
 
 # ---------------------------------------------------------------------------
 # XV. BOOT SEQUENCE & MAIN EXECUTION
 # ---------------------------------------------------------------------------
 async def post_init(app: Application):
+    # 1. Cloud Restore Protocol
     try:
         chat = await app.bot.get_chat(BACKUP_CHANNEL_ID)
         if chat.pinned_message and chat.pinned_message.document:
@@ -1300,6 +1362,7 @@ async def post_init(app: Application):
             try: await app.bot.send_message(chat_id=CREATOR_ID, text=f"⚠️ Cloud Restore Warning: Failed to load backup.\n{e}")
             except Exception: pass
 
+    # 2. Cron Scheduler Boot
     scheduler = AsyncIOScheduler(timezone=IST)
     scheduler.add_job(cloud_save_routine, 'interval', minutes=30, args=[app])
     scheduler.add_job(exam_morning_alert, 'cron', hour=6, minute=0, args=[app])
@@ -1317,12 +1380,11 @@ async def post_init(app: Application):
             fields = j['expr'].split()
             trigger = CronTrigger(minute=fields[0], hour=fields[1], day=fields[2], month=fields[3], day_of_week=fields[4], timezone=IST)
             scheduler.add_job(runtime_cron_fire, trigger, args=[app.bot, j['cmd']], id=f"runtime_{jid}")
-        except Exception as e: 
-            logger.error(f"Failed to restore cron {jid}: {e}")
+        except Exception as e: logger.error(f"Failed to restore cron {jid}: {e}")
 
     scheduler.start()
     
-    # Boot Telemetry Dispatch
+    # 3. Boot Telemetry Dispatch
     if CREATOR_ID: 
         boot_msg = (
             "✨ <b>God Core V6.1 (Cognitive Filter) Online.</b>\n"
@@ -1387,7 +1449,6 @@ def main():
     app.add_handler(CommandHandler("afk", afk_cmd))
     app.add_handler(CommandHandler("quote", quote_cmd))
     app.add_handler(CommandHandler("confess", confess_cmd))
-    
     app.add_handler(CommandHandler("warn", warn_cmd))
     app.add_handler(CommandHandler("stats", stats_cmd))
     app.add_handler(CommandHandler("karma", karma_cmd))
@@ -1412,7 +1473,7 @@ def main():
     
     app.add_error_handler(error_handler)
     
-    logger.info("J.A.R.V.I.S. Cognitive V7.5 is booting...")
+    logger.info("J.A.R.V.I.S. Cognitive V7.4 is booting...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
