@@ -35,7 +35,6 @@ from openai import AsyncOpenAI
 from youtube_transcript_api import YouTubeTranscriptApi
 
 # --- NEW INTELLIGENCE IMPORTS (Must be in requirements.txt) ---
-from duckduckgo_search import DDGS
 import wikipedia
 from geopy.geocoders import Nominatim
 
@@ -387,38 +386,63 @@ async def trigger_auto_voice(update: Update, final_text: str):
 # VI. DUAL-ENGINE TRUTH ARCHIVE & GEOSPATIAL RADAR
 # ---------------------------------------------------------------------------
 async def global_intel_engine(topic: str, status_msg=None) -> str:
-    """Executes the DuckDuckGo + Wikipedia Verification Protocol with Geocoding."""
+    """Executes the SearXNG FOSS + Wikipedia Verification Protocol with Geocoding."""
     master_intel = f"**[ LIVE INTEL FEED: {datetime.now(IST).strftime('%A, %b %d, %Y')} ]**\n\n"
     
     if status_msg:
-        try: await status_msg.edit_text(f"`[SYSTEM]: Sweeping DuckDuckGo live radar for '{topic}'...`", parse_mode="Markdown")
+        try: await status_msg.edit_text(f"`[SYSTEM]: Bypassing corporate limits... Routing via FOSS SearXNG nodes for '{topic}'...`", parse_mode="Markdown")
         except: pass
 
-    # 1. DuckDuckGo Scrape
-    ddg_results = []
+    # 1. SearXNG FOSS Scrape (Rate-limit bypass)
+    search_results = []
+    searxng_nodes = [
+        "https://searx.be", 
+        "https://searx.tiekoetter.com", 
+        "https://search.ononoki.org", 
+        "https://searx.work", 
+        "https://searx.ro"
+    ]
+    
     try:
-        with DDGS() as ddgs:
-            is_news = any(w in topic.lower() for w in ["news", "latest", "today", "now", "crisis"])
-            if is_news:
-                for r in ddgs.news(topic, max_results=4): ddg_results.append(r)
-            else:
-                for r in ddgs.text(topic, max_results=3): ddg_results.append(r)
+        is_news = any(w in topic.lower() for w in ["news", "latest", "today", "now", "crisis"])
+        category = "news" if is_news else "general"
+        
+        async with httpx.AsyncClient() as client:
+            random.shuffle(searxng_nodes)
+            for node in searxng_nodes:
+                try:
+                    resp = await client.get(
+                        f"{node}/search", 
+                        params={"q": topic, "format": "json", "categories": category, "language": "en"},
+                        timeout=8.0
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        search_results = data.get('results', [])[:4 if is_news else 3]
+                        if search_results: break # Node successful, exit rotation
+                except Exception: continue
+                
     except Exception as e:
         return f"Sir, live intelligence relay is currently offline. Error: {e}"
 
-    if not ddg_results:
-        return "Sir, no raw intel found on that vector."
+    if not search_results:
+        return "Sir, no raw intel found on that vector, or all FOSS nodes are currently congested."
 
     if status_msg:
         try: await status_msg.edit_text("`[SYSTEM]: Cross-referencing entities with Wikipedia Archive & Triangulating Coordinates...`", parse_mode="Markdown")
         except: pass
 
     # 2. Process and Format Results
-    for idx, item in enumerate(ddg_results):
+    for idx, item in enumerate(search_results):
         title = item.get('title', 'Unknown Event')
-        body = item.get('body', '')[:250]
-        source = item.get('source', item.get('href', 'Web'))
-        timestamp = item.get('date', datetime.now(IST).strftime("%Y-%m-%d | %I:%M %p IST"))
+        body = item.get('content', '')[:250]
+        
+        # Clean URL extraction
+        parsed = item.get('parsed_url')
+        source = parsed[0] if isinstance(parsed, list) and parsed else item.get('url', 'Web')
+        
+        raw_time = item.get('publishedDate', '')
+        timestamp = str(raw_time)[:10] if raw_time else datetime.now(IST).strftime("%Y-%m-%d | %I:%M %p IST")
         
         # Verify with Wikipedia
         verification_tag = "`[UNVERIFIED - RUMOR]`"
@@ -1382,15 +1406,31 @@ async def group_night_routine(context: ContextTypes.DEFAULT_TYPE):
 async def breaking_news_monitor(context: ContextTypes.DEFAULT_TYPE):
     if not CREATOR_ID: return
     try:
-        with DDGS() as ddgs:
-            latest = list(ddgs.news("breaking world crisis", max_results=1))
+        searxng_nodes = ["https://searx.be", "https://searx.tiekoetter.com", "https://search.ononoki.org"]
+        async with httpx.AsyncClient() as client:
+            random.shuffle(searxng_nodes)
+            latest = None
+            for node in searxng_nodes:
+                try:
+                    resp = await client.get(
+                        f"{node}/search", 
+                        params={"q": "breaking world crisis news", "format": "json", "categories": "news", "language": "en"}, 
+                        timeout=8.0
+                    )
+                    if resp.status_code == 200:
+                        results = resp.json().get('results', [])
+                        if results:
+                            latest = results[0]
+                            break
+                except Exception: continue
+            
             if latest:
-                event_hash = hashlib.md5(latest[0]['title'].encode()).hexdigest()
+                event_hash = hashlib.md5(latest['title'].encode()).hexdigest()
                 with sqlite3.connect(DB_PATH) as conn:
                     if conn.execute("SELECT id FROM breaking_news WHERE hash = ?", (event_hash,)).fetchone(): return
-                    conn.execute("INSERT INTO breaking_news (hash, headline) VALUES (?, ?)", (event_hash, latest[0]['title']))
+                    conn.execute("INSERT INTO breaking_news (hash, headline) VALUES (?, ?)", (event_hash, latest['title']))
                     conn.commit()
-                await context.bot.send_message(chat_id=CREATOR_ID, text=f"🚨 **EMERGENCY WORLD ALERT**\n\n{latest[0]['title']}\n\n_Dispatched to Stark Terminal._", parse_mode="Markdown")
+                await context.bot.send_message(chat_id=CREATOR_ID, text=f"🚨 **EMERGENCY WORLD ALERT**\n\n{latest['title']}\n\n_Dispatched to Stark Terminal via SearXNG FOSS._", parse_mode="Markdown")
     except Exception: pass
 
 async def morning_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
