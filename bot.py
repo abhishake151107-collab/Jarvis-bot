@@ -539,15 +539,12 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
     elif force_provider == "HuggingFace":
         moe_cascade = [{"name": "HuggingFace", "base": "https://api-inference.huggingface.co/v1/", "key": get_api_key(["HUGGINGFACE_API_KEY"]), "model": "meta-llama/Meta-Llama-3-8B-Instruct"}]
     else:
-        # TOP TIER: 70B Models (Will failover immediately if high demand)
-        # SECOND TIER: 8B Models (Ultra-fast, stable free-tier endpoints)
+        # TOP TIER: SambaNova 70B
+        # SECOND TIER: Fast 8B endpoints with perfectly matched IDs and keys
         moe_cascade = [
-            {"name": "Cerebras-70B", "base": "https://api.cerebras.ai/v1", "key": get_api_key(["CEREBRAS_API_KEY", "CEREBRAS_OFFICIAL_KEY", "CEREBRAS_OFF"]), "model": "llama-3.3-70b"},
             {"name": "SambaNova-70B", "base": "https://api.sambanova.ai/v1", "key": get_api_key(["SAMBANOVA_API_KEY"]), "model": "Meta-Llama-3.3-70B-Instruct"},
-            {"name": "Groq-70B", "base": "https://api.groq.com/openai/v1/", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama-3.3-70b-versatile"},
-            {"name": "Cerebras-8B", "base": "https://api.cerebras.ai/v1", "key": get_api_key(["CEREBRAS_API_KEY"]), "model": "llama3.1-8b"},
-            {"name": "SambaNova-8B", "base": "https://api.sambanova.ai/v1", "key": get_api_key(["SAMBANOVA_API_KEY"]), "model": "Meta-Llama-3.1-8B-Instruct"},
-            {"name": "Groq-8B", "base": "https://api.groq.com/openai/v1/", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama3-8b-8192"}
+            {"name": "Groq-8B", "base": "https://api.groq.com/openai/v1/", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama-3.1-8b-instant"},
+            {"name": "Cerebras-8B", "base": "https://api.cerebras.ai/v1", "key": get_api_key(["CEREBRAS_API_KEY", "CEREBRAS_OFFICIAL_KEY", "CEREBRAS_OFF"]), "model": "llama3.1-8b"}
         ]
         
     full_messages = [{"role": "system", "content": sys_prompt}] + history + [{"role": "user", "content": prompt}]
