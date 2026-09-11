@@ -556,15 +556,15 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
         moe_cascade = [{"name": "HuggingFace", "base": "https://api-inference.huggingface.co/v1/", "key": get_api_key(["HUGGINGFACE_API_KEY"]), "model": "meta-llama/Meta-Llama-3-8B-Instruct"}]
     else:
         moe_cascade = [
-            {"name": "Cerebras", "base": "https://api.cerebras.ai/v1", "key": get_api_key(["CEREBRAS_API_KEY", "CEREBRAS_OFFICIAL_KEY", "CEREBRAS_OFF"]), "model": "llama3.1-70b"},
-            {"name": "SambaNova", "base": "https://api.sambanova.ai/v1", "key": get_api_key(["SAMBANOVA_API_KEY"]), "model": "Meta-Llama-3.1-70B-Instruct"},
-            {"name": "Groq", "base": "https://api.groq.com/openai/v1/", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama-3.1-70b-versatile"}
+            {"name": "Cerebras", "base": "https://api.cerebras.ai/v1", "key": get_api_key(["CEREBRAS_API_KEY", "CEREBRAS_OFFICIAL_KEY", "CEREBRAS_OFF"]), "model": "llama-3.3-70b"},
+            {"name": "SambaNova", "base": "https://api.sambanova.ai/v1", "key": get_api_key(["SAMBANOVA_API_KEY"]), "model": "Meta-Llama-3.3-70B-Instruct"},
+            {"name": "Groq", "base": "https://api.groq.com/openai/v1/", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama-3.3-70b-versatile"}
         ]
         
     if force_provider:
         moe_cascade.extend([
-            {"name": "Groq Fallback", "base": "https://api.groq.com/openai/v1/", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama-3.1-70b-versatile"},
-            {"name": "Cerebras Fallback", "base": "https://api.cerebras.ai/v1", "key": get_api_key(["CEREBRAS_API_KEY"]), "model": "llama3.1-70b"}
+            {"name": "Groq Fallback", "base": "https://api.groq.com/openai/v1/", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama-3.3-70b-versatile"},
+            {"name": "Cerebras Fallback", "base": "https://api.cerebras.ai/v1", "key": get_api_key(["CEREBRAS_API_KEY"]), "model": "llama-3.3-70b"}
         ])
     
     full_messages = [{"role": "system", "content": sys_prompt}] + history + [{"role": "user", "content": prompt}]
@@ -1368,14 +1368,22 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not is_triggered: return
     
-    status_msg = await msg.reply_text("`[SYSTEM]: Analyzing intent...`", parse_mode="Markdown")
+    # 1. Initial Thinking State
+    status_msg = await msg.reply_text("🤔 `[SYSTEM]: Initializing cognitive nodes...`", parse_mode="Markdown")
+    await context.bot.send_chat_action(chat_id=chat.id, action='typing')
     
     sys_prompt = build_system_prompt(user.id, user.first_name, chat.id, user_prompt=text)
+    
+    # 2. Research & Routing State
+    await status_msg.edit_text("🔍 `[SYSTEM]: Analyzing intent and routing parameters...`", parse_mode="Markdown")
     raw_ai_response = await generate_response(text, get_chat_history(chat.id, thread_id), sys_prompt, user.id, user.first_name, status_msg)
     
+    # 3. Output Synthesis State
+    await status_msg.edit_text("⚙️ `[SYSTEM]: Synthesizing response...`", parse_mode="Markdown")
     final_text = await route_response(msg, raw_ai_response, user, chat, context)
     log_memory(chat.id, thread_id, user.id, "assistant", final_text)
     
+    # 4. Final Delivery
     await status_msg.edit_text(final_text)
     await trigger_auto_voice(update, final_text)
 
