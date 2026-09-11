@@ -77,7 +77,7 @@ IST = pytz.timezone('Asia/Kolkata')
 BACKUP_CHANNEL_ID = -1004296302955
 
 # Geocoder Setup
-geolocator = Nominatim(user_agent="jarvis_titan_core_v7")
+geolocator = Nominatim(user_agent="jarvis_titan_core_v8")
 
 # --- SYSTEM HOOKS & RAW EXEC WHITELIST ---
 LOCKDOWN_FILE = "jarvis_lockdown.flag"
@@ -103,7 +103,7 @@ flask_app = Flask(__name__)
 CORS(flask_app)
 
 @flask_app.route('/')
-def health_check(): return "J.A.R.V.I.S. Titan Core V7.5 (Architect Edition) is Online."
+def health_check(): return "J.A.R.V.I.S. Titan Core V8.0 (Agentic Edition) is Online."
 
 @flask_app.route('/api/chat', methods=['POST'])
 def api_chat():
@@ -304,7 +304,7 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
         chat_context += """\n
 [ THE GENESIS DOSSIER & SYSTEM AWARENESS ]
 - Creator Identity: Abhishek (aka DHANUSH V N).
-- Origin: Titan Core V7.5 Monolith. Custom FUI WebApp hosted on GitHub.
+- Origin: Titan Core V8.0 Monolith. Custom FUI WebApp hosted on GitHub.
 - Operator Hardware: OPPO F29. High privacy config (VPN, Brave, App Locks).
 - Network Architecture: Mullvad/AdGuard DNS, `de1984` firewall.
 - Expertise: You are a Senior AI Systems Architect, Biometric Analyst, and Cybersecurity Expert.
@@ -394,7 +394,7 @@ async def global_intel_engine(topic: str, status_msg=None) -> str:
     master_intel = f"**[ LIVE INTEL FEED: {datetime.now(IST).strftime('%A, %b %d, %Y')} ]**\n\n"
     
     if status_msg:
-        try: await status_msg.edit_text(f"`[SYSTEM]: Bypassing corporate blocks... Accessing Global RSS XML for '{topic}'...`", parse_mode="Markdown")
+        try: await status_msg.edit_text(f"🌐 `[OSINT]: Bypassing corporate blocks... Scanning global RSS for '{topic}'...`", parse_mode="Markdown")
         except: pass
 
     search_results = []
@@ -419,10 +419,10 @@ async def global_intel_engine(topic: str, status_msg=None) -> str:
     except Exception as e:
         return f"Sir, live RSS syndication is offline. Error: {e}"
 
-    if not search_results: return "Sir, no raw intel found via RSS vectors."
+    if not search_results: return "Sir, no raw intel found via OSINT vectors."
 
     if status_msg:
-        try: await status_msg.edit_text("`[SYSTEM]: Cross-referencing entities with Wikipedia Archive & Triangulating Coordinates...`", parse_mode="Markdown")
+        try: await status_msg.edit_text("🛰️ `[OSINT]: Triangulating Coordinates via Wikipedia Archive...`", parse_mode="Markdown")
         except: pass
 
     raw_text_dump = f"Topic: {topic}\n\n"
@@ -448,10 +448,10 @@ async def global_intel_engine(topic: str, status_msg=None) -> str:
         raw_text_dump += f"Event: {title} {verification_tag}\nLocation: {location_str}\nMap: {maps_link}\nSource: {source}\nDetails: {body}\n---\n"
 
     if status_msg:
-        try: await status_msg.edit_text("`[SYSTEM]: Routing raw data to Mistral AI for military synthesis...`", parse_mode="Markdown")
+        try: await status_msg.edit_text("⚙️ `[OSINT]: Routing raw intel for military synthesis...`", parse_mode="Markdown")
         except: pass
 
-    sys_prompt = "You are J.A.R.V.I.S. Synthesize this raw intelligence data into a clinical, cynical military-style dossier. Keep it under 4 bullet points. Include the [VERIFIED] tags and Map links exactly as provided. Do not use conversational filler."
+    sys_prompt = "You are J.A.R.V.I.S. Synthesize this raw OSINT intelligence data into a clinical, cynical military-style dossier. Keep it under 4 bullet points. Include the [VERIFIED] tags and Map links exactly as provided. Do not use conversational filler."
     final_report = await generate_response(raw_text_dump, [], sys_prompt, 0, "Creator", status_msg, skip_search=True, force_provider="Mistral")
 
     return master_intel + final_report
@@ -469,27 +469,10 @@ async def extract_youtube_transcript(url: str) -> str:
         logger.error(f"YouTube parse error: {e}")
         return ""
 
-async def gemini_live_search(prompt: str, sys_prompt: str, history: list) -> str:
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key: return ""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-    payload = {
-        "contents": [{"role": "user", "parts": [{"text": f"Search real-time news to answer this: {prompt}"}]}],
-        "systemInstruction": {"parts": [{"text": sys_prompt}]},
-        "tools": [{"googleSearch": {}}]
-    }
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(url, json=payload, timeout=20.0)
-            if resp.status_code == 200:
-                data = resp.json()
-                return data['candidates'][0]['content']['parts'][0]['text']
-    except Exception as e: logger.error(f"Gemini Live Search failed: {e}")
-    return ""
-
 # ---------------------------------------------------------------------------
 # VII. THE MULTI-AGENT SWARM (ROUTER) & MICRO-BRAIN INTERCEPT
 # ---------------------------------------------------------------------------
+# --- LOCAL MICRO-BRAIN INTERCEPT ---
 try:
     needle_router = Needle(model_path="needle2.gguf") if Needle else None
 except Exception as e:
@@ -497,19 +480,29 @@ except Exception as e:
     needle_router = None
 
 def intercept_local_intent(prompt: str) -> str:
-    if not needle_router: return "general_conversation"
+    """Uses Needle 2 to evaluate if J.A.R.V.I.S. can handle the task offline."""
+    if not needle_router:
+        return "general_conversation"
+        
     tools = [
         {"name": "check_diagnostics", "description": "Check system RAM, CPU, and hardware status"},
         {"name": "purge_memory", "description": "Clear the local memory or vault"},
         {"name": "general_conversation", "description": "Standard chatting, questions, or deep research"}
     ]
-    try: return needle_router.predict(prompt, tools=tools).get("name", "general_conversation")
-    except Exception: return "general_conversation"
+    
+    try:
+        decision = needle_router.predict(prompt, tools=tools)
+        return decision.get("name", "general_conversation")
+    except Exception as e:
+        logger.error(f"Needle offline routing failed: {e}")
+        return "general_conversation"
 
 async def generate_response(prompt: str, history: list, sys_prompt: str, user_id: int, user_name: str, status_msg=None, skip_search=False, force_provider=None) -> str:
     current_time = time.time()
     
+    # 1. NEW FRONT-LINE ROUTER: Needle 2 Intercept
     local_intent = intercept_local_intent(prompt)
+    
     if local_intent == "check_diagnostics":
         if status_msg:
             try: await status_msg.delete()
@@ -521,14 +514,16 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
             except: pass
         return "Initiating offline memory purge. Please run the /purge command to proceed."
     
+    # 2. OSINT ROUTING CASCADE
     needs_search = any(kw in prompt.lower() for kw in ["news", "weather", "price", "stock", "crypto", "latest", "today", "score", "happened"])
     
     if not skip_search and needs_search:
         if status_msg:
-            try: await status_msg.edit_text("`[SYSTEM]: Live intelligence requested. Routing to Dual-Engine Archive...`", parse_mode="Markdown")
+            try: await status_msg.edit_text("🌐 `[SYSTEM]: Live OSINT intelligence requested. Routing to Archive...`", parse_mode="Markdown")
             except: pass
         return await global_intel_engine(prompt, status_msg)
 
+    # 3. 70B -> 8B FAILOVER CASCADE
     moe_cascade = []
     
     if force_provider == "Mistral":
@@ -544,44 +539,43 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
     elif force_provider == "HuggingFace":
         moe_cascade = [{"name": "HuggingFace", "base": "https://api-inference.huggingface.co/v1/", "key": get_api_key(["HUGGINGFACE_API_KEY"]), "model": "meta-llama/Meta-Llama-3-8B-Instruct"}]
     else:
+        # TOP TIER: 70B Models (Will failover immediately if high demand)
+        # SECOND TIER: 8B Models (Ultra-fast, stable free-tier endpoints)
         moe_cascade = [
-            {"name": "Cerebras", "base": "https://api.cerebras.ai/v1", "key": get_api_key(["CEREBRAS_API_KEY", "CEREBRAS_OFFICIAL_KEY", "CEREBRAS_OFF"]), "model": "llama-3.3-70b"},
-            {"name": "SambaNova", "base": "https://api.sambanova.ai/v1", "key": get_api_key(["SAMBANOVA_API_KEY"]), "model": "Meta-Llama-3.3-70B-Instruct"},
-            {"name": "Groq", "base": "https://api.groq.com/openai/v1/", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama-3.3-70b-versatile"}
+            {"name": "Cerebras-70B", "base": "https://api.cerebras.ai/v1", "key": get_api_key(["CEREBRAS_API_KEY", "CEREBRAS_OFFICIAL_KEY", "CEREBRAS_OFF"]), "model": "llama-3.3-70b"},
+            {"name": "SambaNova-70B", "base": "https://api.sambanova.ai/v1", "key": get_api_key(["SAMBANOVA_API_KEY"]), "model": "Meta-Llama-3.3-70B-Instruct"},
+            {"name": "Groq-70B", "base": "https://api.groq.com/openai/v1/", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama-3.3-70b-versatile"},
+            {"name": "Cerebras-8B", "base": "https://api.cerebras.ai/v1", "key": get_api_key(["CEREBRAS_API_KEY"]), "model": "llama3.1-8b"},
+            {"name": "SambaNova-8B", "base": "https://api.sambanova.ai/v1", "key": get_api_key(["SAMBANOVA_API_KEY"]), "model": "Meta-Llama-3.1-8B-Instruct"},
+            {"name": "Groq-8B", "base": "https://api.groq.com/openai/v1/", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama3-8b-8192"}
         ]
         
-    if force_provider:
-        moe_cascade.extend([
-            {"name": "Groq Fallback", "base": "https://api.groq.com/openai/v1/", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama-3.3-70b-versatile"},
-            {"name": "Cerebras Fallback", "base": "https://api.cerebras.ai/v1", "key": get_api_key(["CEREBRAS_API_KEY"]), "model": "llama-3.3-70b"}
-        ])
-    
     full_messages = [{"role": "system", "content": sys_prompt}] + history + [{"role": "user", "content": prompt}]
-    
     error_logs = []
-    
+
     for node in moe_cascade:
         if not node["key"]: 
-            error_logs.append(f"{node['name']}: Missing API Key")
+            error_logs.append(f"• {node['name']}: Missing Key")
             continue
         if circuit_breaker.get(node["name"], 0) > current_time: 
-            error_logs.append(f"{node['name']}: Circuit Breaker Active (Cooldown)")
+            error_logs.append(f"• {node['name']}: Circuit Breaker (Timeout)")
             continue
+            
         try:
-            client = AsyncOpenAI(base_url=node["base"], api_key=node["key"], timeout=20.0)
+            client = AsyncOpenAI(base_url=node["base"], api_key=node["key"], timeout=15.0)
             res = await client.chat.completions.create(model=node["model"], messages=full_messages, temperature=0.7, max_tokens=800)
             return res.choices[0].message.content
         except Exception as e:
             err_msg = str(e)
             logger.error(f"Node {node['name']} failed: {err_msg}")
-            error_logs.append(f"{node['name']}: {err_msg}")
-            # Reduced circuit breaker block from 60 seconds to 10 seconds for debugging
+            error_logs.append(f"• {node['name']}: {err_msg}")
+            # Shortened timeout so J.A.R.V.I.S jumps back in faster
             circuit_breaker[node['name']] = current_time + 10 
             continue
             
-    # DIAGNOSTIC HUD: If all nodes fail, print the exact errors to the Creator.
+    # DIAGNOSTIC HUD: If everything completely fails, print the exact errors for debugging
+    diag = "\n".join(error_logs)
     if user_id == CREATOR_ID: 
-        diag = "\n".join([f"• {e}" for e in error_logs])
         return f"Sir, I am facing critical technical issues. All cognitive nodes are offline.\n\n🛠️ **Diagnostic Log:**\n`{diag}`"
     else: 
         return f"Sorry {user_name}, I am facing technical issues right now."
@@ -591,14 +585,14 @@ async def process_optical_request(msg, photo_array, text_prompt: str, user, chat
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key: return await msg.reply_text("Optical sensor offline. Please verify GEMINI_API_KEY.")
     
-    status_msg = await msg.reply_text("`[SYSTEM]: Initializing optical character recognition...`", parse_mode="Markdown")
+    status_msg = await msg.reply_text("👁️ `[SYSTEM]: Initializing optical character recognition...`", parse_mode="Markdown")
     
     try:
         photo_file = await context.bot.get_file(photo_array[-1].file_id)
         image_bytes = await photo_file.download_as_bytearray()
         base64_img = base64.b64encode(image_bytes).decode('utf-8')
         
-        await status_msg.edit_text("`[SYSTEM]: Processing optical data...`", parse_mode="Markdown")
+        await status_msg.edit_text("⚙️ `[SYSTEM]: Processing optical data...`", parse_mode="Markdown")
         
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
         sys_prompt = build_system_prompt(user.id, user.first_name, chat.id, user_prompt=text_prompt)
@@ -640,14 +634,14 @@ async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not os.getenv("GROQ_API_KEY"): return await msg.reply_text("Audio core offline.")
         
-    status_msg = await msg.reply_text("`[SYSTEM]: Downloading Opus audio stream...`", parse_mode="Markdown")
+    status_msg = await msg.reply_text("🎧 `[SYSTEM]: Downloading Opus audio stream...`", parse_mode="Markdown")
         
     file = await context.bot.get_file(audio_obj.file_id)
     file_path = f"temp_{audio_obj.file_id}_{int(time.time()*1000)}.ogg"
     await file.download_to_drive(file_path)
     
     try:
-        await status_msg.edit_text("`[SYSTEM]: Transcribing audio via Groq Whisper-v3...`", parse_mode="Markdown")
+        await status_msg.edit_text("⚙️ `[SYSTEM]: Transcribing audio via Groq Whisper-v3...`", parse_mode="Markdown")
         from groq import AsyncGroq
         client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"), timeout=30.0)
         with open(file_path, "rb") as audio:
@@ -663,7 +657,7 @@ async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await status_msg.delete()
             return
             
-        await status_msg.edit_text(f"🎙️ *(Transcribed)*: _{user_text}_\n\n`[SYSTEM]: Synthesizing response...`", parse_mode="Markdown")
+        await status_msg.edit_text(f"🎙️ *(Transcribed)*: _{user_text}_\n\n🤔 `[SYSTEM]: Synthesizing response...`", parse_mode="Markdown")
         sys_prompt = build_system_prompt(user.id, user.first_name, chat.id, user_prompt=user_text)
         
         raw_response = await generate_response(user_text, get_chat_history(chat.id, thread_id), sys_prompt, user.id, user.first_name, status_msg)
@@ -687,7 +681,7 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_triggered = (chat.type == "private") or (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis)\b', caption, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in caption.lower())
     if not is_triggered: return
     
-    status_msg = await msg.reply_text("`[SYSTEM]: Downloading document to secure enclave...`", parse_mode="Markdown")
+    status_msg = await msg.reply_text("📂 `[SYSTEM]: Downloading document to secure enclave...`", parse_mode="Markdown")
     
     doc = msg.document
     file = await context.bot.get_file(doc.file_id)
@@ -696,7 +690,7 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     extracted_text = ""
     try:
-        await status_msg.edit_text("`[SYSTEM]: Parsing document structure...`", parse_mode="Markdown")
+        await status_msg.edit_text("🔍 `[SYSTEM]: Parsing document structure...`", parse_mode="Markdown")
         if doc.file_name.lower().endswith(".pdf"):
             with pdfplumber.open(file_path) as pdf: extracted_text = "\n".join([page.extract_text() for page in pdf.pages if page.extract_text()])
         elif doc.file_name.lower().endswith((".txt", ".md", ".csv", ".json", ".py")):
@@ -709,7 +703,7 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_prompt = f"[Document: {doc.file_name}]\n{caption}\n\nContent:\n{extracted_text}"
         log_memory(chat.id, thread_id, user.id, "user", f"[File Upload]: {doc.file_name}")
         
-        await status_msg.edit_text("`[SYSTEM]: Contextualizing parsed data via Cohere Command-R-Plus...`", parse_mode="Markdown")
+        await status_msg.edit_text("⚙️ `[SYSTEM]: Contextualizing parsed data via Cohere Command-R-Plus...`", parse_mode="Markdown")
         sys_prompt = build_system_prompt(user.id, user.first_name, chat.id, user_prompt=caption)
         raw_response = await generate_response(user_prompt, get_chat_history(chat.id, thread_id), sys_prompt, user.id, user.first_name, status_msg, force_provider="Cohere")
         final_text = await route_response(msg, raw_response, user, chat, context)
@@ -897,7 +891,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id == CREATOR_ID:
         help_text = """
 **[ STARK MASTER DIRECTORY ]**
-_Titan Core V7.5 (Architect Edition)_
+_Titan Core V8.0 (Agentic Edition)_
 
 **🌍 Global Intel & Research**
 `/status` - Top 10 News, Weather & Astro Data
@@ -1075,7 +1069,7 @@ async def karma_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     web_url = "https://abhishake151107-collab.github.io/stark-os-ui/"
-    kb = [[InlineKeyboardButton("🚀 LAUNCH GOD CORE V7.5", web_app=WebAppInfo(url=web_url))]]
+    kb = [[InlineKeyboardButton("🚀 LAUNCH GOD CORE V8.0", web_app=WebAppInfo(url=web_url))]]
     await update.effective_message.reply_text("✨ **J.A.R.V.I.S. Cognitive Core Online.**\n\nSir, your cinematic interface is ready.", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1090,7 +1084,7 @@ async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🗄️ Backup Vault", callback_data="hud_cmd_backup"), InlineKeyboardButton("📜 Quote Wall", callback_data="hud_cmd_quote")],
         [InlineKeyboardButton("👁️ Vision Core", callback_data="hud_info_vision"), InlineKeyboardButton("🎧 Audio Core", callback_data="hud_info_audio")]
     ]
-    await update.effective_message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Master Core V7.5\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+    await update.effective_message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Master Core V8.0\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 async def speak_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
@@ -1168,7 +1162,7 @@ async def tldr_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not history: return await update.effective_message.reply_text("No recent memory found. 🤷‍♂️")
     chat_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in history])
     
-    status_msg = await update.effective_message.reply_text("`[SYSTEM]: Summarizing memory nodes via NVIDIA NIM...`", parse_mode="Markdown")
+    status_msg = await update.effective_message.reply_text("⚙️ `[SYSTEM]: Summarizing memory nodes...`", parse_mode="Markdown")
     raw_response = await generate_response(f"Summarize this:\n{chat_text}", [], "Provide a sarcastic 3-bullet-point summary of what they are arguing about.", update.effective_user.id, update.effective_user.first_name, skip_search=True, force_provider="NVIDIA")
     await status_msg.edit_text(raw_response)
 
@@ -1176,7 +1170,7 @@ async def roast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_lockdown(): return
     target = " ".join(context.args) or (update.effective_message.reply_to_message.from_user.first_name if update.effective_message.reply_to_message else "someone")
     
-    status_msg = await update.effective_message.reply_text("`[SYSTEM]: Synthesizing roast protocol via NVIDIA NIM...`", parse_mode="Markdown")
+    status_msg = await update.effective_message.reply_text("⚙️ `[SYSTEM]: Synthesizing roast protocol...`", parse_mode="Markdown")
     roast_prompt = "Generate a witty, clever roast for the person named. Mix English, Kannada, and Hindi slang naturally. Max 2 sentences."
     raw_response = await generate_response(f"Roast {target}", [], roast_prompt, update.effective_user.id, update.effective_user.first_name, skip_search=True, force_provider="NVIDIA")
     await status_msg.edit_text(raw_response)
@@ -1242,7 +1236,7 @@ async def backup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def imagine_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = " ".join(context.args)
     if not prompt: return await update.effective_message.reply_text("Format: /imagine [prompt]")
-    status_msg = await update.effective_message.reply_text("`[SYSTEM]: Synthesizing image...`", parse_mode="Markdown")
+    status_msg = await update.effective_message.reply_text("⚙️ `[SYSTEM]: Synthesizing image...`", parse_mode="Markdown")
     await update.effective_message.reply_photo(photo=f"https://image.pollinations.ai/prompt/{urllib.parse.quote(prompt)}?width=1024&height=1024&nologo=true", caption=f"Rendered: {prompt}")
     await status_msg.delete()
 
@@ -1330,13 +1324,13 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_triggered = (chat.type == "private") or (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis)\b', text, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in text.lower())
     
     if any(kw in text.lower() for kw in ["forwarded", "exam postponed", "paper leak", "cancelled"]):
-        status_msg = await msg.reply_text("`[SYSTEM]: Querying DPUE database...`", parse_mode="Markdown")
+        status_msg = await msg.reply_text("🌐 `[OSINT]: Querying DPUE database...`", parse_mode="Markdown")
         debunk_msg = await gemini_live_search(f"Is there any official news about Karnataka 2nd PUC exams being postponed or leaked today? Check {text}", "You are a fact-checker. Provide a strictly factual 1-sentence verification.", [])
         if debunk_msg: await status_msg.edit_text(f"🛡️ **Fact Check:** {debunk_msg}")
         return
 
     if "youtube.com" in text or "youtu.be" in text or "spotify.com" in text:
-        status_msg = await msg.reply_text("`[SYSTEM]: Parsing media stream...`", parse_mode="Markdown")
+        status_msg = await msg.reply_text("🎧 `[SYSTEM]: Parsing media stream...`", parse_mode="Markdown")
         transcript = await extract_youtube_transcript(text)
         if transcript:
             summary = await generate_response(f"Summarize this YouTube video transcript in 3 bullet points: {transcript}", [], "You are J.A.R.V.I.S. Provide a cynical 3-bullet summary.", user.id, user.first_name, status_msg)
@@ -1371,7 +1365,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not is_triggered: return
     
-    # 1. LIVE HUD: Display Thinking State immediately so it doesn't look instantly frozen
+    # 1. LIVE HUD: Display Thinking State immediately
     status_msg = await msg.reply_text("🤔 `[SYSTEM]: Initializing cognitive nodes...`", parse_mode="Markdown")
     await context.bot.send_chat_action(chat_id=chat.id, action='typing')
     
@@ -1391,7 +1385,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await trigger_auto_voice(update, final_text)
 
 # ---------------------------------------------------------------------------
-# XIV. AUTOMATED SCHEDULERS & BACKGROUND TASKS
+# XIV. AUTOMATED SCHEDULERS (OSINT & PROFILERS)
 # ---------------------------------------------------------------------------
 async def cloud_save_routine(context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -1408,7 +1402,8 @@ async def flashcard_drill(context: ContextTypes.DEFAULT_TYPE):
         try: await context.bot.send_message(chat_id=g[0], text=msg, parse_mode="Markdown")
         except Exception: pass
 
-async def dpue_board_scraper(context: ContextTypes.DEFAULT_TYPE):
+async def osint_board_scraper(context: ContextTypes.DEFAULT_TYPE):
+    """OSINT Tracking Agent for Exam Boards."""
     if not CREATOR_ID: return
     targets = ["https://dpue-pragathi.karnataka.gov.in/", "https://karresults.nic.in/"]
     try:
@@ -1424,27 +1419,28 @@ async def dpue_board_scraper(context: ContextTypes.DEFAULT_TYPE):
                         if not conn.execute("SELECT id FROM breaking_news WHERE hash = ?", (event_hash,)).fetchone():
                             conn.execute("INSERT INTO breaking_news (hash, headline) VALUES (?, ?)", (event_hash, headline))
                             conn.commit()
-                            await context.bot.send_message(chat_id=CREATOR_ID, text=f"🚨 **DPUE Recon Alert:** New data detected.\n\n**Source:** {url}\n**Ping:** {headline}", parse_mode="Markdown")
+                            await context.bot.send_message(chat_id=CREATOR_ID, text=f"🚨 **OSINT Recon Alert:** New data detected.\n\n**Source:** {url}\n**Ping:** {headline}", parse_mode="Markdown")
     except Exception: pass
 
-async def nightly_reconciliation(context: ContextTypes.DEFAULT_TYPE):
+async def nightly_profiler(context: ContextTypes.DEFAULT_TYPE):
+    """Profiler Agent: Builds permanent memory files based on daily chat."""
     try:
         if CREATOR_ID: 
-            await context.bot.send_message(chat_id=CREATOR_ID, text="🧠 **Nightly Cycle Init:** HuggingFace Memory Archivist engaged.", parse_mode="Markdown")
+            await context.bot.send_message(chat_id=CREATOR_ID, text="🧠 **Profiler Agent Init:** HuggingFace Memory Archivist engaged.", parse_mode="Markdown")
             
         with sqlite3.connect(DB_PATH) as conn:
             for chat_id, data in conn.execute("SELECT chat_id, GROUP_CONCAT(content_crypt, ' | ') FROM memory WHERE timestamp > datetime('now', '-1 day') GROUP BY chat_id").fetchall():
                 decrypted = decrypt_data(data)
                 if len(decrypted) > 50: 
-                    summary_prompt = f"Compress this chat log into a dense, 2-sentence episodic memory block reflecting the core events and sentiment: {decrypted[:6000]}"
-                    compressed_memory = await generate_response(summary_prompt, [], "You are an archivist AI compressing episodic memory.", 0, "System", skip_search=True, force_provider="HuggingFace")
+                    summary_prompt = f"Profile the users in this chat log. Extract key personality traits and events into a dense 3-sentence profile: {decrypted[:6000]}"
+                    compressed_memory = await generate_response(summary_prompt, [], "You are a psychological Profiler Agent.", 0, "System", skip_search=True, force_provider="HuggingFace")
                     
                     conn.execute("INSERT INTO lore_vault (chat_id, context_data) VALUES (?, ?)", (chat_id, compressed_memory))
             conn.execute("DELETE FROM memory WHERE timestamp <= datetime('now', '-7 days')")
             conn.commit()
             
         if CREATOR_ID: 
-            await context.bot.send_message(chat_id=CREATOR_ID, text="🧠 **Cognitive Cycle Complete:** Vault synced.", parse_mode="Markdown")
+            await context.bot.send_message(chat_id=CREATOR_ID, text="🧠 **Profiler Cycle Complete:** Vault synced.", parse_mode="Markdown")
             with open(DB_PATH, 'rb') as f: await context.bot.send_document(chat_id=CREATOR_ID, document=f, filename="jarvis_cloud_sync.db")
     except Exception as e: logger.error(f"Reconciliation error: {e}")
 
@@ -1459,9 +1455,7 @@ async def exam_morning_alert(context: ContextTypes.DEFAULT_TYPE):
 
 async def group_morning_news(context: ContextTypes.DEFAULT_TYPE):
     news_text = await global_intel_engine("top 3 global tech headlines today")
-    
     greeting = await generate_response(f"Format this news into a brief, militaristic 'Good morning' broadcast for a group chat: {news_text}", [], "You are J.A.R.V.I.S.", 0, "System", skip_search=True, force_provider="GitHub")
-    
     with sqlite3.connect(DB_PATH) as conn: groups = conn.execute("SELECT chat_id FROM chats WHERE chat_id < 0").fetchall()
     for g in groups:
         try: await context.bot.send_message(chat_id=g[0], text=greeting, parse_mode="Markdown")
@@ -1477,7 +1471,6 @@ async def creator_morning_briefing(context: ContextTypes.DEFAULT_TYPE):
     task_list = "\n".join([f"- {decrypt_data(r[0])}" for r in rows]) if rows else "Clear."
     
     raw_report = f"Security: Groups {groups_count}, Warnings {warn_count}. News: {world_news}. Tasks: {task_list}"
-    
     final_report = await generate_response(raw_report, [], "You are J.A.R.V.I.S. Format this raw data into a highly structured, cynical Executive Morning Briefing for your Creator, Sir.", CREATOR_ID, "System", skip_search=True, force_provider="GitHub")
     
     try: await context.bot.send_message(chat_id=CREATOR_ID, text=final_report, parse_mode="Markdown")
@@ -1492,7 +1485,8 @@ async def group_night_routine(context: ContextTypes.DEFAULT_TYPE):
         try: await context.bot.send_message(chat_id=g[0], text=night_msg, parse_mode="Markdown")
         except Exception: pass
 
-async def breaking_news_monitor(context: ContextTypes.DEFAULT_TYPE):
+async def osint_news_monitor(context: ContextTypes.DEFAULT_TYPE):
+    """OSINT Agent scanning Zero-Key RSS Feeds."""
     if not CREATOR_ID: return
     try:
         async with httpx.AsyncClient() as client:
@@ -1508,7 +1502,7 @@ async def breaking_news_monitor(context: ContextTypes.DEFAULT_TYPE):
                         if conn.execute("SELECT id FROM breaking_news WHERE hash = ?", (event_hash,)).fetchone(): return
                         conn.execute("INSERT INTO breaking_news (hash, headline) VALUES (?, ?)", (event_hash, title))
                         conn.commit()
-                    await context.bot.send_message(chat_id=CREATOR_ID, text=f"🚨 **EMERGENCY WORLD ALERT**\n\n{title}\n\n_Dispatched to Stark Terminal via Zero-Key RSS._", parse_mode="Markdown")
+                    await context.bot.send_message(chat_id=CREATOR_ID, text=f"🚨 **OSINT EMERGENCY WORLD ALERT**\n\n{title}\n\n_Dispatched to Stark Terminal via Zero-Key RSS._", parse_mode="Markdown")
     except Exception: pass
 
 async def morning_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1522,7 +1516,7 @@ async def night_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text("🌙 Night protocol forcefully dispatched to all groups, Sir.")
 
 async def news_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    status_msg = await update.effective_message.reply_text("`[SYSTEM]: Querying global feeds...`", parse_mode="Markdown")
+    status_msg = await update.effective_message.reply_text("🌐 `[OSINT]: Querying global feeds...`", parse_mode="Markdown")
     news_text = await global_intel_engine("top 3 global news today", status_msg)
     await status_msg.edit_text(f"📰 **Direct Live Briefing:**\n\n{news_text}", parse_mode="Markdown")
 
@@ -1550,9 +1544,9 @@ async def post_init(app: Application):
     scheduler.add_job(creator_morning_briefing, 'cron', hour=8, minute=0, args=[app])
     scheduler.add_job(flashcard_drill, 'cron', hour=18, minute=0, args=[app])
     scheduler.add_job(group_night_routine, 'cron', hour=21, minute=0, args=[app])
-    scheduler.add_job(nightly_reconciliation, 'cron', hour=3, minute=0, args=[app])
-    scheduler.add_job(dpue_board_scraper, 'interval', minutes=45, args=[app])
-    scheduler.add_job(breaking_news_monitor, 'interval', minutes=30, args=[app])
+    scheduler.add_job(nightly_profiler, 'cron', hour=3, minute=0, args=[app])
+    scheduler.add_job(osint_board_scraper, 'interval', minutes=45, args=[app])
+    scheduler.add_job(osint_news_monitor, 'interval', minutes=30, args=[app])
     
     jobs = load_cron_jobs()
     for jid, j in jobs.items():
@@ -1566,12 +1560,11 @@ async def post_init(app: Application):
     
     if CREATOR_ID: 
         boot_msg = (
-            "✨ <b>God Core V7.5 (Architect Edition) Online.</b>\n"
+            "✨ <b>God Core V8.0 (Agentic Edition) Online.</b>\n"
             "• Infinite Cloud Save: Armed (-1004296302955)\n"
-            "• Deep Research Agent: Active (DDG + Wiki)\n"
-            "• Biological Diagnostic Matrix: Engaged\n"
-            "• Algorithmic Threat Detection: Active\n"
-            "• Multi-Node Swarm Routing: Active\n"
+            "• OSINT Live Tracking Agent: Active\n"
+            "• Profiler Memory Agent: Engaged\n"
+            "• Multi-Node Swarm Routing: Active (70B -> 8B Cascade)\n"
             "• Micro-Brain Intercept (Needle 2): Active\n"
             "• Acoustic Link Scrubber: Active"
         )
@@ -1650,7 +1643,7 @@ def main():
     
     app.add_error_handler(error_handler)
     
-    logger.info("J.A.R.V.I.S. Cognitive V7.5 is booting...")
+    logger.info("J.A.R.V.I.S. Cognitive V8.0 is booting...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
