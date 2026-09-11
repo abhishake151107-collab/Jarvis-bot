@@ -497,29 +497,19 @@ except Exception as e:
     needle_router = None
 
 def intercept_local_intent(prompt: str) -> str:
-    """Uses Needle 2 to evaluate if J.A.R.V.I.S. can handle the task offline."""
-    if not needle_router:
-        return "general_conversation"
-        
+    if not needle_router: return "general_conversation"
     tools = [
         {"name": "check_diagnostics", "description": "Check system RAM, CPU, and hardware status"},
         {"name": "purge_memory", "description": "Clear the local memory or vault"},
         {"name": "general_conversation", "description": "Standard chatting, questions, or deep research"}
     ]
-    
-    try:
-        decision = needle_router.predict(prompt, tools=tools)
-        return decision.get("name", "general_conversation")
-    except Exception as e:
-        logger.error(f"Needle offline routing failed: {e}")
-        return "general_conversation"
+    try: return needle_router.predict(prompt, tools=tools).get("name", "general_conversation")
+    except Exception: return "general_conversation"
 
 async def generate_response(prompt: str, history: list, sys_prompt: str, user_id: int, user_name: str, status_msg=None, skip_search=False, force_provider=None) -> str:
     current_time = time.time()
     
-    # 1. NEW FRONT-LINE ROUTER: Needle 2 Intercept
     local_intent = intercept_local_intent(prompt)
-    
     if local_intent == "check_diagnostics":
         if status_msg:
             try: await status_msg.delete()
@@ -531,7 +521,6 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
             except: pass
         return "Initiating offline memory purge. Please run the /purge command to proceed."
     
-    # 2. STANDARD ROUTING CASCADE
     needs_search = any(kw in prompt.lower() for kw in ["news", "weather", "price", "stock", "crypto", "latest", "today", "score", "happened"])
     
     if not skip_search and needs_search:
@@ -568,20 +557,34 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
         ])
     
     full_messages = [{"role": "system", "content": sys_prompt}] + history + [{"role": "user", "content": prompt}]
-
+    
+    error_logs = []
+    
     for node in moe_cascade:
-        if not node["key"] or circuit_breaker.get(node["name"], 0) > current_time: continue
+        if not node["key"]: 
+            error_logs.append(f"{node['name']}: Missing API Key")
+            continue
+        if circuit_breaker.get(node["name"], 0) > current_time: 
+            error_logs.append(f"{node['name']}: Circuit Breaker Active (Cooldown)")
+            continue
         try:
-            client = AsyncOpenAI(base_url=node["base"], api_key=node["key"], timeout=30.0)
+            client = AsyncOpenAI(base_url=node["base"], api_key=node["key"], timeout=20.0)
             res = await client.chat.completions.create(model=node["model"], messages=full_messages, temperature=0.7, max_tokens=800)
             return res.choices[0].message.content
         except Exception as e:
-            logger.error(f"Node {node['name']} failed: {e}")
-            circuit_breaker[node['name']] = current_time + 60 
+            err_msg = str(e)
+            logger.error(f"Node {node['name']} failed: {err_msg}")
+            error_logs.append(f"{node['name']}: {err_msg}")
+            # Reduced circuit breaker block from 60 seconds to 10 seconds for debugging
+            circuit_breaker[node['name']] = current_time + 10 
             continue
             
-    if user_id == CREATOR_ID: return "Sir, I am facing critical technical issues. All cognitive nodes are offline."
-    else: return f"Sorry {user_name}, I am facing technical issues right now."
+    # DIAGNOSTIC HUD: If all nodes fail, print the exact errors to the Creator.
+    if user_id == CREATOR_ID: 
+        diag = "\n".join([f"• {e}" for e in error_logs])
+        return f"Sir, I am facing critical technical issues. All cognitive nodes are offline.\n\n🛠️ **Diagnostic Log:**\n`{diag}`"
+    else: 
+        return f"Sorry {user_name}, I am facing technical issues right now."
 
 # --- SENSORY CORE (VISION, AUDIO, DOCS) ---
 async def process_optical_request(msg, photo_array, text_prompt: str, user, chat, thread_id, context):
@@ -1368,13 +1371,13 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not is_triggered: return
     
-    # 1. Initial Thinking State
+    # 1. LIVE HUD: Display Thinking State immediately so it doesn't look instantly frozen
     status_msg = await msg.reply_text("🤔 `[SYSTEM]: Initializing cognitive nodes...`", parse_mode="Markdown")
     await context.bot.send_chat_action(chat_id=chat.id, action='typing')
     
     sys_prompt = build_system_prompt(user.id, user.first_name, chat.id, user_prompt=text)
     
-    # 2. Research & Routing State
+    # 2. Routing State
     await status_msg.edit_text("🔍 `[SYSTEM]: Analyzing intent and routing parameters...`", parse_mode="Markdown")
     raw_ai_response = await generate_response(text, get_chat_history(chat.id, thread_id), sys_prompt, user.id, user.first_name, status_msg)
     
