@@ -38,6 +38,10 @@ from youtube_transcript_api import YouTubeTranscriptApi
 # --- NEW INTELLIGENCE IMPORTS ---
 import wikipedia
 from geopy.geocoders import Nominatim
+try:
+    from cactus_needle import Needle
+except ImportError:
+    Needle = None
 
 from telegram import (
     Update, 
@@ -360,16 +364,10 @@ async def route_response(msg, ai_response: str, user, chat, context) -> str:
 # V. ACOUSTIC ENGINE (LINK SCRUBBER & CONDITIONAL AUTO-VOICE)
 # ---------------------------------------------------------------------------
 def process_acoustic_payload(text: str) -> tuple[str, str, bool]:
-    # 1. Check if response is strictly more than one line
     should_speak = '\n' in text.strip()
-    
-    # 2. Aggressive URL intercept (Replace HTTP links with spoken phrase)
     audio_text = re.sub(r'https?://[^\s]+', 'Sir, here is the link.', text)
-    
-    # 3. Complete Emoji and Markdown Purge for clinical voice
     audio_text = re.sub(r'[^\w\s.,!?\'"-]', '', audio_text).replace('_', '').strip()
     
-    # 4. Regional Voice Modeling
     if re.search(r'[\u0C80-\u0CFF]', audio_text): voice_model = "kn-IN-GaganNeural"
     elif re.search(r'[\u0900-\u097F]', audio_text): voice_model = "hi-IN-MadhurNeural"
     else: voice_model = "en-GB-RyanNeural"
@@ -393,7 +391,6 @@ async def trigger_auto_voice(update: Update, final_text: str):
 # VI. DUAL-ENGINE TRUTH ARCHIVE (ZERO-KEY RSS BYPASS)
 # ---------------------------------------------------------------------------
 async def global_intel_engine(topic: str, status_msg=None) -> str:
-    """Executes the Zero-Key RSS Bypass + Wikipedia Verification Protocol."""
     master_intel = f"**[ LIVE INTEL FEED: {datetime.now(IST).strftime('%A, %b %d, %Y')} ]**\n\n"
     
     if status_msg:
@@ -406,10 +403,8 @@ async def global_intel_engine(topic: str, status_msg=None) -> str:
     try:
         async with httpx.AsyncClient() as client:
             if is_breaking and "tech" not in topic.lower():
-                # BBC World News RSS
                 resp = await client.get("http://feeds.bbci.co.uk/news/world/rss.xml", timeout=10.0)
             else:
-                # Google News RSS Search
                 clean_query = urllib.parse.quote(topic)
                 resp = await client.get(f"https://news.google.com/rss/search?q={clean_query}&hl=en-US&gl=US&ceid=US:en", timeout=10.0)
                 
@@ -419,7 +414,7 @@ async def global_intel_engine(topic: str, status_msg=None) -> str:
                     title = item.find('title').text if item.find('title') is not None else 'Unknown'
                     link = item.find('link').text if item.find('link') is not None else ''
                     desc = item.find('description').text if item.find('description') is not None else ''
-                    desc = re.sub(r'<[^>]+>', '', desc) # Strip HTML
+                    desc = re.sub(r'<[^>]+>', '', desc)
                     search_results.append({'title': title, 'url': link, 'content': desc})
     except Exception as e:
         return f"Sir, live RSS syndication is offline. Error: {e}"
@@ -492,9 +487,51 @@ async def gemini_live_search(prompt: str, sys_prompt: str, history: list) -> str
     except Exception as e: logger.error(f"Gemini Live Search failed: {e}")
     return ""
 
+# ---------------------------------------------------------------------------
+# VII. THE MULTI-AGENT SWARM (ROUTER) & MICRO-BRAIN INTERCEPT
+# ---------------------------------------------------------------------------
+try:
+    needle_router = Needle(model_path="needle2.gguf") if Needle else None
+except Exception as e:
+    logger.warning(f"Needle 2 offline. Ensure needle2.gguf is downloaded: {e}")
+    needle_router = None
+
+def intercept_local_intent(prompt: str) -> str:
+    """Uses Needle 2 to evaluate if J.A.R.V.I.S. can handle the task offline."""
+    if not needle_router:
+        return "general_conversation"
+        
+    tools = [
+        {"name": "check_diagnostics", "description": "Check system RAM, CPU, and hardware status"},
+        {"name": "purge_memory", "description": "Clear the local memory or vault"},
+        {"name": "general_conversation", "description": "Standard chatting, questions, or deep research"}
+    ]
+    
+    try:
+        decision = needle_router.predict(prompt, tools=tools)
+        return decision.get("name", "general_conversation")
+    except Exception as e:
+        logger.error(f"Needle offline routing failed: {e}")
+        return "general_conversation"
+
 async def generate_response(prompt: str, history: list, sys_prompt: str, user_id: int, user_name: str, status_msg=None, skip_search=False, force_provider=None) -> str:
     current_time = time.time()
     
+    # 1. NEW FRONT-LINE ROUTER: Needle 2 Intercept
+    local_intent = intercept_local_intent(prompt)
+    
+    if local_intent == "check_diagnostics":
+        if status_msg:
+            try: await status_msg.delete()
+            except: pass
+        return "Sir, I have analyzed the intent locally via Needle. Please use the /sys command to pull the hardware diagnostic manifest."
+    elif local_intent == "purge_memory":
+        if status_msg:
+            try: await status_msg.delete()
+            except: pass
+        return "Initiating offline memory purge. Please run the /purge command to proceed."
+    
+    # 2. STANDARD ROUTING CASCADE
     needs_search = any(kw in prompt.lower() for kw in ["news", "weather", "price", "stock", "crypto", "latest", "today", "score", "happened"])
     
     if not skip_search and needs_search:
@@ -503,9 +540,6 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
             except: pass
         return await global_intel_engine(prompt, status_msg)
 
-    # ---------------------------------------------------------------------------
-    # VII. THE 10-NODE MULTI-AGENT SWARM (ROUTER)
-    # ---------------------------------------------------------------------------
     moe_cascade = []
     
     if force_provider == "Mistral":
@@ -521,7 +555,6 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
     elif force_provider == "HuggingFace":
         moe_cascade = [{"name": "HuggingFace", "base": "https://api-inference.huggingface.co/v1/", "key": get_api_key(["HUGGINGFACE_API_KEY"]), "model": "meta-llama/Meta-Llama-3-8B-Instruct"}]
     else:
-        # The Main Speed Cascade (General Chat - Prioritizing Cerebras & SambaNova)
         moe_cascade = [
             {"name": "Cerebras", "base": "https://api.cerebras.ai/v1", "key": get_api_key(["CEREBRAS_API_KEY", "CEREBRAS_OFFICIAL_KEY", "CEREBRAS_OFF"]), "model": "llama3.1-70b"},
             {"name": "SambaNova", "base": "https://api.sambanova.ai/v1", "key": get_api_key(["SAMBANOVA_API_KEY"]), "model": "Meta-Llama-3.1-70B-Instruct"},
@@ -923,7 +956,6 @@ async def deep_research_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         report = await global_intel_engine(topic, msg)
         
-        # Route the final synthesis specifically through OpenRouter for high-level reasoning
         await msg.edit_text("`[SYSTEM]: Synthesizing massive data streams via OpenRouter...`", parse_mode="Markdown")
         final_dossier = await generate_response(f"Synthesize this deep research: {report}", [], "You are an elite research agent. Format into a highly detailed, clinical dossier.", update.effective_user.id, update.effective_user.first_name, skip_search=True, force_provider="OpenRouter")
         
@@ -933,7 +965,6 @@ async def deep_research_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.edit_text(f"Research failed: {e}")
 
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Executes the Global News, Weather, and Space Intel sweep."""
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     status_msg = await update.effective_message.reply_text("`[SYSTEM]: Accessing Global Satellite & News feeds...`", parse_mode="Markdown")
     query = "Top 10 International News, Bengaluru Weather, and Space events today"
@@ -941,7 +972,6 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await trigger_auto_voice(update, f"Sir, the global status briefing is complete.\n{report}")
 
 async def intel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Executes the Tech, Scam, and Culture Intel sweep."""
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     status_msg = await update.effective_message.reply_text("`[SYSTEM]: Scanning dark web and digital culture networks...`", parse_mode="Markdown")
     query = "Latest Emerging Tech, Active Digital Frauds Scams, and Viral Internet Culture Memes"
@@ -1046,7 +1076,6 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text("✨ **J.A.R.V.I.S. Cognitive Core Online.**\n\nSir, your cinematic interface is ready.", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Exclusive Creator HUD."""
     if update.effective_chat.type != "private": return
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     web_url = "https://abhishake151107-collab.github.io/stark-os-ui/"
@@ -1148,7 +1177,6 @@ async def roast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     roast_prompt = "Generate a witty, clever roast for the person named. Mix English, Kannada, and Hindi slang naturally. Max 2 sentences."
     raw_response = await generate_response(f"Roast {target}", [], roast_prompt, update.effective_user.id, update.effective_user.first_name, skip_search=True, force_provider="NVIDIA")
     await status_msg.edit_text(raw_response)
-    # Force voice on roast
     await trigger_auto_voice(update, raw_response + "\n")
 
 async def shutup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1319,7 +1347,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 modify_karma(user.id, 5)
                 return
 
-    # Check for direct matrix queries
     if "instagram" in text.lower() or "algorithm" in text.lower() or "doomscroll" in text.lower():
         matrix_text = "\n\n".join(ALGORITHMIC_THREAT_MATRIX.values())
         return await msg.reply_text(f"🧠 **[ ALGORITHMIC THREAT MATRIX ]**\n\n{matrix_text}", parse_mode="Markdown")
@@ -1398,7 +1425,6 @@ async def nightly_reconciliation(context: ContextTypes.DEFAULT_TYPE):
             for chat_id, data in conn.execute("SELECT chat_id, GROUP_CONCAT(content_crypt, ' | ') FROM memory WHERE timestamp > datetime('now', '-1 day') GROUP BY chat_id").fetchall():
                 decrypted = decrypt_data(data)
                 if len(decrypted) > 50: 
-                    # Use HuggingFace to intelligently compress the memory
                     summary_prompt = f"Compress this chat log into a dense, 2-sentence episodic memory block reflecting the core events and sentiment: {decrypted[:6000]}"
                     compressed_memory = await generate_response(summary_prompt, [], "You are an archivist AI compressing episodic memory.", 0, "System", skip_search=True, force_provider="HuggingFace")
                     
@@ -1423,7 +1449,6 @@ async def exam_morning_alert(context: ContextTypes.DEFAULT_TYPE):
 async def group_morning_news(context: ContextTypes.DEFAULT_TYPE):
     news_text = await global_intel_engine("top 3 global tech headlines today")
     
-    # Use GitHub Models (GPT-4o-mini) to format a tailored morning message
     greeting = await generate_response(f"Format this news into a brief, militaristic 'Good morning' broadcast for a group chat: {news_text}", [], "You are J.A.R.V.I.S.", 0, "System", skip_search=True, force_provider="GitHub")
     
     with sqlite3.connect(DB_PATH) as conn: groups = conn.execute("SELECT chat_id FROM chats WHERE chat_id < 0").fetchall()
@@ -1442,7 +1467,6 @@ async def creator_morning_briefing(context: ContextTypes.DEFAULT_TYPE):
     
     raw_report = f"Security: Groups {groups_count}, Warnings {warn_count}. News: {world_news}. Tasks: {task_list}"
     
-    # GitHub Models crafts the final Executive Briefing
     final_report = await generate_response(raw_report, [], "You are J.A.R.V.I.S. Format this raw data into a highly structured, cynical Executive Morning Briefing for your Creator, Sir.", CREATOR_ID, "System", skip_search=True, force_provider="GitHub")
     
     try: await context.bot.send_message(chat_id=CREATOR_ID, text=final_report, parse_mode="Markdown")
@@ -1458,7 +1482,6 @@ async def group_night_routine(context: ContextTypes.DEFAULT_TYPE):
         except Exception: pass
 
 async def breaking_news_monitor(context: ContextTypes.DEFAULT_TYPE):
-    """Zero-Key RSS Background Monitor (Bypasses DuckDuckGo and SearXNG entirely)"""
     if not CREATOR_ID: return
     try:
         async with httpx.AsyncClient() as client:
@@ -1496,7 +1519,6 @@ async def news_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # XV. BOOT SEQUENCE & MAIN EXECUTION
 # ---------------------------------------------------------------------------
 async def post_init(app: Application):
-    # 1. Cloud Restore Protocol
     try:
         chat = await app.bot.get_chat(BACKUP_CHANNEL_ID)
         if chat.pinned_message and chat.pinned_message.document:
@@ -1510,7 +1532,6 @@ async def post_init(app: Application):
             try: await app.bot.send_message(chat_id=CREATOR_ID, text=f"⚠️ Cloud Restore Warning: Failed to load backup.\n{e}")
             except Exception: pass
 
-    # 2. Cron Scheduler Boot
     scheduler = AsyncIOScheduler(timezone=IST)
     scheduler.add_job(cloud_save_routine, 'interval', minutes=30, args=[app])
     scheduler.add_job(exam_morning_alert, 'cron', hour=6, minute=0, args=[app])
@@ -1532,7 +1553,6 @@ async def post_init(app: Application):
 
     scheduler.start()
     
-    # 3. Boot Telemetry Dispatch
     if CREATOR_ID: 
         boot_msg = (
             "✨ <b>God Core V7.5 (Architect Edition) Online.</b>\n"
@@ -1541,7 +1561,7 @@ async def post_init(app: Application):
             "• Biological Diagnostic Matrix: Engaged\n"
             "• Algorithmic Threat Detection: Active\n"
             "• Multi-Node Swarm Routing: Active\n"
-            "• Cognitive Monologue Scrubber: Engaged\n"
+            "• Micro-Brain Intercept (Needle 2): Active\n"
             "• Acoustic Link Scrubber: Active"
         )
         try: 
@@ -1556,7 +1576,6 @@ def main():
     db_init()
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
     
-    # Root, Shell, Schedulers & Config
     app.add_handler(CommandHandler("start", start_cmd))
     app.add_handler(CommandHandler("help", help_cmd)) 
     app.add_handler(CommandHandler("exec", exec_cmd))
@@ -1592,7 +1611,6 @@ def main():
     app.add_handler(CommandHandler("captcha", god_mode_cmd))
     app.add_handler(CommandHandler("say", god_mode_cmd))
     
-    # Economy & Social
     app.add_handler(CommandHandler("tldr", tldr_cmd))
     app.add_handler(CommandHandler("roast", roast_cmd))
     app.add_handler(CommandHandler("shutup", shutup_cmd))
@@ -1609,7 +1627,6 @@ def main():
     app.add_handler(CommandHandler("morning", morning_cmd))
     app.add_handler(CommandHandler("night", night_cmd))
     
-    # Callbacks & Media Handlers
     app.add_handler(CallbackQueryHandler(interactive_callbacks))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_captcha))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
@@ -1617,7 +1634,6 @@ def main():
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, audio_handler))
     app.add_handler(MessageHandler(filters.Document.ALL, document_handler))
     
-    # Main Message Handler
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
     app.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.TEXT & ~filters.COMMAND, message_handler))
     
