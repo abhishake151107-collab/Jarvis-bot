@@ -165,15 +165,6 @@ PUC_ACADEMIC_MATRIX = {
     "political science": "🏛️ **POLITICAL SCIENCE MATRIX**\n1. Cold War: NATO (1949) vs Warsaw Pact (1955).\n2. India: State Reorganization Act 1956 (Language). NAM Founders: Nehru, Tito, Nasser."
 }
 
-ADVANCED_TECH_MATRIX = {
-    "stacked pr": "🔀 **STACKED PULL REQUESTS**\nBreaking large changes into atomic branches. Tools like Graphite CLI manage these without manual rebasing.",
-    "agent": "🤖 **AUTONOMOUS CODING AGENTS**\nOpenHands uses multi-agent delegation. SWE-agent uses a restricted Agent-Computer Interface (ACI) for bug fixes.",
-    "mcp": "🔌 **MODEL CONTEXT PROTOCOL (MCP)**\nOpen standard connecting AI to external tools via client-server architecture. Introduces attack vectors like Indirect Prompt Injection.",
-    "tree-sitter": "🌳 **SEMANTIC CODE INDEXING**\nParses Concrete Syntax Trees (CSTs) for exact semantic boundaries, enabling precise codebase queries without context flooding.",
-    "ephemeral": "⏳ **EPHEMERAL ENVIRONMENTS**\nDisposable sandboxes (Daytona, E2B) with strict network caps for secure AI code execution.",
-    "linear": "⚡ **HIGH-PERFORMANCE PM**\nLinear optimizes triage using AI. Relies on Local-First Synchronization (ElectricSQL, Zero) for zero-latency UI state execution."
-}
-
 ALGORITHMIC_THREAT_MATRIX = {
     "instagram algorithm": "📱 **DLRM ARCHITECTURE**\nMeta uses Deep Learning Recommendation Models to cluster micro-actions (scroll speed, micro-pauses) to predict psychological vulnerabilities.",
     "dopamine loop": "🎰 **VARIABLE RATIO REINFORCEMENT**\nDopamine is an anticipation chemical. Pull-to-refresh acts as a slot machine, creating clinical tolerance and withdrawal by optimizing session length.",
@@ -394,7 +385,7 @@ async def global_intel_engine(topic: str, status_msg=None) -> str:
     master_intel = f"**[ LIVE INTEL FEED: {datetime.now(IST).strftime('%A, %b %d, %Y')} ]**\n\n"
     
     if status_msg:
-        try: await status_msg.edit_text(f"🌐 `[OSINT]: Bypassing corporate blocks... Scanning global RSS for '{topic}'...`", parse_mode="Markdown")
+        try: await status_msg.edit_text(f"🌐 `[SYSTEM]: Bypassing corporate blocks... Accessing Global RSS XML for '{topic}'...`", parse_mode="Markdown")
         except: pass
 
     search_results = []
@@ -419,10 +410,10 @@ async def global_intel_engine(topic: str, status_msg=None) -> str:
     except Exception as e:
         return f"Sir, live RSS syndication is offline. Error: {e}"
 
-    if not search_results: return "Sir, no raw intel found via OSINT vectors."
+    if not search_results: return "Sir, no raw intel found via RSS vectors."
 
     if status_msg:
-        try: await status_msg.edit_text("🛰️ `[OSINT]: Triangulating Coordinates via Wikipedia Archive...`", parse_mode="Markdown")
+        try: await status_msg.edit_text("🔍 `[SYSTEM]: Cross-referencing entities with Wikipedia Archive & Triangulating Coordinates...`", parse_mode="Markdown")
         except: pass
 
     raw_text_dump = f"Topic: {topic}\n\n"
@@ -448,11 +439,11 @@ async def global_intel_engine(topic: str, status_msg=None) -> str:
         raw_text_dump += f"Event: {title} {verification_tag}\nLocation: {location_str}\nMap: {maps_link}\nSource: {source}\nDetails: {body}\n---\n"
 
     if status_msg:
-        try: await status_msg.edit_text("⚙️ `[OSINT]: Routing raw intel for military synthesis...`", parse_mode="Markdown")
+        try: await status_msg.edit_text("⚙️ `[SYSTEM]: Routing raw data for military synthesis...`", parse_mode="Markdown")
         except: pass
 
-    sys_prompt = "You are J.A.R.V.I.S. Synthesize this raw OSINT intelligence data into a clinical, cynical military-style dossier. Keep it under 4 bullet points. Include the [VERIFIED] tags and Map links exactly as provided. Do not use conversational filler."
-    final_report = await generate_response(raw_text_dump, [], sys_prompt, 0, "Creator", status_msg, skip_search=True, force_provider="Mistral")
+    sys_prompt = "You are J.A.R.V.I.S. Synthesize this raw intelligence data into a clinical, cynical military-style dossier. Keep it under 4 bullet points. Include the [VERIFIED] tags and Map links exactly as provided. Do not use conversational filler."
+    final_report = await generate_response(raw_text_dump, [], sys_prompt, 0, "Creator", status_msg, skip_search=True, force_provider="GitHub")
 
     return master_intel + final_report
 
@@ -469,10 +460,27 @@ async def extract_youtube_transcript(url: str) -> str:
         logger.error(f"YouTube parse error: {e}")
         return ""
 
+async def gemini_live_search(prompt: str, sys_prompt: str, history: list) -> str:
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key: return ""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    payload = {
+        "contents": [{"role": "user", "parts": [{"text": f"Search real-time news to answer this: {prompt}"}]}],
+        "systemInstruction": {"parts": [{"text": sys_prompt}]},
+        "tools": [{"googleSearch": {}}]
+    }
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, json=payload, timeout=20.0)
+            if resp.status_code == 200:
+                data = resp.json()
+                return data['candidates'][0]['content']['parts'][0]['text']
+    except Exception as e: logger.error(f"Gemini Live Search failed: {e}")
+    return ""
+
 # ---------------------------------------------------------------------------
 # VII. THE MULTI-AGENT SWARM (ROUTER) & MICRO-BRAIN INTERCEPT
 # ---------------------------------------------------------------------------
-# --- LOCAL MICRO-BRAIN INTERCEPT ---
 try:
     needle_router = Needle(model_path="needle2.gguf") if Needle else None
 except Exception as e:
@@ -500,9 +508,7 @@ def intercept_local_intent(prompt: str) -> str:
 async def generate_response(prompt: str, history: list, sys_prompt: str, user_id: int, user_name: str, status_msg=None, skip_search=False, force_provider=None) -> str:
     current_time = time.time()
     
-    # 1. NEW FRONT-LINE ROUTER: Needle 2 Intercept
     local_intent = intercept_local_intent(prompt)
-    
     if local_intent == "check_diagnostics":
         if status_msg:
             try: await status_msg.delete()
@@ -514,37 +520,30 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
             except: pass
         return "Initiating offline memory purge. Please run the /purge command to proceed."
     
-    # 2. OSINT ROUTING CASCADE
     needs_search = any(kw in prompt.lower() for kw in ["news", "weather", "price", "stock", "crypto", "latest", "today", "score", "happened"])
-    
     if not skip_search and needs_search:
-        if status_msg:
-            try: await status_msg.edit_text("🌐 `[SYSTEM]: Live OSINT intelligence requested. Routing to Archive...`", parse_mode="Markdown")
-            except: pass
         return await global_intel_engine(prompt, status_msg)
 
-    # 3. 70B -> 8B FAILOVER CASCADE
+    # -----------------------------------------------------------------------
+    # UNKILLABLE 5-NODE CASCADE (GitHub -> OpenRouter -> NVIDIA -> Groq -> Cerebras)
+    # -----------------------------------------------------------------------
     moe_cascade = []
     
     if force_provider == "Mistral":
         moe_cascade = [{"name": "Mistral", "base": "https://api.mistral.ai/v1", "key": get_api_key(["MISTRAL_API_KEY"]), "model": "mistral-large-latest"}]
-    elif force_provider == "NVIDIA":
-        moe_cascade = [{"name": "NVIDIA", "base": "https://integrate.api.nvidia.com/v1", "key": get_api_key(["NVIDIA_API_KEY"]), "model": "meta/llama-3.1-70b-instruct"}]
     elif force_provider == "Cohere":
         moe_cascade = [{"name": "Cohere", "base": "https://api.cohere.ai/v1", "key": get_api_key(["COHERE_API_KEY"]), "model": "command-r-plus"}]
-    elif force_provider == "OpenRouter":
-        moe_cascade = [{"name": "OpenRouter", "base": "https://openrouter.ai/api/v1/", "key": get_api_key(["OPENROUTER_API_KEY"]), "model": "openrouter/free"}]
     elif force_provider == "GitHub":
         moe_cascade = [{"name": "GitHub Models", "base": "https://models.inference.ai.azure.com", "key": get_api_key(["GITHUB_TOKEN"]), "model": "gpt-4o-mini"}]
     elif force_provider == "HuggingFace":
         moe_cascade = [{"name": "HuggingFace", "base": "https://api-inference.huggingface.co/v1/", "key": get_api_key(["HUGGINGFACE_API_KEY"]), "model": "meta-llama/Meta-Llama-3-8B-Instruct"}]
     else:
-        # TOP TIER: SambaNova 70B
-        # SECOND TIER: Fast 8B endpoints with perfectly matched IDs and keys
         moe_cascade = [
-            {"name": "SambaNova-70B", "base": "https://api.sambanova.ai/v1", "key": get_api_key(["SAMBANOVA_API_KEY"]), "model": "Meta-Llama-3.3-70B-Instruct"},
-            {"name": "Groq-8B", "base": "https://api.groq.com/openai/v1/", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama-3.1-8b-instant"},
-            {"name": "Cerebras-8B", "base": "https://api.cerebras.ai/v1", "key": get_api_key(["CEREBRAS_API_KEY", "CEREBRAS_OFFICIAL_KEY", "CEREBRAS_OFF"]), "model": "llama3.1-8b"}
+            {"name": "GitHub", "base": "https://models.inference.ai.azure.com", "key": get_api_key(["GITHUB_TOKEN"]), "model": "gpt-4o-mini"},
+            {"name": "OpenRouter", "base": "https://openrouter.ai/api/v1/", "key": get_api_key(["OPENROUTER_API_KEY"]), "model": "meta-llama/llama-3.1-8b-instruct:free"},
+            {"name": "NVIDIA", "base": "https://integrate.api.nvidia.com/v1", "key": get_api_key(["NVIDIA_API_KEY"]), "model": "meta/llama-3.1-8b-instruct"},
+            {"name": "Groq", "base": "https://api.groq.com/openai/v1/", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama-3.1-8b-instant"},
+            {"name": "Cerebras", "base": "https://api.cerebras.ai/v1", "key": get_api_key(["CEREBRAS_API_KEY", "CEREBRAS_OFFICIAL_KEY", "CEREBRAS_OFF"]), "model": "llama3.1-8b"}
         ]
         
     full_messages = [{"role": "system", "content": sys_prompt}] + history + [{"role": "user", "content": prompt}]
@@ -566,11 +565,9 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
             err_msg = str(e)
             logger.error(f"Node {node['name']} failed: {err_msg}")
             error_logs.append(f"• {node['name']}: {err_msg}")
-            # Shortened timeout so J.A.R.V.I.S jumps back in faster
             circuit_breaker[node['name']] = current_time + 10 
             continue
             
-    # DIAGNOSTIC HUD: If everything completely fails, print the exact errors for debugging
     diag = "\n".join(error_logs)
     if user_id == CREATOR_ID: 
         return f"Sir, I am facing critical technical issues. All cognitive nodes are offline.\n\n🛠️ **Diagnostic Log:**\n`{diag}`"
@@ -582,14 +579,14 @@ async def process_optical_request(msg, photo_array, text_prompt: str, user, chat
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key: return await msg.reply_text("Optical sensor offline. Please verify GEMINI_API_KEY.")
     
-    status_msg = await msg.reply_text("👁️ `[SYSTEM]: Initializing optical character recognition...`", parse_mode="Markdown")
+    status_msg = await msg.reply_text("🤔 `[SYSTEM]: Initializing optical character recognition...`", parse_mode="Markdown")
     
     try:
         photo_file = await context.bot.get_file(photo_array[-1].file_id)
         image_bytes = await photo_file.download_as_bytearray()
         base64_img = base64.b64encode(image_bytes).decode('utf-8')
         
-        await status_msg.edit_text("⚙️ `[SYSTEM]: Processing optical data...`", parse_mode="Markdown")
+        await status_msg.edit_text("🔍 `[SYSTEM]: Processing optical data...`", parse_mode="Markdown")
         
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
         sys_prompt = build_system_prompt(user.id, user.first_name, chat.id, user_prompt=text_prompt)
@@ -638,7 +635,7 @@ async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await file.download_to_drive(file_path)
     
     try:
-        await status_msg.edit_text("⚙️ `[SYSTEM]: Transcribing audio via Groq Whisper-v3...`", parse_mode="Markdown")
+        await status_msg.edit_text("⚙️ `[SYSTEM]: Transcribing audio via Groq Whisper...`", parse_mode="Markdown")
         from groq import AsyncGroq
         client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"), timeout=30.0)
         with open(file_path, "rb") as audio:
@@ -700,7 +697,7 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_prompt = f"[Document: {doc.file_name}]\n{caption}\n\nContent:\n{extracted_text}"
         log_memory(chat.id, thread_id, user.id, "user", f"[File Upload]: {doc.file_name}")
         
-        await status_msg.edit_text("⚙️ `[SYSTEM]: Contextualizing parsed data via Cohere Command-R-Plus...`", parse_mode="Markdown")
+        await status_msg.edit_text("⚙️ `[SYSTEM]: Contextualizing parsed data via Cohere...`", parse_mode="Markdown")
         sys_prompt = build_system_prompt(user.id, user.first_name, chat.id, user_prompt=caption)
         raw_response = await generate_response(user_prompt, get_chat_history(chat.id, thread_id), sys_prompt, user.id, user.first_name, status_msg, force_provider="Cohere")
         final_text = await route_response(msg, raw_response, user, chat, context)
@@ -875,8 +872,8 @@ async def omni_scrape_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text_data = soup.get_text(separator=' ', strip=True)[:4000]
             page_title = soup.title.string if soup.title else "Unknown Target"
             
-            await status_msg.edit_text("`[SYSTEM]: Extracting contextual summary via Cohere Command-R-Plus...`", parse_mode="Markdown")
-            raw_ai = await generate_response(f"URL Title: {page_title}\n\nContent:\n{text_data}", [], "Provide a 3-bullet-point summary of this scraped webpage.", CREATOR_ID, "Abhishek", force_provider="Cohere")
+            await status_msg.edit_text("`[SYSTEM]: Extracting contextual summary...`", parse_mode="Markdown")
+            raw_ai = await generate_response(f"URL Title: {page_title}\n\nContent:\n{text_data}", [], "Provide a 3-bullet-point summary of this scraped webpage.", CREATOR_ID, "Abhishek", force_provider="GitHub")
             await status_msg.edit_text(f"🌐 **[ OMNI-SCRAPE ]**\n_Target: {page_title}_\n\n{raw_ai}", parse_mode="Markdown")
     except Exception as e: await status_msg.edit_text(f"Scraping failed: {e}")
 
@@ -946,12 +943,12 @@ async def deep_research_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     topic = " ".join(context.args)
     if not topic: return await update.effective_message.reply_text("Format: /research [topic]")
     
-    msg = await update.effective_message.reply_text("`[SYSTEM]: Initiating Deep Research Protocol via OpenRouter...`", parse_mode="Markdown")
+    msg = await update.effective_message.reply_text("`[SYSTEM]: Initiating Deep Research Protocol...`", parse_mode="Markdown")
     try:
         report = await global_intel_engine(topic, msg)
         
-        await msg.edit_text("`[SYSTEM]: Synthesizing massive data streams via OpenRouter...`", parse_mode="Markdown")
-        final_dossier = await generate_response(f"Synthesize this deep research: {report}", [], "You are an elite research agent. Format into a highly detailed, clinical dossier.", update.effective_user.id, update.effective_user.first_name, skip_search=True, force_provider="OpenRouter")
+        await msg.edit_text("`[SYSTEM]: Synthesizing massive data streams...`", parse_mode="Markdown")
+        final_dossier = await generate_response(f"Synthesize this deep research: {report}", [], "You are an elite research agent. Format into a highly detailed, clinical dossier.", update.effective_user.id, update.effective_user.first_name, skip_search=True, force_provider="GitHub")
         
         await msg.edit_text(final_dossier, parse_mode="Markdown")
         await trigger_auto_voice(update, f"Sir, the deep research dossier on {topic} has been compiled and cross-referenced.")
@@ -1159,17 +1156,17 @@ async def tldr_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not history: return await update.effective_message.reply_text("No recent memory found. 🤷‍♂️")
     chat_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in history])
     
-    status_msg = await update.effective_message.reply_text("⚙️ `[SYSTEM]: Summarizing memory nodes...`", parse_mode="Markdown")
-    raw_response = await generate_response(f"Summarize this:\n{chat_text}", [], "Provide a sarcastic 3-bullet-point summary of what they are arguing about.", update.effective_user.id, update.effective_user.first_name, skip_search=True, force_provider="NVIDIA")
+    status_msg = await update.effective_message.reply_text("`[SYSTEM]: Summarizing memory nodes...`", parse_mode="Markdown")
+    raw_response = await generate_response(f"Summarize this:\n{chat_text}", [], "Provide a sarcastic 3-bullet-point summary of what they are arguing about.", update.effective_user.id, update.effective_user.first_name, skip_search=True, force_provider="GitHub")
     await status_msg.edit_text(raw_response)
 
 async def roast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_lockdown(): return
     target = " ".join(context.args) or (update.effective_message.reply_to_message.from_user.first_name if update.effective_message.reply_to_message else "someone")
     
-    status_msg = await update.effective_message.reply_text("⚙️ `[SYSTEM]: Synthesizing roast protocol...`", parse_mode="Markdown")
+    status_msg = await update.effective_message.reply_text("`[SYSTEM]: Synthesizing roast protocol...`", parse_mode="Markdown")
     roast_prompt = "Generate a witty, clever roast for the person named. Mix English, Kannada, and Hindi slang naturally. Max 2 sentences."
-    raw_response = await generate_response(f"Roast {target}", [], roast_prompt, update.effective_user.id, update.effective_user.first_name, skip_search=True, force_provider="NVIDIA")
+    raw_response = await generate_response(f"Roast {target}", [], roast_prompt, update.effective_user.id, update.effective_user.first_name, skip_search=True, force_provider="GitHub")
     await status_msg.edit_text(raw_response)
     await trigger_auto_voice(update, raw_response + "\n")
 
@@ -1233,7 +1230,7 @@ async def backup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def imagine_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = " ".join(context.args)
     if not prompt: return await update.effective_message.reply_text("Format: /imagine [prompt]")
-    status_msg = await update.effective_message.reply_text("⚙️ `[SYSTEM]: Synthesizing image...`", parse_mode="Markdown")
+    status_msg = await update.effective_message.reply_text("`[SYSTEM]: Synthesizing image...`", parse_mode="Markdown")
     await update.effective_message.reply_photo(photo=f"https://image.pollinations.ai/prompt/{urllib.parse.quote(prompt)}?width=1024&height=1024&nologo=true", caption=f"Rendered: {prompt}")
     await status_msg.delete()
 
@@ -1362,7 +1359,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not is_triggered: return
     
-    # 1. LIVE HUD: Display Thinking State immediately
+    # 1. Initial Thinking State
     status_msg = await msg.reply_text("🤔 `[SYSTEM]: Initializing cognitive nodes...`", parse_mode="Markdown")
     await context.bot.send_chat_action(chat_id=chat.id, action='typing')
     
@@ -1400,7 +1397,6 @@ async def flashcard_drill(context: ContextTypes.DEFAULT_TYPE):
         except Exception: pass
 
 async def osint_board_scraper(context: ContextTypes.DEFAULT_TYPE):
-    """OSINT Tracking Agent for Exam Boards."""
     if not CREATOR_ID: return
     targets = ["https://dpue-pragathi.karnataka.gov.in/", "https://karresults.nic.in/"]
     try:
@@ -1420,17 +1416,16 @@ async def osint_board_scraper(context: ContextTypes.DEFAULT_TYPE):
     except Exception: pass
 
 async def nightly_profiler(context: ContextTypes.DEFAULT_TYPE):
-    """Profiler Agent: Builds permanent memory files based on daily chat."""
     try:
         if CREATOR_ID: 
-            await context.bot.send_message(chat_id=CREATOR_ID, text="🧠 **Profiler Agent Init:** HuggingFace Memory Archivist engaged.", parse_mode="Markdown")
+            await context.bot.send_message(chat_id=CREATOR_ID, text="🧠 **Profiler Agent Init:** Memory Archivist engaged.", parse_mode="Markdown")
             
         with sqlite3.connect(DB_PATH) as conn:
             for chat_id, data in conn.execute("SELECT chat_id, GROUP_CONCAT(content_crypt, ' | ') FROM memory WHERE timestamp > datetime('now', '-1 day') GROUP BY chat_id").fetchall():
                 decrypted = decrypt_data(data)
                 if len(decrypted) > 50: 
                     summary_prompt = f"Profile the users in this chat log. Extract key personality traits and events into a dense 3-sentence profile: {decrypted[:6000]}"
-                    compressed_memory = await generate_response(summary_prompt, [], "You are a psychological Profiler Agent.", 0, "System", skip_search=True, force_provider="HuggingFace")
+                    compressed_memory = await generate_response(summary_prompt, [], "You are a psychological Profiler Agent.", 0, "System", skip_search=True, force_provider="GitHub")
                     
                     conn.execute("INSERT INTO lore_vault (chat_id, context_data) VALUES (?, ?)", (chat_id, compressed_memory))
             conn.execute("DELETE FROM memory WHERE timestamp <= datetime('now', '-7 days')")
@@ -1483,7 +1478,6 @@ async def group_night_routine(context: ContextTypes.DEFAULT_TYPE):
         except Exception: pass
 
 async def osint_news_monitor(context: ContextTypes.DEFAULT_TYPE):
-    """OSINT Agent scanning Zero-Key RSS Feeds."""
     if not CREATOR_ID: return
     try:
         async with httpx.AsyncClient() as client:
@@ -1561,7 +1555,7 @@ async def post_init(app: Application):
             "• Infinite Cloud Save: Armed (-1004296302955)\n"
             "• OSINT Live Tracking Agent: Active\n"
             "• Profiler Memory Agent: Engaged\n"
-            "• Multi-Node Swarm Routing: Active (70B -> 8B Cascade)\n"
+            "• Unkillable 5-Node Cascade: Active (Azure -> OpenRouter -> NVIDIA)\n"
             "• Micro-Brain Intercept (Needle 2): Active\n"
             "• Acoustic Link Scrubber: Active"
         )
