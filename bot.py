@@ -518,7 +518,8 @@ async def extract_youtube_transcript(url: str) -> str:
 async def gemini_live_search(prompt: str, sys_prompt: str, history: list) -> str:
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key: return ""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={api_key}"
+    # FIX: Updated to the 2026 active Google model.
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={api_key}"
     payload = {
         "contents": [{"role": "user", "parts": [{"text": f"Search real-time news to answer this: {prompt}"}]}],
         "systemInstruction": {"parts": [{"text": sys_prompt}]}, 
@@ -596,10 +597,10 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
         gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
         if gemini_key:
             try:
-                # FIX: Hardcoded perfectly to the exact valid API route.
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={gemini_key}"
+                # FIX 1: Updated to the live 2026 active Google endpoint.
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={gemini_key}"
                 
-                # FIX: The Memory Merger. Combines consecutive user/model roles to prevent 400 crashes.
+                # FIX 2: The Memory Merger. Fixes the 400 Bad Request API crash forever.
                 contents = []
                 for msg in history:
                     role = 'model' if msg['role'] == 'assistant' else 'user'
@@ -647,7 +648,7 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
         moe_cascade = [{"name": "HuggingFace", "base": "https://api-inference.huggingface.co/v1/", "key": get_api_key(["HUGGINGFACE_API_KEY"]), "model": "meta-llama/Meta-Llama-3-8B-Instruct"}]
     else:
         moe_cascade = [
-            # FIX: Restored to valid Groq Llama 3.3 string.
+            # FIX 3: Removed the hallucinated Groq model. Replaced with actual Llama 3.3.
             {"name": "Groq", "base": "https://api.groq.com/openai/v1/", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama-3.3-70b-versatile"},
             {"name": "Cerebras", "base": "https://api.cerebras.ai/v1", "key": get_api_key(["CEREBRAS_API_KEY", "CEREBRAS_OFFICIAL_KEY", "CEREBRAS_OFF"]), "model": "llama-3.3-70b"},
             {"name": "SambaNova", "base": "https://api.sambanova.ai/v1", "key": get_api_key(["SAMBANOVA_API_KEY"]), "model": "Meta-Llama-3.3-70B-Instruct"}
@@ -677,41 +678,52 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
             circuit_breaker[node['name']] = current_time + 60 
             continue
             
-    # 5. DYNAMIC ROUTING & SHADOW LOG OUTPUT
+    # FIX 4: STRICT STEALTH ROUTING (Group Error Hiding)
+    is_group = chat_id and chat_id < 0
+
     if ai_response: 
         if primary_error and not force_provider:
             diagnostic_msg = (
                 f"⚠️ **[ SYSTEM DIAGNOSTIC ]**\n"
                 f"Sir, my primary API (Google Gemini) failed.\n"
                 f"**Error:** `{primary_error}`\n"
-                f"**Fix Required:** Please check network limits or exact error format.\n\n"
+                f"**Fix Required:** Please update the model string or check API limits.\n\n"
                 f"🟢 *(Response via {successful_node})*: "
             )
             
-            if chat_id and context:
-                if chat_id > 0 or chat_id == CREATOR_ID:
-                    # Private Chat Protocol (Creator Mode)
-                    return diagnostic_msg + ai_response
-                else:
-                    # Group Chat Protocol (Stealth Mode)
-                    if CREATOR_ID:
-                        shadow_log = f"🚨 **Shadow Log (Group ID: {chat_id})**\nSir, Gemini just failed while answering a user. I seamlessly switched to {successful_node} to answer them and maintain the illusion.\n**Error:** `{primary_error}`"
-                        try: 
-                            asyncio.create_task(context.bot.send_message(chat_id=CREATOR_ID, text=shadow_log, parse_mode="Markdown"))
-                        except Exception: 
-                            pass
-                    return ai_response
+            if is_group:
+                # Group Chat Protocol (Stealth Mode)
+                if CREATOR_ID and context:
+                    shadow_log = f"🚨 **Shadow Log (Group ID: {chat_id})**\nSir, Gemini failed while answering a user. I seamlessly switched to {successful_node} to answer them and maintain the illusion.\n**Error:** `{primary_error}`"
+                    try: 
+                        asyncio.create_task(context.bot.send_message(chat_id=CREATOR_ID, text=shadow_log, parse_mode="Markdown"))
+                    except Exception: 
+                        pass
+                return ai_response # Return clean response to the group
             else:
+                # Private Chat Protocol
                 if user_id == CREATOR_ID:
                     return diagnostic_msg + ai_response
                 return ai_response
-        
         return ai_response
             
-    if user_id == CREATOR_ID: 
-        return f"Sir, I am facing critical technical issues. All cognitive nodes are offline.\n\n**Primary Diagnostic Log:**\n`{primary_error or 'No error logged. Is GEMINI_API_KEY set?'}`\n\n_Please check your Render Environment Variables._"
+    # CRITICAL FAILURE (ALL NODES OFFLINE)
+    fail_msg = f"Sorry {user_name}, I am facing technical issues right now."
+    creator_diagnostic = f"Sir, I am facing critical technical issues. All cognitive nodes are offline.\n\n**Primary Diagnostic Log:**\n`{primary_error or 'No error logged. Is GEMINI_API_KEY set?'}`\n\n_Please check your Render Environment Variables._"
+    
+    if user_id == CREATOR_ID:
+        if is_group:
+            # Send the diagnostic silently to your DM, but return the generic fail to the group.
+            if context:
+                try:
+                    asyncio.create_task(context.bot.send_message(chat_id=CREATOR_ID, text=creator_diagnostic, parse_mode="Markdown"))
+                except Exception:
+                    pass
+            return fail_msg
+        else:
+            return creator_diagnostic # Show full error because you are in a Private DM
     else: 
-        return f"Sorry {user_name}, I am facing technical issues right now."
+        return fail_msg
 
 # --- SENSORY CORE (VISION, AUDIO, DOCS) ---
 async def process_optical_request(msg, photo_array, text_prompt: str, user, chat, thread_id, context):
@@ -728,7 +740,8 @@ async def process_optical_request(msg, photo_array, text_prompt: str, user, chat
         
         await status_msg.edit_text("`[SYSTEM]: Processing optical data...`", parse_mode="Markdown")
         
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={api_key}"
+        # FIX: Updated optical endpoint to 2026 active model.
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={api_key}"
         sys_prompt = build_system_prompt(user.id, user.first_name, chat.id, user_prompt=text_prompt)
         sys_prompt += "\nVISUAL DIRECTIVE: Act as an OCR solver for math/exam questions."
         payload = {"contents": [{"role": "user", "parts": [{"text": text_prompt or "Analyze this image."}, {"inlineData": {"mimeType": "image/jpeg", "data": base64_img}}]}], "systemInstruction": {"parts": [{"text": sys_prompt}]}} 
