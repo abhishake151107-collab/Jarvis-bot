@@ -1003,7 +1003,7 @@ get_api_key(["MISTRAL_API_KEY"]), "model":
 "base":
 "https://integrate.api.nvidia.com/v1",
 "key": get_api_key(["NVIDIA_API_KEY"]),
-"model": "meta/llama-3.1-70b-instruct"}]
+"model": "meta/llama-3.3-70b-instruct"}]
     elif force_provider == "Cohere":
         moe_cascade = [{"name": "Cohere",
 "base": "https://api.cohere.ai/v1", "key":
@@ -1032,16 +1032,16 @@ Instruct"}]
             {"name": "Groq", "base":
 "https://api.groq.com/openai/v1/", "key":
 get_api_key(["GROQ_API_KEY"]), "model":
-"llama-3.1-70b-versatile"},
+"openai/gpt-oss-120b"},
             {"name": "Cerebras", "base":
 "https://api.cerebras.ai/v1", "key":
 get_api_key(["CEREBRAS_API_KEY",
 "CEREBRAS_OFFICIAL_KEY", "CEREBRAS_OFF"]),
-"model": "llama3.1-70b"},
+"model": "llama-3.3-70b"},
             {"name": "SambaNova", "base":
 "https://api.sambanova.ai/v1", "key":
 get_api_key(["SAMBANOVA_API_KEY"]),
-"model": "Meta-Llama-3.1-70B-Instruct"}
+"model": "Meta-Llama-3.3-70B-Instruct"}
         ]
         
     if force_provider:
@@ -1049,11 +1049,11 @@ get_api_key(["SAMBANOVA_API_KEY"]),
             {"name": "Groq Fallback",
 "base": "https://api.groq.com/openai/v1/",
 "key": get_api_key(["GROQ_API_KEY"]),
-"model": "llama-3.1-70b-versatile"},
+"model": "openai/gpt-oss-120b"},
             {"name": "Cerebras Fallback",
 "base": "https://api.cerebras.ai/v1",
 "key": get_api_key(["CEREBRAS_API_KEY"]),
-"model": "llama3.1-70b"}
+"model": "llama-3.3-70b"}
         ]) full_messages = [{"role": "system",
 "content": sys_prompt}] + history +
 [{"role": "user", "content": prompt}]
