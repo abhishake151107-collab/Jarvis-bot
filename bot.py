@@ -1,3 +1,4 @@
+```python
 import os
 import re
 import sys
@@ -90,8 +91,7 @@ EXEC_WHITELIST = {
 }
 EXEC_BLOCKLIST = ("rm -rf /", "mkfs", "dd if=", ":(){", "shutdown", "reboot", "history -c")
 
-def is_lockdown() -> bool: 
-    return os.path.exists(LOCKDOWN_FILE)
+def is_lockdown() -> bool: return os.path.exists(LOCKDOWN_FILE)
 
 def save_cron_jobs(jobs: dict):
     with open(CRON_JOBS_FILE, "wb") as f: pickle.dump(jobs, f)
@@ -106,8 +106,7 @@ flask_app = Flask(__name__)
 CORS(flask_app)
 
 @flask_app.route('/')
-def health_check(): 
-    return "J.A.R.V.I.S. Titan Core V7.5 (Architect Edition) is Online."
+def health_check(): return "J.A.R.V.I.S. Titan Core V7.5 (Architect Edition) is Online."
 
 @flask_app.route('/api/chat', methods=['POST'])
 def api_chat():
@@ -138,22 +137,15 @@ def api_chat():
             
     return jsonify({"status": "success", "response": response_text})
 
-def start_web_server(): 
-    flask_app.run(host='0.0.0.0', port=PORT, use_reloader=False)
-
+def start_web_server(): flask_app.run(host='0.0.0.0', port=PORT, use_reloader=False)
 threading.Thread(target=start_web_server, daemon=True).start()
 
 # --- SECURITY CYPHER ---
 cipher_suite = Fernet(ENCRYPTION_KEY.encode())
-
-def encrypt_data(text: str) -> str: 
-    return cipher_suite.encrypt(str(text or "[BLANK]").encode()).decode()
-
+def encrypt_data(text: str) -> str: return cipher_suite.encrypt(str(text or "[BLANK]").encode()).decode()
 def decrypt_data(crypto_text: str) -> str:
-    try: 
-        return cipher_suite.decrypt(crypto_text.encode()).decode()
-    except Exception: 
-        return "[ENCRYPT ERROR]"
+    try: return cipher_suite.decrypt(crypto_text.encode()).decode()
+    except Exception: return "[ENCRYPT ERROR]"
 
 DB_PATH = "jarvis_vault.db"
 circuit_breaker = {}
@@ -528,7 +520,7 @@ def intercept_local_intent(prompt: str) -> str:
 
 async def generate_response(prompt: str, history: list, sys_prompt: str, user_id: int, user_name: str, status_msg=None, skip_search=False, force_provider=None, chat_id=None, context=None) -> str:
     current_time = time.time()
-    
+
     # 1. NEW FRONT-LINE ROUTER: Needle 2 Intercept
     local_intent = intercept_local_intent(prompt)
     
@@ -561,15 +553,22 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
         gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
         if gemini_key:
             try:
-                # FIX: Bulletproof REST URL that bypasses the openai library crashes
+                # FIX: Permanent gemini-1.5-flash string prevents 404
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}"
                 
-                # Format history for raw Google REST API
+                # FIX: The Memory Merger. Prevents 400 Bad Request by strictly alternating roles.
                 contents = []
                 for msg in history:
                     role = 'model' if msg['role'] == 'assistant' else 'user'
-                    contents.append({"role": role, "parts": [{"text": msg['content']}]})
-                contents.append({"role": "user", "parts": [{"text": prompt}]})
+                    if contents and contents[-1]['role'] == role:
+                        contents[-1]['parts'][0]['text'] += f"\n\n[Previous]: {msg['content']}"
+                    else:
+                        contents.append({"role": role, "parts": [{"text": msg['content']}]})
+                        
+                if contents and contents[-1]['role'] == 'user':
+                    contents[-1]['parts'][0]['text'] += f"\n\n[Current]: {prompt}"
+                else:
+                    contents.append({"role": "user", "parts": [{"text": prompt}]})
                 
                 payload = {
                     "systemInstruction": {"parts": [{"text": sys_prompt}]},
@@ -620,7 +619,7 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
     
     ai_response = ""
     successful_node = None
-
+    
     for node in moe_cascade:
         if not node["key"] or circuit_breaker.get(node["name"], 0) > current_time: continue
         try:
@@ -641,7 +640,7 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
                 f"⚠️ **[ SYSTEM DIAGNOSTIC ]**\n"
                 f"Sir, my primary API (Google Gemini) failed.\n"
                 f"**Error:** `{primary_error}`\n"
-                f"**Fix Required:** Please verify the API token and endpoint.\n\n"
+                f"**Fix Required:** Check exact error above.\n\n"
                 f"🟢 *(Response via {successful_node})*: "
             )
             
@@ -658,14 +657,15 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
                         except Exception: pass
                     return ai_response
             else:
-                if user_id == CREATOR_ID:
-                    return diagnostic_msg + ai_response
+                if user_id == CREATOR_ID: return diagnostic_msg + ai_response
                 return ai_response
         
         return ai_response
             
-    if user_id == CREATOR_ID: return "Sir, I am facing critical technical issues. All cognitive nodes are offline."
-    else: return f"Sorry {user_name}, I am facing technical issues right now."
+    if user_id == CREATOR_ID: 
+        return f"Sir, I am facing critical technical issues. All cognitive nodes are offline.\n\n**Primary Diagnostic Log:**\n`{primary_error or 'No error logged. Is GEMINI_API_KEY set?'}`\n\n_Please check your Render Environment Variables._"
+    else: 
+        return f"Sorry {user_name}, I am facing technical issues right now."
 
 # --- SENSORY CORE (VISION, AUDIO, DOCS) ---
 async def process_optical_request(msg, photo_array, text_prompt: str, user, chat, thread_id, context):
@@ -1308,8 +1308,7 @@ async def add_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def list_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
-    with sqlite3.connect(DB_PATH) as conn: 
-        rows = conn.execute("SELECT id, task_crypt FROM tasks WHERE status = 'pending' AND user_id = ?", (update.effective_user.id,)).fetchall()
+    with sqlite3.connect(DB_PATH) as conn: rows = conn.execute("SELECT id, task_crypt FROM tasks WHERE status = 'pending' AND user_id = ?", (update.effective_user.id,)).fetchall()
     if not rows: return await update.effective_message.reply_text("Your schedule is clear, Sir. ☕")
     for r in rows: await update.effective_message.reply_text(f"📌 {decrypt_data(r[1])}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("✅ Mark Done", callback_data=f"tdone_{r[0]}"), InlineKeyboardButton("🗑️ Delete", callback_data=f"tdel_{r[0]}")]]))
 
