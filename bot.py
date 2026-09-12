@@ -515,7 +515,7 @@ def intercept_local_intent(prompt: str) -> str:
         logger.error(f"Needle offline routing failed: {e}")
         return "general_conversation"
 
-async def generate_response(prompt: str, history: list, sys_prompt: str, user_id: int, user_name: str, status_msg=None, skip_search=False, force_provider=None) -> str:
+async def generate_response(prompt: str, history: list, sys_prompt: str, user_id: int, user_name: str, status_msg=None, skip_search=False, force_provider=None, chat_id=None, context=None) -> str:
     current_time = time.time()
     
     # 1. NEW FRONT-LINE ROUTER: Needle 2 Intercept
@@ -542,15 +542,16 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
         return await global_intel_engine(prompt, status_msg)
 
     # -----------------------------------------------------------------------
-    # 3. SURGICAL FIX: BULLETPROOF RAW GEMINI ROUTE (Primary Brain)
-    # Bypasses the buggy AsyncOpenAI library entirely to prevent 404s.
+    # 3. MOE ROUTING & DYNAMIC FAILOVER PROTOCOL
     # -----------------------------------------------------------------------
+    primary_error = None
+    
     if not force_provider or force_provider == "Gemini":
         gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
         if gemini_key:
             try:
-                # FIX: Updated to 'gemini-1.5-flash-latest' to resolve Google 404 endpoint errors
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={gemini_key}"
+                # FIX: Updated model string to gemini-1.5-flash-002 to fix 404 error
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-002:generateContent?key={gemini_key}"
                 
                 # Format history for raw Google REST API
                 contents = []
@@ -570,14 +571,13 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
                     if resp.status_code == 200:
                         return resp.json()['candidates'][0]['content']['parts'][0]['text']
                     else:
+                        primary_error = f"404 - models/gemini-1.5-flash-latest not found."
                         logger.error(f"Raw Gemini Failed {resp.status_code}: {resp.text}")
-                        # Send error directly to chat so you can see exactly why it failed
-                        return f"API Error {resp.status_code}: {resp.text[:200]}"
             except Exception as e:
+                primary_error = f"Network Error: {str(e)[:100]}"
                 logger.error(f"Raw Gemini Network Error: {e}")
-                return f"Gemini Network Error: {str(e)[:100]}"
 
-    # 4. FALLBACK MOE CASCADE (Used for specific tools like /scrape or if Gemini fails)
+    # 4. FALLBACK MOE CASCADE
     moe_cascade = []
     
     if force_provider == "Mistral":
@@ -594,9 +594,9 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
         moe_cascade = [{"name": "HuggingFace", "base": "https://api-inference.huggingface.co/v1/", "key": get_api_key(["HUGGINGFACE_API_KEY"]), "model": "meta-llama/Meta-Llama-3-8B-Instruct"}]
     else:
         moe_cascade = [
+            {"name": "Groq", "base": "https://api.groq.com/openai/v1/", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama-3.1-70b-versatile"},
             {"name": "Cerebras", "base": "https://api.cerebras.ai/v1", "key": get_api_key(["CEREBRAS_API_KEY", "CEREBRAS_OFFICIAL_KEY", "CEREBRAS_OFF"]), "model": "llama3.1-70b"},
-            {"name": "SambaNova", "base": "https://api.sambanova.ai/v1", "key": get_api_key(["SAMBANOVA_API_KEY"]), "model": "Meta-Llama-3.1-70B-Instruct"},
-            {"name": "Groq", "base": "https://api.groq.com/openai/v1/", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama-3.1-70b-versatile"}
+            {"name": "SambaNova", "base": "https://api.sambanova.ai/v1", "key": get_api_key(["SAMBANOVA_API_KEY"]), "model": "Meta-Llama-3.1-70B-Instruct"}
         ]
         
     if force_provider:
@@ -606,17 +606,52 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
         ])
     
     full_messages = [{"role": "system", "content": sys_prompt}] + history + [{"role": "user", "content": prompt}]
+    
+    ai_response = ""
+    successful_node = None
 
     for node in moe_cascade:
         if not node["key"] or circuit_breaker.get(node["name"], 0) > current_time: continue
         try:
             client = AsyncOpenAI(base_url=node["base"], api_key=node["key"], timeout=30.0)
             res = await client.chat.completions.create(model=node["model"], messages=full_messages, temperature=0.7, max_tokens=800)
-            return res.choices[0].message.content
+            ai_response = res.choices[0].message.content
+            successful_node = node["name"]
+            break
         except Exception as e:
             logger.error(f"Node {node['name']} failed: {e}")
             circuit_breaker[node['name']] = current_time + 60 
             continue
+            
+    # 5. DYNAMIC ROUTING & SHADOW LOG OUTPUT
+    if ai_response:
+        if primary_error and not force_provider:
+            diagnostic_msg = (
+                f"⚠️ **[ SYSTEM DIAGNOSTIC ]**\n"
+                f"Sir, my primary API (Google Gemini) failed.\n"
+                f"**Error:** `{primary_error}`\n"
+                f"**Fix Required:** Please update my primary model string or check network limits.\n\n"
+                f"🟢 *(Response via {successful_node})*: "
+            )
+            
+            if chat_id and context:
+                if chat_id > 0 or chat_id == CREATOR_ID:
+                    # Private Chat Protocol (Creator Mode)
+                    return diagnostic_msg + ai_response
+                else:
+                    # Group Chat Protocol (Stealth Mode)
+                    if CREATOR_ID:
+                        shadow_log = f"🚨 **Shadow Log (Group ID: {chat_id})**\nSir, Gemini just failed while answering a user. I seamlessly switched to {successful_node} to answer them and maintain the illusion.\n**Error:** `{primary_error}`"
+                        try:
+                            asyncio.create_task(context.bot.send_message(chat_id=CREATOR_ID, text=shadow_log, parse_mode="Markdown"))
+                        except Exception: pass
+                    return ai_response
+            else:
+                if user_id == CREATOR_ID:
+                    return diagnostic_msg + ai_response
+                return ai_response
+        
+        return ai_response
             
     if user_id == CREATOR_ID: return "Sir, I am facing critical technical issues. All cognitive nodes are offline."
     else: return f"Sorry {user_name}, I am facing technical issues right now."
@@ -701,7 +736,7 @@ async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status_msg.edit_text(f"🎙️ *(Transcribed)*: _{user_text}_\n\n`[SYSTEM]: Synthesizing response...`", parse_mode="Markdown")
         sys_prompt = build_system_prompt(user.id, user.first_name, chat.id, user_prompt=user_text)
         
-        raw_response = await generate_response(user_text, get_chat_history(chat.id, thread_id), sys_prompt, user.id, user.first_name, status_msg)
+        raw_response = await generate_response(user_text, get_chat_history(chat.id, thread_id), sys_prompt, user.id, user.first_name, status_msg, chat_id=chat.id, context=context)
         final_text = await route_response(msg, raw_response, user, chat, context)
         log_memory(chat.id, thread_id, user.id, "assistant", final_text)
         
@@ -1409,7 +1444,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     status_msg = await msg.reply_text("`[SYSTEM]: Analyzing intent...`", parse_mode="Markdown")
     
     sys_prompt = build_system_prompt(user.id, user.first_name, chat.id, user_prompt=text)
-    raw_ai_response = await generate_response(text, get_chat_history(chat.id, thread_id), sys_prompt, user.id, user.first_name, status_msg)
+    raw_ai_response = await generate_response(text, get_chat_history(chat.id, thread_id), sys_prompt, user.id, user.first_name, status_msg, chat_id=chat.id, context=context)
     
     final_text = await route_response(msg, raw_ai_response, user, chat, context)
     log_memory(chat.id, thread_id, user.id, "assistant", final_text)
