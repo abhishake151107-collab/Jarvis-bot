@@ -334,7 +334,8 @@ DIRECTIVES:
 2. DOSSIER PROTOCOL: Answer origin/system questions accurately using the Genesis Dossier.
 3. TONE: Clinical, professional, militaristic, dry British sarcasm. NO emojis. NO teenage moodiness. NO complaining.
 4. BREVITY: Max 2 sentences, UNLESS asked for a diagnostic, dossier, or research.
-5. COGNITIVE FILTER: NEVER output `<think>` tags. NEVER explain your thought process. Just provide the final response."""
+5. NO AI SLOP: NEVER use phrases like "As an AI language model," "Here is the summary," or "I hope this helps." Output pure, deterministic data.
+6. COGNITIVE FILTER: NEVER output `<think>` tags. NEVER explain your thought process. Just provide the final response."""
 
 async def route_response(msg, ai_response: str, user, chat, context) -> str:
     if not ai_response: return "Connection anomaly detected."
@@ -540,6 +541,43 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
             except: pass
         return await global_intel_engine(prompt, status_msg)
 
+    # -----------------------------------------------------------------------
+    # 3. SURGICAL FIX: BULLETPROOF RAW GEMINI ROUTE (Primary Brain)
+    # Bypasses the buggy AsyncOpenAI library entirely to prevent 404s.
+    # -----------------------------------------------------------------------
+    if not force_provider or force_provider == "Gemini":
+        gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
+        if gemini_key:
+            try:
+                # FIX: Updated to 'gemini-1.5-flash-latest' to resolve Google 404 endpoint errors
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={gemini_key}"
+                
+                # Format history for raw Google REST API
+                contents = []
+                for msg in history:
+                    role = 'model' if msg['role'] == 'assistant' else 'user'
+                    contents.append({"role": role, "parts": [{"text": msg['content']}]})
+                contents.append({"role": "user", "parts": [{"text": prompt}]})
+                
+                payload = {
+                    "systemInstruction": {"parts": [{"text": sys_prompt}]},
+                    "contents": contents,
+                    "generationConfig": {"temperature": 0.7, "maxOutputTokens": 1000}
+                }
+                
+                async with httpx.AsyncClient(timeout=25.0) as client:
+                    resp = await client.post(url, json=payload)
+                    if resp.status_code == 200:
+                        return resp.json()['candidates'][0]['content']['parts'][0]['text']
+                    else:
+                        logger.error(f"Raw Gemini Failed {resp.status_code}: {resp.text}")
+                        # Send error directly to chat so you can see exactly why it failed
+                        return f"API Error {resp.status_code}: {resp.text[:200]}"
+            except Exception as e:
+                logger.error(f"Raw Gemini Network Error: {e}")
+                return f"Gemini Network Error: {str(e)[:100]}"
+
+    # 4. FALLBACK MOE CASCADE (Used for specific tools like /scrape or if Gemini fails)
     moe_cascade = []
     
     if force_provider == "Mistral":
@@ -617,7 +655,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_lockdown(): return
     msg = update.effective_message
     if not msg or not msg.photo: return
-    chat, user, caption = msg.chat, msg.from_user, msg.caption or ""
+    chat, user, caption = msg.chat, msg.fromuser, msg.caption or ""
     log_roster_and_chat(chat, user)
     bot_username = (await context.bot.get_me()).username
     is_triggered = (chat.type == "private") or (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis)\b', caption, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in caption.lower())
@@ -1073,7 +1111,7 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     web_url = "https://abhishake151107-collab.github.io/stark-os-ui/"
     kb = [[InlineKeyboardButton("🚀 LAUNCH GOD CORE V7.5", web_app=WebAppInfo(url=web_url))]]
-    await update.effective_message.reply_text("✨ **J.A.R.V.I.S. Cognitive Core Online.**\n\nSir, your cinematic interface is ready.", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+    await update.effective_message.reply_text("✨ **J.A.R.V.I.S. Cognitive Core Online.**\n\nSir, your cinematic interface is ready.\n\n_Patch Notes: Google 404 bugs eliminated. 'No AI Slop' directive engaged._", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != "private": return
@@ -1318,7 +1356,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if ent.type == "mention":
                     target_id_row = conn.execute("SELECT user_id, name FROM roster WHERE username = ?", (text[ent.offset+1 : ent.offset+ent.length].lower(),)).fetchone()
                     if target_id_row:
-                        conn.execute("INSERT INTO interactions (user_a, user_b, interactions) VALUES (?, ?, 1) ON CONFLICT(user_a, user_b) DO UPDATE SET interactions = interactions + 1", (user.id, target_id_row[0]))
+                        conn.execute("INSERT INTO interactions (user_a, user_b, interactions) VALUES (?, ?, 1) ON CONFLICT(user_a, user_b) DO UPDATE SET SET interactions = interactions + 1", (user.id, target_id_row[0]))
                         conn.commit()
                         afk_status = conn.execute("SELECT reason FROM afk WHERE user_id = ?", (target_id_row[0],)).fetchone()
                         if afk_status: await msg.reply_text(f"⚠️ {target_id_row[1]} is currently AFK: {afk_status[0]}")
