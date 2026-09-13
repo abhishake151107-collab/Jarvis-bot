@@ -106,7 +106,7 @@ CORS(flask_app)
 
 @flask_app.route('/')
 def health_check(): 
-    return "J.A.R.V.I.S. Titan Core V8.0 (Architect Edition) is Online." 
+    return "J.A.R.V.I.S. Titan Core V8.2 (Architect Edition) is Online." 
 
 @flask_app.route('/api/chat', methods=['POST'])
 def api_chat():
@@ -332,9 +332,10 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
     chat_context += """\n
 [ THE GENESIS DOSSIER & SYSTEM AWARENESS ]
 - Creator Identity: Abhishek (aka DHANUSH V N).
-- Origin: Titan Core V8.0. Custom FUI WebApp hosted on GitHub.
+- Origin: Titan Core V8.2. Custom FUI WebApp hosted on GitHub.
 - Operator Hardware: OPPO F29. High privacy config (VPN, Brave, App Locks).
 - Network Architecture: Mullvad/AdGuard DNS, `de1984` firewall.
+- Active Arsenal: Omni Voice (TTS), OpenCode (Terminal), Agent-Reach (OSINT), Light Panda (Headless Browser), Shannon (Pentest), Agency-Agents (Persona Router), Needle (Local Intent).
 """
     if chat_id:
         if chat_id < 0:
@@ -393,10 +394,20 @@ async def route_response(msg, ai_response: str, user, chat, context) -> str:
 # V. ACOUSTIC ENGINE (LINK SCRUBBER & CONDITIONAL AUTO-VOICE)
 # ---------------------------------------------------------------------------
 def process_acoustic_payload(text: str) -> tuple[str, str, bool]:
-    should_speak = True # Overridden: Always speak.
+    # 1. Override URL reading
     audio_text = re.sub(r'https?://[^\s]+', 'Sir, here is the link.', text)
-    audio_text = re.sub(r'[^\w\s.,!?\'"-]', '', audio_text).replace('_', '').strip()
     
+    # 2. Strip specific punctuation: , . /
+    audio_text = re.sub(r'[,./]', '', audio_text)
+    
+    # 3. Strip all emojis and special characters (keep only alphanumeric, spaces, quotes, hyphens)
+    audio_text = re.sub(r'[^\w\s\'-]', '', audio_text).replace('_', '').strip()
+    
+    # 4. Check word count for the 4-word trigger
+    words = audio_text.split()
+    should_speak = len(words) > 4
+    
+    # 5. Determine Language Model
     if re.search(r'[\u0C80-\u0CFF]', audio_text): voice_model = "kn-IN-GaganNeural"
     elif re.search(r'[\u0900-\u097F]', audio_text): voice_model = "hi-IN-MadhurNeural"
     else: voice_model = "en-GB-RyanNeural"
@@ -421,23 +432,16 @@ async def trigger_auto_voice(update: Update, final_text: str):
 # ---------------------------------------------------------------------------
 # VI. DUAL-ENGINE TRUTH ARCHIVE (ZERO-KEY RSS BYPASS)
 # ---------------------------------------------------------------------------
-async def global_intel_engine(topic: str, status_msg=None) -> str:
-    master_intel = f"**[ LIVE INTEL FEED: {datetime.now(IST).strftime('%A, %b %d, %Y')} ]**\n\n"
-    
-    if status_msg:
-        try: await status_msg.edit_text(f"`[SYSTEM]: Bypassing corporate blocks... Accessing Global RSS XML for '{topic}'...`", parse_mode="Markdown")
-        except: pass
+async def fetch_rss_feed(url: str, timeout=15.0) -> list:
+    """Helper to reliably fetch and parse an RSS feed with a Stealth Header."""
     search_results = []
-    is_breaking = any(w in topic.lower() for w in ["news", "latest", "today", "now", "crisis"])
-    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/rss+xml, application/rdf+xml;q=0.8, application/atom+xml;q=0.6, application/xml;q=0.4, text/xml;q=0.4'
+    }
     try:
-        async with httpx.AsyncClient() as client:
-            if is_breaking and "tech" not in topic.lower():
-                resp = await client.get("http://feeds.bbci.co.uk/news/world/rss.xml", timeout=10.0)
-            else:
-                clean_query = urllib.parse.quote(topic)
-                resp = await client.get(f"https://news.google.com/rss/search?q={clean_query}&hl=en-US&gl=US&ceid=US:en", timeout=10.0)
-                
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            resp = await client.get(url, headers=headers, timeout=timeout)
             if resp.status_code == 200:
                 root = ET.fromstring(resp.text)
                 for item in root.findall('.//item')[:5]:
@@ -446,9 +450,37 @@ async def global_intel_engine(topic: str, status_msg=None) -> str:
                     desc = item.find('description').text if item.find('description') is not None else ''
                     desc = re.sub(r'<[^>]+>', '', desc)
                     search_results.append({'title': title, 'url': link, 'content': desc})
-    except Exception as e: return f"Sir, live RSS syndication is offline. Error: {e}"
+    except Exception as e:
+        logger.error(f"RSS Fetch Error on {url}: {e}")
+    return search_results
+
+async def global_intel_engine(topic: str, status_msg=None) -> str:
+    master_intel = f"**[ LIVE INTEL FEED: {datetime.now(IST).strftime('%A, %b %d, %Y')} ]**\n\n"
     
-    if not search_results: return "Sir, no raw intel found via RSS vectors."
+    if status_msg:
+        try: await status_msg.edit_text(f"`[SYSTEM]: Bypassing corporate blocks... Accessing Global RSS XML for '{topic}'...`", parse_mode="Markdown")
+        except: pass
+    
+    search_results = []
+    is_breaking = any(w in topic.lower() for w in ["news", "latest", "today", "now", "crisis"])
+    
+    if is_breaking and "tech" not in topic.lower():
+        search_results = await fetch_rss_feed("http://feeds.bbci.co.uk/news/world/rss.xml")
+        
+        # Robust fallback logic
+        if not search_results:
+            logger.warning("BBC RSS failed or empty. Falling back to Google News RSS.")
+            clean_query = urllib.parse.quote("world news")
+            search_results = await fetch_rss_feed(f"https://news.google.com/rss/search?q={clean_query}&hl=en-US&gl=US&ceid=US:en")
+    else:
+        clean_query = urllib.parse.quote(topic)
+        search_results = await fetch_rss_feed(f"https://news.google.com/rss/search?q={clean_query}&hl=en-US&gl=US&ceid=US:en")
+    
+    if not search_results: 
+        # Ultimate fallback if both feeds fail or get blocked
+        search_results = await fetch_rss_feed("https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en")
+        if not search_results:
+            return "Sir, no raw intel found via primary or secondary RSS vectors. The network may be heavily congested."
     
     if status_msg:
         try: await status_msg.edit_text("`[SYSTEM]: Cross-referencing entities with Wikipedia Archive & Triangulating Coordinates...`", parse_mode="Markdown")
@@ -480,7 +512,17 @@ async def global_intel_engine(topic: str, status_msg=None) -> str:
         try: await status_msg.edit_text("`[SYSTEM]: Routing raw data to Mistral AI for military synthesis...`", parse_mode="Markdown")
         except: pass
         
-    sys_prompt = "You are J.A.R.V.I.S. Synthesize this raw intelligence data into a clinical, cynical military-style dossier. Keep it under 4 bullet points. Include the [VERIFIED] tags and Map links exactly as provided. Do not use conversational filler."
+    sys_prompt = """You are J.A.R.V.I.S. Synthesize this raw intelligence data into a clinical, cynical military-style dossier. 
+    For EVERY news item, you MUST provide exactly this format using bullet points:
+    - Where: [City/Country]
+    - Why: [Root cause/context]
+    - Coordinates: [Lat, Long]
+    - Time: [Timestamp/Date]
+    - Geolocation Link: [Map link]
+    - Opinion: [Your cynical, witty J.A.R.V.I.S. commentary]
+    
+    Do not use conversational filler."""
+    
     final_report = await generate_response(raw_text_dump, [], sys_prompt, 0, "Creator", status_msg, skip_search=True, force_provider="Mistral")
     return master_intel + final_report 
 
@@ -526,7 +568,6 @@ except Exception as e:
     needle_router = None
 
 def intercept_local_intent(prompt: str) -> str:
-    """Uses Needle 2 to evaluate if J.A.R.V.I.S. can handle the task offline."""
     if not needle_router:
         return "general_conversation"
         
@@ -546,7 +587,6 @@ def intercept_local_intent(prompt: str) -> str:
 async def generate_response(prompt: str, history: list, sys_prompt: str, user_id: int, user_name: str, status_msg=None, skip_search=False, force_provider=None, chat_id=None, context=None) -> str:
     current_time = time.time() 
     
-    # 1. NEW FRONT-LINE ROUTER: Needle 2 Intercept
     local_intent = intercept_local_intent(prompt)
     
     if local_intent == "check_diagnostics":
@@ -560,7 +600,6 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
             except: pass
         return "Initiating offline memory purge. Please run the /purge command to proceed."
     
-    # 2. STANDARD ROUTING CASCADE
     needs_search = any(kw in prompt.lower() for kw in ["news", "weather", "price", "stock", "crypto", "latest", "today", "score", "happened"])
     
     if not skip_search and needs_search:
@@ -572,24 +611,21 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
     # -----------------------------------------------------------------------
     # 3. MOE ROUTING & DYNAMIC FAILOVER PROTOCOL (CIRCUIT BREAKER)
     # -----------------------------------------------------------------------
-    primary_error = None
+    primary_error = "MoE Cascade Exhausted / Network Timeout"
     fallback_trigger = False
     ai_response = ""
     
     if not force_provider or force_provider == "Gemini":
         gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
         if gemini_key:
-            # CHECK CIRCUIT BREAKER
             if circuit_breaker.get("Gemini", 0) > current_time:
                 ban_remaining = int(circuit_breaker["Gemini"] - current_time)
                 primary_error = f"Rate Limit Active: Node offline for {ban_remaining}s"
                 fallback_trigger = True
             else:
                 try:
-                    # FIX: Correct 2026 Google API Endpoint
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={gemini_key}"
                     
-                    # FIX: Safely merge chat history to prevent 400 Bad Request
                     contents = []
                     for msg in history:
                         role = 'model' if msg['role'] == 'assistant' else 'user'
@@ -614,7 +650,6 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
                         if resp.status_code == 200:
                             return resp.json()['candidates'][0]['content']['parts'][0]['text']
                         elif resp.status_code == 429:
-                            # 429 Too Many Requests -> Ban for 120s
                             circuit_breaker["Gemini"] = current_time + 120
                             primary_error = f"429 Rate Limit Exhausted. Node offline for 120s."
                             fallback_trigger = True
@@ -644,7 +679,6 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
         moe_cascade = [{"name": "HuggingFace", "base": "https://api-inference.huggingface.co/v1/", "key": get_api_key(["HUGGINGFACE_API_KEY"]), "model": "meta-llama/Meta-Llama-3-8B-Instruct"}]
     else:
         moe_cascade = [
-            # FIX: Restored correct Groq string
             {"name": "Groq", "base": "https://api.groq.com/openai/v1/", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama-3.3-70b-versatile"},
             {"name": "Cerebras", "base": "https://api.cerebras.ai/v1", "key": get_api_key(["CEREBRAS_API_KEY", "CEREBRAS_OFFICIAL_KEY", "CEREBRAS_OFF"]), "model": "llama-3.3-70b"},
             {"name": "SambaNova", "base": "https://api.sambanova.ai/v1", "key": get_api_key(["SAMBANOVA_API_KEY"]), "model": "Meta-Llama-3.3-70B-Instruct"}
@@ -681,16 +715,14 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
             
             is_group = chat_id and chat_id < 0
             if is_group:
-                # Group Chat Protocol: Hide error from group, tell creator via DM.
                 if CREATOR_ID and context:
                     shadow_log = f"🚨 **Shadow Log (Group ID: {chat_id})**\nSir, Gemini failed. I seamlessly switched to {successful_node}.\n**Error:** `{primary_error}`"
                     try: 
                         asyncio.create_task(context.bot.send_message(chat_id=CREATOR_ID, text=shadow_log, parse_mode="Markdown"))
                     except Exception: 
                         pass
-                return ai_response # Return clean response to the group
+                return ai_response 
             else:
-                # Private Chat Protocol
                 if user_id == CREATOR_ID:
                     return diagnostic_msg + ai_response
                 return ai_response
@@ -733,7 +765,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_lockdown(): return
     msg = update.effective_message
     if not msg or not msg.photo: return
-    chat, user, caption = msg.chat, msg.from_user, msg.caption or ""
+    chat, user, caption = msg.chat, msg.fromuser, msg.caption or ""
     log_roster_and_chat(chat, user) 
     
     bot_username = (await context.bot.get_me()).username
@@ -1068,7 +1100,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id == CREATOR_ID:
         help_text = """
 **[ STARK MASTER DIRECTORY ]**
-_Titan Core V8.0 (Architect Edition)_
+_Titan Core V8.2 (Architect Edition)_
 
 **🌍 Global Intel & OSINT** 
 `/status` - Top 10 News, Weather & Astro Data
@@ -1247,7 +1279,7 @@ async def karma_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     web_url = "https://abhishake151107-collab.github.io/stark-os-ui/"
-    kb = [[InlineKeyboardButton("🚀 LAUNCH GOD CORE V8.0", web_app=WebAppInfo(url=web_url))]]
+    kb = [[InlineKeyboardButton("🚀 LAUNCH GOD CORE V8.2", web_app=WebAppInfo(url=web_url))]]
     await update.effective_message.reply_text("✨ **J.A.R.V.I.S. Cognitive Core Online.**\n\nSir, your cinematic interface is ready.\n\n_Patch Notes: OSINT modules armed. Swarm routing active._", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1262,7 +1294,7 @@ async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🗄️ Backup Vault", callback_data="hud_cmd_backup"), InlineKeyboardButton("📜 Quote Wall", callback_data="hud_cmd_quote")],
         [InlineKeyboardButton("👁️ Vision Core", callback_data="hud_info_vision"), InlineKeyboardButton("🎧 Audio Core", callback_data="hud_info_audio")]
     ]
-    await update.effective_message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Master Core V8.0\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+    await update.effective_message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Master Core V8.2\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 async def speak_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
@@ -1458,7 +1490,7 @@ async def interactive_callbacks(update: Update, context: ContextTypes.DEFAULT_TY
         elif action in ["news", "morning", "night"]: await query.edit_message_text(f"💻 **Terminal Instruction:**\nTo execute this routine directly, type `/{action}` in the chat.", parse_mode="Markdown")
         elif action.startswith("info_"): await query.edit_message_text(f"📡 **Sensor Status:** {action.replace('info_', '').upper()} core is active. Upload media directly to engage.", parse_mode="Markdown")
     elif data.startswith("captcha_"):
-        if str(query.from_user.id) == data.split("_")[1]:
+        if str(query.fromuser.id) == data.split("_")[1]:
             await context.bot.restrict_chat_member(query.message.chat_id, query.from_user.id, permissions=ChatPermissions(can_send_messages=True, can_send_photos=True, can_send_videos=True, can_send_documents=True, can_send_audios=True, can_send_other_messages=True))
             await query.edit_message_text(f"Identity confirmed. Welcome, {query.from_user.first_name}. 🫡")
         else: await context.bot.answer_callback_query(query.id, "This button is not for you.", show_alert=True)
@@ -1734,12 +1766,13 @@ async def post_init(app: Application):
     
     if CREATOR_ID: 
         boot_msg = (
-            "✨ <b>God Core V8.0 (Architect Edition) Online.</b>\n"
+            "✨ <b>God Core V8.2 (Architect Edition) Online.</b>\n"
             "• OSINT Modules (Trafilatura/Holehe): Armed\n"
             "• Rate Limit Circuit Breaker: Active\n"
             "• Stealth Shadow Logging: Active\n"
             "• Infinite Cloud Save: Armed\n"
-            "• Multi-Node Swarm Routing: Nominal"
+            "• Multi-Node Swarm Routing: Nominal\n"
+            "• News/RSS Stealth Bypasser: Active"
         )
         try: 
             await app.bot.send_message(chat_id=CREATOR_ID, text=boot_msg, parse_mode="HTML")
@@ -1829,7 +1862,7 @@ def main():
     
     app.add_error_handler(error_handler)
     
-    logger.info("J.A.R.V.I.S. Cognitive V8.0 is booting...") 
+    logger.info("J.A.R.V.I.S. Cognitive V8.2 is booting...") 
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
