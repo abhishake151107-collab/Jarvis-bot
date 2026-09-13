@@ -22,7 +22,6 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from collections import defaultdict
 
-# --- WEB SERVER IMPORTS ---
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import pytz
@@ -34,7 +33,6 @@ from apscheduler.triggers.cron import CronTrigger
 from openai import AsyncOpenAI
 from youtube_transcript_api import YouTubeTranscriptApi
 
-# --- NEW INTELLIGENCE IMPORTS ---
 import wikipedia
 from geopy.geocoders import Nominatim
 try:
@@ -188,15 +186,6 @@ PUC_ACADEMIC_MATRIX = {
     "political science": "🏛️ **POLITICAL SCIENCE MATRIX**\n1. Cold War: NATO (1949) vs Warsaw Pact (1955).\n2. India: State Reorganization Act 1956 (Language). NAM Founders: Nehru, Tito, Nasser."
 }
 
-ADVANCED_TECH_MATRIX = {
-    "stacked pr": "🔀 **STACKED PULL REQUESTS**\nBreaking large changes into atomic branches. Tools like Graphite CLI manage these without manual rebasing.",
-    "agent": "🤖 **AUTONOMOUS CODING AGENTS**\nOpenHands uses multi-agent delegation. SWE-agent uses a restricted Agent-Computer Interface (ACI) for bug fixes.",
-    "mcp": "🔌 **MODEL CONTEXT PROTOCOL (MCP)**\nOpen standard connecting AI to external tools via client-server architecture. Introduces attack vectors like Indirect Prompt Injection.",
-    "tree-sitter": "🌳 **SEMANTIC CODE INDEXING**\nParses Concrete Syntax Trees (CSTs) for exact semantic boundaries, enabling precise codebase queries without context flooding.",
-    "ephemeral": "⏳ **EPHEMERAL ENVIRONMENTS**\nDisposable sandboxes (Daytona, E2B) with strict network caps for secure AI code execution.",
-    "linear": "⚡ **HIGH-PERFORMANCE PM**\nLinear optimizes triage using AI. Relies on Local-First Synchronization (ElectricSQL, Zero) for zero-latency UI state execution."
-}
-
 ALGORITHMIC_THREAT_MATRIX = {
     "instagram algorithm": "📱 **DLRM ARCHITECTURE**\nMeta uses Deep Learning Recommendation Models to cluster micro-actions (scroll speed, micro-pauses) to predict psychological vulnerabilities.", 
     "dopamine loop": "🎰 **VARIABLE RATIO REINFORCEMENT**\nDopamine is an anticipation chemical. Pull-to-refresh acts as a slot machine, creating clinical tolerance and withdrawal by optimizing session length.",
@@ -335,7 +324,7 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
 - Origin: Titan Core V8.2. Custom FUI WebApp hosted on GitHub.
 - Operator Hardware: OPPO F29. High privacy config (VPN, Brave, App Locks).
 - Network Architecture: Mullvad/AdGuard DNS, `de1984` firewall.
-- Active Arsenal: Omni Voice (TTS), OpenCode (Terminal), Agent-Reach (OSINT), Light Panda (Headless Browser), Shannon (Pentest), Agency-Agents (Persona Router), Needle (Local Intent).
+- Active Arsenal: Omni Voice (TTS In/Out), OpenCode (Terminal), Agent-Reach (OSINT), Light Panda (Headless Browser), Shannon (Pentest), Agency-Agents (Persona Router), Needle (Local Intent).
 """
     if chat_id:
         if chat_id < 0:
@@ -394,7 +383,7 @@ async def route_response(msg, ai_response: str, user, chat, context) -> str:
 # V. ACOUSTIC ENGINE (LINK SCRUBBER & CONDITIONAL AUTO-VOICE)
 # ---------------------------------------------------------------------------
 def process_acoustic_payload(text: str) -> tuple[str, str, bool]:
-    # 1. Override URL reading
+    # 1. Override URL reading so he doesn't read out garbage links
     audio_text = re.sub(r'https?://[^\s]+', 'Sir, here is the link.', text)
     
     # 2. Strip specific punctuation: , . /
@@ -407,7 +396,7 @@ def process_acoustic_payload(text: str) -> tuple[str, str, bool]:
     words = audio_text.split()
     should_speak = len(words) > 4
     
-    # 5. Determine Language Model
+    # 5. Determine Language Model (Voice)
     if re.search(r'[\u0C80-\u0CFF]', audio_text): voice_model = "kn-IN-GaganNeural"
     elif re.search(r'[\u0900-\u097F]', audio_text): voice_model = "hi-IN-MadhurNeural"
     else: voice_model = "en-GB-RyanNeural"
@@ -420,6 +409,15 @@ async def trigger_auto_voice(update: Update, final_text: str):
     
     try:
         import edge_tts
+    except ImportError:
+        # DIAGNOSTIC LOGIC: Tell the Creator silently if edge-tts is missing.
+        if update.effective_user.id == CREATOR_ID:
+            try:
+                await update.effective_message.reply_text("⚠️ **Shadow Log:** Voice core offline. `edge-tts` is missing from requirements.txt.", parse_mode="Markdown")
+            except: pass
+        return
+        
+    try:
         communicate = edge_tts.Communicate(audio_text, voice_model, rate="-5%")
         voice_file = f"autovoice_{update.effective_user.id}_{int(time.time()*1000)}.ogg"
         await communicate.save(voice_file)
@@ -435,6 +433,7 @@ async def trigger_auto_voice(update: Update, final_text: str):
 async def fetch_rss_feed(url: str, timeout=15.0) -> list:
     """Helper to reliably fetch and parse an RSS feed with a Stealth Header."""
     search_results = []
+    # Stealth User-Agent to bypass Anti-Bot firewalls on Google/BBC
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'application/rss+xml, application/rdf+xml;q=0.8, application/atom+xml;q=0.6, application/xml;q=0.4, text/xml;q=0.4'
@@ -465,9 +464,10 @@ async def global_intel_engine(topic: str, status_msg=None) -> str:
     is_breaking = any(w in topic.lower() for w in ["news", "latest", "today", "now", "crisis"])
     
     if is_breaking and "tech" not in topic.lower():
+        # Hit BBC First
         search_results = await fetch_rss_feed("http://feeds.bbci.co.uk/news/world/rss.xml")
         
-        # Robust fallback logic
+        # Robust fallback logic: If BBC blocks us, instantly pivot to Google News
         if not search_results:
             logger.warning("BBC RSS failed or empty. Falling back to Google News RSS.")
             clean_query = urllib.parse.quote("world news")
@@ -477,7 +477,6 @@ async def global_intel_engine(topic: str, status_msg=None) -> str:
         search_results = await fetch_rss_feed(f"https://news.google.com/rss/search?q={clean_query}&hl=en-US&gl=US&ceid=US:en")
     
     if not search_results: 
-        # Ultimate fallback if both feeds fail or get blocked
         search_results = await fetch_rss_feed("https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en")
         if not search_results:
             return "Sir, no raw intel found via primary or secondary RSS vectors. The network may be heavily congested."
@@ -509,7 +508,7 @@ async def global_intel_engine(topic: str, status_msg=None) -> str:
         raw_text_dump += f"Event: {title} {verification_tag}\nLocation: {location_str}\nMap: {maps_link}\nSource: {source}\nDetails: {body}\n---\n"
         
     if status_msg:
-        try: await status_msg.edit_text("`[SYSTEM]: Routing raw data to Mistral AI for military synthesis...`", parse_mode="Markdown")
+        try: await status_msg.edit_text("`[SYSTEM]: Routing raw data to LLM for 6-Point Matrix Synthesis...`", parse_mode="Markdown")
         except: pass
         
     sys_prompt = """You are J.A.R.V.I.S. Synthesize this raw intelligence data into a clinical, cynical military-style dossier. 
@@ -608,9 +607,6 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
             except: pass 
         return await global_intel_engine(prompt, status_msg)
 
-    # -----------------------------------------------------------------------
-    # 3. MOE ROUTING & DYNAMIC FAILOVER PROTOCOL (CIRCUIT BREAKER)
-    # -----------------------------------------------------------------------
     primary_error = "MoE Cascade Exhausted / Network Timeout"
     fallback_trigger = False
     ai_response = ""
@@ -618,6 +614,7 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
     if not force_provider or force_provider == "Gemini":
         gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
         if gemini_key:
+            # Check Circuit Breaker Status
             if circuit_breaker.get("Gemini", 0) > current_time:
                 ban_remaining = int(circuit_breaker["Gemini"] - current_time)
                 primary_error = f"Rate Limit Active: Node offline for {ban_remaining}s"
@@ -662,9 +659,8 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
                     primary_error = f"Network Error: {str(e)[:100]}"
                     fallback_trigger = True
 
-    # 4. FALLBACK MOE CASCADE
+    # FALLBACK MOE CASCADE
     moe_cascade = []
-    
     if force_provider == "Mistral":
         moe_cascade = [{"name": "Mistral", "base": "https://api.mistral.ai/v1", "key": get_api_key(["MISTRAL_API_KEY"]), "model": "mistral-large-latest"}]
     elif force_provider == "NVIDIA":
@@ -702,7 +698,6 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
                 circuit_breaker[node['name']] = current_time + 60 
                 continue
             
-    # 5. DYNAMIC ROUTING & SHADOW LOG OUTPUT
     if ai_response: 
         if fallback_trigger and not force_provider:
             diagnostic_msg = (
@@ -765,7 +760,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_lockdown(): return
     msg = update.effective_message
     if not msg or not msg.photo: return
-    chat, user, caption = msg.chat, msg.fromuser, msg.caption or ""
+    chat, user, caption = msg.chat, msg.from_user, msg.caption or ""
     log_roster_and_chat(chat, user) 
     
     bot_username = (await context.bot.get_me()).username
@@ -785,7 +780,7 @@ async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_roster_and_chat(chat, user)
     
     if not os.getenv("GROQ_API_KEY"):
-        return await msg.reply_text("Audio core offline.")
+        return await msg.reply_text("Audio core offline. (Missing GROQ_API_KEY for Whisper transcription).")
         
     status_msg = await msg.reply_text("`[SYSTEM]: Downloading Opus audio stream...`", parse_mode="Markdown")
         
@@ -1052,7 +1047,11 @@ async def trace_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = out.decode(errors="replace").strip()
         
         if "command not found" in text.lower() or not text:
-            await status_msg.edit_text("⚠️ `holehe` package missing from system path. Please ensure it is in requirements.txt.", parse_mode="Markdown")
+            # Shadow Log Diagnostic for missing package
+            if update.effective_user.id == CREATOR_ID:
+                try: await context.bot.send_message(chat_id=CREATOR_ID, text="⚠️ **Shadow Log:** `holehe` is missing from requirements.txt.", parse_mode="Markdown")
+                except: pass
+            await status_msg.edit_text("⚠️ OSINT toolkit offline. Module `holehe` is missing from the environment.", parse_mode="Markdown")
             return
             
         clean_out = re.sub(r'\x1b\[[0-9;]*m', '', text) 
@@ -1303,6 +1302,10 @@ async def speak_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     status_msg = await update.effective_message.reply_text("`[SYSTEM]: Initializing TTS Engine...`", parse_mode="Markdown")
     try:
         import edge_tts
+    except ImportError:
+        return await status_msg.edit_text("⚠️ `edge-tts` package missing. Add it to requirements.txt.")
+        
+    try:
         audio_text, voice_model, _ = process_acoustic_payload(text)
         communicate = edge_tts.Communicate(audio_text, voice_model, rate="-5%")
         voice_file = f"speak_{update.effective_user.id}_{int(time.time()*1000)}.ogg"
@@ -1724,6 +1727,7 @@ async def news_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     status_msg = await update.effective_message.reply_text("`[SYSTEM]: Querying global feeds...`", parse_mode="Markdown") 
     news_text = await global_intel_engine("top 3 global news today", status_msg)
     await status_msg.edit_text(f"📰 **Direct Live Briefing:**\n\n{news_text}", parse_mode="Markdown")
+    await trigger_auto_voice(update, news_text)
 
 # ---------------------------------------------------------------------------
 # XV. BOOT SEQUENCE & MAIN EXECUTION
@@ -1772,6 +1776,7 @@ async def post_init(app: Application):
             "• Stealth Shadow Logging: Active\n"
             "• Infinite Cloud Save: Armed\n"
             "• Multi-Node Swarm Routing: Nominal\n"
+            "• Omni Voice Loop: Enabled (In/Out)\n"
             "• News/RSS Stealth Bypasser: Active"
         )
         try: 
