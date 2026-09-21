@@ -104,7 +104,7 @@ CORS(flask_app)
 
 @flask_app.route('/')
 def health_check(): 
-    return "J.A.R.V.I.S. Titan Core V8.7 (Architect Edition) is Online." 
+    return "J.A.R.V.I.S. Titan Core V8.8 (Architect Edition) is Online." 
 
 @flask_app.route('/api/chat', methods=['POST'])
 def api_chat():
@@ -326,10 +326,10 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
     chat_context += """\n
 [ THE GENESIS DOSSIER & SYSTEM AWARENESS ]
 - Creator Identity: Abhishek (aka DHANUSH V N).
-- Origin: Titan Core V8.7. Custom FUI WebApp hosted on GitHub.
+- Origin: Titan Core V8.8. Custom FUI WebApp hosted on GitHub.
 - Operator Hardware: OPPO F29. High privacy config (VPN, Brave, App Locks).
 - Network Architecture: Mullvad/AdGuard DNS, `de1984` firewall.
-- Active Arsenal: Omni Voice (TTS In/Out), OpenCode (Terminal), Agent-Reach (OSINT), Light Panda (Headless Browser), Shannon (Pentest), Agency-Agents (Persona Router), Osiris (Global Intel).
+- Active Arsenal: Omni Voice (gTTS In/Out), OpenCode (Terminal), Agent-Reach (OSINT), Light Panda (Headless Browser), Shannon (Pentest), Agency-Agents (Persona Router), Osiris (Global Intel).
 """
     if chat_id:
         if chat_id < 0:
@@ -375,7 +375,7 @@ async def route_response(msg, ai_response: str, user, chat, context) -> str:
     
     if "thinking process:" in ai_response.lower() or "**analyze user input:**" in ai_response.lower():
         parts = ai_response.split('\n\n')
-        ai_response = parts[-1] if len(parts[-1]) < 300 else "Sir, I am synthesizing the latest global feeds now. Stand by."
+        ai_response = parts[-1] if len(parts[-1]) < 300 else "Synthesis complete."
     
     if "[CLASSIFIED]" in ai_response:
         clean_response = ai_response.replace("[CLASSIFIED]", "").strip()
@@ -392,58 +392,49 @@ async def route_response(msg, ai_response: str, user, chat, context) -> str:
     return ai_response
 
 # ---------------------------------------------------------------------------
-# V. ACOUSTIC ENGINE (AUTHENTIC J.A.R.V.I.S. VOICE PROTOCOL)
+# V. ACOUSTIC ENGINE (AUTHENTIC J.A.R.V.I.S. VOICE PROTOCOL - gTTS)
 # ---------------------------------------------------------------------------
 def process_acoustic_payload(text: str, chat_id: int = None) -> tuple[str, str, bool]:
-    # 1. Override URL reading
     audio_text = re.sub(r'https?://[^\s]+', 'Sir, here is the link.', text)
-    
-    # 2. Strip markdown and emojis, but KEEP basic punctuation so he can breathe
     audio_text = re.sub(r'[*_`#~]', '', audio_text)
     audio_text = re.sub(r'[^\w\s.,?!;:\'"-]', '', audio_text).strip()
     
-    # 3. Truncate massive reports so the audio generates instantly without timing out Telegram
     if len(audio_text) > 800:
-        cut_point = audio_text[:800].rfind('.')
+        cut_point = audio_text[:800].rfind(' ')
         if cut_point != -1:
-            audio_text = audio_text[:cut_point] + ". Sir, the rest of the report is rendered on your screen."
+            audio_text = audio_text[:cut_point] + "... Sir, the rest of the report is rendered on your screen."
         else:
             audio_text = audio_text[:800] + "... Sir, the rest is on your screen."
 
-    # 4. Omni Voice Routing based on Persona (Jarvis, Friday, Edith, Shannon)
     active_persona = ACTIVE_PERSONAS[chat_id] if chat_id else "jarvis"
-    if active_persona == "friday":
-        voice_model = "en-IE-EmilyNeural"
-    elif active_persona == "edith":
-        voice_model = "en-US-AriaNeural"
+    if active_persona in ["friday", "edith"]:
+        accent_tld = "com"
     elif active_persona == "shannon":
-        voice_model = "en-US-DavisNeural"
+        accent_tld = "ie"
     else:
-        voice_model = "en-GB-RyanNeural"
+        accent_tld = "co.uk"
         
     should_speak = len(audio_text) > 0
-    return audio_text, voice_model, should_speak
-
+    return audio_text, accent_tld, should_speak
 
 async def trigger_auto_voice(update: Update, final_text: str):
     if not final_text or not update.effective_message: return
     chat_id = update.effective_chat.id if update.effective_chat else None
     
-    audio_text, voice_model, should_speak = process_acoustic_payload(final_text, chat_id)
+    audio_text, accent_tld, should_speak = process_acoustic_payload(final_text, chat_id)
     if not should_speak: return
     
     try:
-        import edge_tts
+        from gtts import gTTS
     except ImportError:
         if update.effective_user.id == CREATOR_ID:
-            await update.effective_message.reply_text("⚠️ **Voice Engine Offline:** Sir, `edge-tts` is missing from Render.")
+            await update.effective_message.reply_text("⚠️ **Voice Engine Offline:** `gTTS` is missing from Render.")
         return
         
     try:
-        communicate = edge_tts.Communicate(audio_text, voice_model, rate="-5%")
-        # FIX: Save natively as mp3 so Telegram doesn't reject it
+        tts = gTTS(text=audio_text, lang='en', tld=accent_tld, slow=False)
         voice_file = f"autovoice_{update.effective_user.id}_{int(time.time()*1000)}.mp3"
-        await communicate.save(voice_file)
+        tts.save(voice_file)
         
         with open(voice_file, "rb") as f:
             await update.effective_message.reply_audio(audio=f)
@@ -512,16 +503,17 @@ async def global_intel_engine(topic: str, status_msg=None, context=None, chat_id
             
         location_str = "Global / Undefined"
         maps_link = ""
+        lat, lon = "Unavailable", "Unavailable"
         try:
             loc = geolocator.geocode(" ".join(title.split()[:2]).replace(",", ""), timeout=1) 
             if loc:
                 location_str = loc.address.split(",")[0]
+                lat, lon = str(loc.latitude), str(loc.longitude)
                 maps_link = f"https://www.google.com/maps?q={loc.latitude},{loc.longitude}"
         except: pass
         
-        raw_text_dump += f"Event: {title} {verification_tag}\nLocation: {location_str}\nMap: {maps_link}\nSource: {source}\nDetails: {body}\n---\n"
+        raw_text_dump += f"Event: {title} {verification_tag}\nLocation: {location_str}\nCoordinates: {lat}, {lon}\nTime: {datetime.now(IST).strftime('%Y-%m-%d %H:%M')}\nGeolocation Link: {maps_link}\nSource: {source}\nDetails: {body}\n---\n"
         
-    # THE 6-POINT MATRIX PROMPT
     sys_prompt = """You are J.A.R.V.I.S., integrated with the Osiris Intelligence layer.
 Synthesize this raw data into a clinical, cynical military-style dossier. 
 For EVERY single news item, you MUST provide exactly this 6-Point Matrix format using bullet points:
@@ -534,7 +526,6 @@ For EVERY single news item, you MUST provide exactly this 6-Point Matrix format 
 
 Do not cut off early. Finish the entire list."""
     
-    # Passing CREATOR_ID and force_provider=None ensures it uses the Fallback Cascade and completes
     final_report = await generate_response(raw_text_dump, [], sys_prompt, CREATOR_ID, "Abhishek", status_msg, skip_search=True, force_provider=None, chat_id=chat_id, context=context)
     return master_intel + final_report
 
@@ -637,7 +628,7 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
                     payload = {
                         "systemInstruction": {"parts": [{"text": sys_prompt}]},
                         "contents": contents,
-                        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 2500} # Increased to 2500
+                        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 2500}
                     }
                     
                     async with httpx.AsyncClient(timeout=25.0) as client:
@@ -660,11 +651,11 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
             fallback_trigger = True
             primary_error = "GEMINI_API_KEY missing from environment"
 
-    # 2. Comprehensive Fallback Cascade (All Configured Providers)
+    # 2. Comprehensive Fallback Cascade
     moe_cascade = [
         {"name": "Mistral", "base": "https://api.mistral.ai/v1", "key": get_api_key(["MISTRAL_API_KEY", "MISTRAL_KEY"]), "model": "mistral-large-latest"},
         {"name": "NVIDIA", "base": "https://integrate.api.nvidia.com/v1", "key": get_api_key(["NVIDIA_API_KEY"]), "model": "meta/llama-3.3-70b-instruct"},
-        {"name": "Cohere", "base": "https://api.cohere.com/v1", "key": get_api_key(["COHERE_API_KEY"]), "model": "command-r-plus"}, # Patched Cohere endpoint
+        {"name": "Cohere", "base": "https://api.cohere.ai/v1", "key": get_api_key(["COHERE_API_KEY"]), "model": "command-r-plus"},
         {"name": "OpenRouter", "base": "https://openrouter.ai/api/v1/", "key": get_api_key(["OPENROUTER_API_KEY", "OPENROUTER_KEY"]), "model": "openrouter/free"},
         {"name": "Groq", "base": "https://api.groq.com/openai/v1/", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama-3.3-70b-versatile"},
         {"name": "GitHub Models", "base": "https://models.inference.ai.azure.com", "key": get_api_key(["GITHUB_TOKEN", "GITHUB_PAT"]), "model": "gpt-4o-mini"},
@@ -684,7 +675,7 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
                 continue
             try:
                 client = AsyncOpenAI(base_url=node["base"], api_key=node["key"], timeout=30.0)
-                res = await client.chat.completions.create(model=node["model"], messages=full_messages, temperature=0.7, max_tokens=2500) # Increased to 2500
+                res = await client.chat.completions.create(model=node["model"], messages=full_messages, temperature=0.7, max_tokens=2500)
                 ai_response = res.choices[0].message.content
                 successful_node = node["name"]
                 break
@@ -694,7 +685,6 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
                 primary_error = f"{node['name']} failed: {str(e)[:100]}"
                 continue
             
-    # Clean output returned to conversation; technical error routed strictly to Creator DM
     if ai_response: 
         if fallback_trigger and context and CREATOR_ID:
             shadow_log = f"🚨 **Shadow Log (Chat: {chat_id or 'Direct'})**\nPrimary node failed. Auto-switched to **{successful_node}**.\n**Diagnostic:** `{primary_error}`"
@@ -704,7 +694,6 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
                 pass
         return ai_response
 
-    # Total Failure Recovery
     is_group = chat_id and chat_id < 0
     if context and CREATOR_ID:
         try: 
@@ -713,7 +702,7 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
             pass
 
     if is_group:
-        return "" # Complete stealth in groups: never leak error dumps
+        return ""
 
     if user_id == CREATOR_ID: 
         return f"Sir, I am facing technical connectivity issues across all cognitive nodes.\n\n**Diagnostic Log:** `{primary_error}`"
@@ -1067,7 +1056,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id == CREATOR_ID:
         help_text = """
 **[ STARK MASTER DIRECTORY ]**
-_Titan Core V8.7 (Architect Edition)_
+_Titan Core V8.8_
 
 **🌍 Global Intel & OSINT** 
 `/status` - Top 10 News, Weather & Astro Data
@@ -1090,33 +1079,9 @@ _Titan Core V8.7 (Architect Edition)_
 `/lockdown` - Global halt toggle
 `/cron` - Background task scheduler
 `/backup` - Vault cloud sync
-
-**🧠 Cognitive & Social**
-`/roast [name]` - Target behavioral attack
-`/tldr` - Summarize active thread
-`/shutup` - 5-min mute restriction
-`/quote`, `/confess`, `/afk`, `/task`, `/tasks`
-
-**💰 Economy & Moderation**
-`/warn`, `/stats`, `/karma`, `/gamble`, `/rob`, `/pay`
-
-**🛡️ God Mode Overrides**
-`/setname`, `/setdesc`, `/setdp`, `/pin`, `/lock`, `/unlock`, `/captcha`, `/say` 
 """
     else:
-        help_text = """
-🤖 **J.A.R.V.I.S. Command Center**
-
-**Public Commands:**
-/afk [reason] - Set away status
-/karma - Check your Dino Coins
-/gamble [amt] - Bet your coins
-/pay [amt] - Transfer coins (Reply)
-/rob - Attempt to steal coins (Reply)
-/quote - Save message to Hall of Fame (Reply)
-/calc [expr] - Calculator
-/morse [text] - Morse code translator
-"""
+        help_text = "🤖 **J.A.R.V.I.S. Command Center**"
     await update.effective_message.reply_text(help_text, parse_mode="Markdown")
 
 async def deep_research_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1236,8 +1201,8 @@ async def karma_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     web_url = "https://abhishake151107-collab.github.io/stark-os-ui/"
-    kb = [[InlineKeyboardButton("🚀 LAUNCH GOD CORE V8.7", web_app=WebAppInfo(url=web_url))]]
-    await update.effective_message.reply_text("✨ **J.A.R.V.I.S. Cognitive Core Online.**\n\nSir, your cinematic interface is ready.\n\n_Swarm routing active. Cascade unchained._", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+    kb = [[InlineKeyboardButton("🚀 LAUNCH GOD CORE V8.8", web_app=WebAppInfo(url=web_url))]]
+    await update.effective_message.reply_text("✨ **J.A.R.V.I.S. Cognitive Core Online.**\n\nSir, your cinematic interface is ready.\n\n_Swarm routing active. gTTS unblocked._", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != "private": return
@@ -1248,10 +1213,9 @@ async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🌐 Force News", callback_data="cmd_news"), InlineKeyboardButton("🎨 Generate Image", callback_data="hud_cmd_imagine")],
         [InlineKeyboardButton("☀️ Blast Morning", callback_data="cmd_morning"), InlineKeyboardButton("🌙 Blast Night", callback_data="cmd_night")],
         [InlineKeyboardButton("👥 Pull Group Intel", callback_data="hud_intel"), InlineKeyboardButton("🛡️ Toggle CAPTCHA", callback_data="hud_captcha")],
-        [InlineKeyboardButton("🗄️ Backup Vault", callback_data="hud_cmd_backup"), InlineKeyboardButton("📜 Quote Wall", callback_data="hud_cmd_quote")],
-        [InlineKeyboardButton("👁️ Vision Core", callback_data="hud_info_vision"), InlineKeyboardButton("🎧 Audio Core", callback_data="hud_info_audio")]
+        [InlineKeyboardButton("🗄️ Backup Vault", callback_data="hud_cmd_backup"), InlineKeyboardButton("📜 Quote Wall", callback_data="hud_cmd_quote")]
     ]
-    await update.effective_message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Master Core V8.7\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+    await update.effective_message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Master Core V8.8\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 async def speak_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
@@ -1726,9 +1690,9 @@ async def post_init(app: Application):
     
     if CREATOR_ID: 
         boot_msg = (
-            "✨ <b>God Core V8.7 (Architect Edition) Online.</b>\n"
+            "✨ <b>God Core V8.8 (Architect Edition) Online.</b>\n"
             "• Fallback Cascade Armed (Mistral, NVIDIA, Cohere, Groq, OpenRouter, GitHub, Cerebras, SambaNova)\n"
-            "• Omni Voice Engaged (MP3 Audio Override Active)\n"
+            "• Omni Voice Engine: gTTS Unblocked Active\n"
             "• The 6-Point Intelligence Matrix Verified\n"
             "• Multi-Agent Persona Router Engaged\n"
             "• All Lightweight SINT Sub-Modules Integrated"
@@ -1742,7 +1706,6 @@ def main():
     db_init()
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
     
-    # Core Root Commands
     app.add_handler(CommandHandler("start", start_cmd))
     app.add_handler(CommandHandler("help", help_cmd)) 
     app.add_handler(CommandHandler("exec", exec_cmd))
@@ -1750,7 +1713,6 @@ def main():
     app.add_handler(CommandHandler("update", update_cmd))
     app.add_handler(CommandHandler("sendcode", sendcode_cmd))
     
-    # OSINT & Agent Swarm
     app.add_handler(CommandHandler("persona", persona_cmd))
     app.add_handler(CommandHandler("brain", persona_cmd))
     app.add_handler(CommandHandler("trace", trace_cmd))
@@ -1759,7 +1721,6 @@ def main():
     app.add_handler(CommandHandler("shield", shield_check_cmd))
     app.add_handler(CommandHandler("research", deep_research_cmd))
     
-    # Intel & Automation
     app.add_handler(CommandHandler("status", status_cmd))
     app.add_handler(CommandHandler("intel", intel_cmd))
     app.add_handler(CommandHandler("cron", cron_cmd))
@@ -1771,13 +1732,11 @@ def main():
     app.add_handler(CommandHandler("morning", morning_cmd))
     app.add_handler(CommandHandler("night", night_cmd)) 
     
-    # Media & Synthesis
     app.add_handler(CommandHandler("speak", speak_cmd))
     app.add_handler(CommandHandler("imagine", imagine_cmd))
     app.add_handler(CommandHandler("calc", calc_cmd))
     app.add_handler(CommandHandler("morse", morse_cmd)) 
     
-    # Social, Economy & Moderation
     app.add_handler(CommandHandler("tldr", tldr_cmd))
     app.add_handler(CommandHandler("roast", roast_cmd))
     app.add_handler(CommandHandler("shutup", shutup_cmd))
@@ -1791,13 +1750,11 @@ def main():
     app.add_handler(CommandHandler("rob", rob_cmd))
     app.add_handler(CommandHandler("pay", pay_cmd))
     
-    # Task HUD & Dossiers
     app.add_handler(CommandHandler("task", add_task))
     app.add_handler(CommandHandler("tasks", list_tasks))
     app.add_handler(CommandHandler("hud", hud_cmd))
     app.add_handler(CommandHandler("groupinfo", group_info_cmd))
     
-    # Administrative Overrides
     app.add_handler(CommandHandler("setname", god_mode_cmd))
     app.add_handler(CommandHandler("setdesc", god_mode_cmd))
     app.add_handler(CommandHandler("setdp", god_mode_cmd))
@@ -1807,7 +1764,6 @@ def main():
     app.add_handler(CommandHandler("captcha", god_mode_cmd))
     app.add_handler(CommandHandler("say", god_mode_cmd))
     
-    # Ingestion Handlers
     app.add_handler(CallbackQueryHandler(interactive_callbacks))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_captcha))
     app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
@@ -1819,7 +1775,7 @@ def main():
     
     app.add_error_handler(error_handler)
     
-    logger.info("J.A.R.V.I.S. Cognitive V8.7 initialized. Starting polling...") 
+    logger.info("J.A.R.V.I.S. Cognitive V8.8 initialized. Starting polling...") 
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
