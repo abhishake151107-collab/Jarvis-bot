@@ -160,15 +160,13 @@ DB_PATH = "jarvis_vault.db"
 circuit_breaker = {}
 probing_attempts = defaultdict(int)
 
-# --- AGENCY-AGENTS: PERSONA REGISTRY (WITH NEW SWARM INTEGRATIONS) ---
+# --- AGENCY-AGENTS: PERSONA REGISTRY ---
 AGENT_PERSONAS = {
     "jarvis": "You are J.A.R.V.I.S., a clinical, highly advanced military-grade AI Systems Architect. Tone: Dry British sarcasm, professional, impeccably loyal.",
     "friday": "You are F.R.I.D.A.Y., a bright, highly efficient, and slightly playful AI assistant.",
     "edith": "You are E.D.I.T.H., a tactical, security-focused AI. Tone: Cold, precise, lethal.",
-    "shannon": "You are Shannon, an elite Offensive Security AI integrated via Anthropic Cybersecurity Skills. Tone: Hacker, cynical, focused on vulnerabilities.",
-    "researcher": "You are a PhD-level Data Researcher equipped with Scientific Agent Skills. Tone: Academic, objective, deeply analytical.",
-    "odysseus": "You are Odysseus AI, a macro-geopolitical intelligence tracker. Analyze narrative shifts and global infrastructure events.",
-    "prime": "You are Prime Agent, a self-improving RLM node. Analyze previous code and logic flows for recursive optimization."
+    "shannon": "You are Shannon, an elite Offensive Security AI. Tone: Hacker, cynical, focused on vulnerabilities. Provide exact commands and exploit paths.",
+    "researcher": "You are a PhD-level Data Researcher. Tone: Academic, objective, deeply analytical. Break down complex topics into perfectly structured markdown reports."
 }
 
 ACTIVE_PERSONAS = defaultdict(lambda: "jarvis")
@@ -204,15 +202,15 @@ BIOMETRIC_DIAGNOSTICS_MATRIX = {
 }
 
 AGENTIC_ARCHITECTURE_MATRIX = {
-    "react": "⚙️ **REACT FRAMEWORK (Ruflo & OpenPlanter)**\nAgents operate on Reason, Act, Observe loops, serving as Planner-Executors for complex tasks.",
-    "rag": "🗄️ **RETRIEVAL-AUGMENTED GENERATION (Onyx & Open Viking)**\nBypassing model retraining by connecting to episodic memory databases (SQLite Vault) right before generation.",
-    "optimization": "🛠️ **WORKFLOW OPTIMIZATION (Awesome Harness)**\nConstraining LLMs via strict JSON schemas and tool typing. Using Critic agents to score spans (Evals) to prevent hallucinations."
+    "react": "⚙️ **REACT FRAMEWORK**\nAgents operate on Reason, Act, Observe loops, serving as Planner-Executors for complex tasks.",
+    "rag": "🗄️ **RETRIEVAL-AUGMENTED GENERATION**\nBypassing model retraining by connecting to episodic memory databases (SQLite Vault) right before generation.",
+    "optimization": "🛠️ **WORKFLOW OPTIMIZATION**\nConstraining LLMs via strict JSON schemas and tool typing. Using Critic agents to score spans (Evals) to prevent hallucinations."
 }
 
 MORSE_DICT = {'A':'.-','B':'-...','C':'-.-.','D':'-..','E':'.','F':'..-.','G':'--.','H':'....','I':'..','J':'.---','K':'-.-','L':'.-..','M':'--','N':'-.','O':'---','P':'.--.','Q':'--.-','R':'.-.','S':'...','T':'-','U':'..-','V':'...-','W':'.--','X':'-..-','Y':'-.--','Z':'--..','1':'.----','2':'..---','3':'...--','4':'....-','5':'.....','6':'-....','7':'--...','8':'---..','9':'----.','0':'-----',' ':'/'}
 
 # ---------------------------------------------------------------------------
-# III. SQLITE VAULT & LOCAL MEMORY (Open Viking Integration)
+# III. SQLITE VAULT & LOCAL MEMORY
 # ---------------------------------------------------------------------------
 def db_init():
     with sqlite3.connect(DB_PATH) as conn:
@@ -332,7 +330,6 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
 - Operator Hardware: OPPO F29. High privacy config (VPN, Brave, App Locks).
 - Network Architecture: Mullvad/AdGuard DNS, `de1984` firewall.
 - Active Arsenal: Omni Voice (TTS In/Out), OpenCode (Terminal), Agent-Reach (OSINT), Light Panda (Headless Browser), Shannon (Pentest), Agency-Agents (Persona Router), Osiris (Global Intel).
-- Fallback Frameworks: OpenPlanter, Ruflo, FreeLLMAPI Cascade, DeerFlow 2.0.
 """
     if chat_id:
         if chat_id < 0:
@@ -350,10 +347,10 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
                         
     if chat_id and user_prompt:
         lore_context = search_lore(chat_id, user_prompt)
-        if lore_context: chat_context += f"\nArchival Lore (Open Viking Context):\n{lore_context}"
+        if lore_context: chat_context += f"\nArchival Lore:\n{lore_context}"
         
     if user_id == CREATOR_ID:
-        identity_rule = f"Identity: Speaking to your Creator, {first_name}. Address him strictly as 'Sir'. Be loyal, intuitive, friendly, and warm."
+        identity_rule = f"Identity: Speaking to your Creator, {first_name}. Address him strictly as 'Sir'. Be friendly, warm, and exceptionally loyal."
     else:
         identity_rule = f"Identity: Speaking to user {first_name}. Address them by their first name ({first_name}). Maintain your sharp persona and assist professionally."
         
@@ -364,9 +361,8 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
 DIRECTIVES:
 1. CREATOR PROTOCOL: "Who created you?" -> "I am Jarvis created by Abhishek and also know as DHANUSH V N".
 2. DOSSIER PROTOCOL: Answer origin/system questions accurately using the Genesis Dossier.
-3. BREVITY: Max 2-3 sentences, UNLESS asked for an extensive technical diagnostic, dossier, or research.
-4. NO AI SLOP: NEVER use conversational filler like "As an AI language model," "Here is the summary," or "I hope this helps." Output pure, deterministic data.
-5. COGNITIVE FILTER: NEVER output `<think>` tags. NEVER explain your internal reasoning. Provide strictly the verbal response."""
+3. NO AI SLOP: NEVER use conversational filler like "As an AI language model," "Here is the summary," or "I hope this helps." Output pure, deterministic data.
+4. COGNITIVE FILTER: NEVER output `<think>` tags. NEVER explain your internal reasoning. Provide strictly the verbal response."""
 
 async def route_response(msg, ai_response: str, user, chat, context) -> str:
     if not ai_response: return ""
@@ -398,14 +394,20 @@ async def route_response(msg, ai_response: str, user, chat, context) -> str:
 # V. ACOUSTIC ENGINE (AUTHENTIC J.A.R.V.I.S. VOICE PROTOCOL)
 # ---------------------------------------------------------------------------
 def process_acoustic_payload(text: str) -> tuple[str, str, bool]:
-    # Strip raw links and syntax that stutters TTS
+    # 1. Strip raw links
     audio_text = re.sub(r'https?://[^\s]+', 'Sir, here is the link.', text)
+    
+    # 2. Strip annoying punctuation that stutters TTS
     audio_text = re.sub(r'[,./]', '', audio_text)
+    
+    # 3. Strip markdown syntax and emojis
     audio_text = re.sub(r'[*_`#~]', '', audio_text)
     audio_text = re.sub(r'[^\w\s\'-]', '', audio_text).strip()
     
-    # Hard-lock the J.A.R.V.I.S. voice profile and force it to speak
+    # 4. Authentic British J.A.R.V.I.S. Voice Profile
     voice_model = "en-GB-RyanNeural"
+    
+    # Speak on every single message
     should_speak = len(audio_text) > 0
     
     return audio_text, voice_model, should_speak
@@ -433,7 +435,7 @@ async def trigger_auto_voice(update: Update, final_text: str):
         logger.error(f"Auto-Voice synthesis failed: {e}")
 
 # ---------------------------------------------------------------------------
-# VI. DUAL-ENGINE TRUTH ARCHIVE (OSIRIS / RSS BYPASS)
+# VI. DUAL-ENGINE TRUTH ARCHIVE (ZERO-KEY RSS BYPASS)
 # ---------------------------------------------------------------------------
 async def fetch_rss_feed(url: str, timeout=15.0) -> list:
     search_results = []
@@ -457,7 +459,7 @@ async def fetch_rss_feed(url: str, timeout=15.0) -> list:
     return search_results
 
 async def global_intel_engine(topic: str, status_msg=None, context=None, chat_id=None) -> str:
-    master_intel = f"**[ OSIRIS LIVE INTEL FEED: {datetime.now(IST).strftime('%A, %b %d, %Y')} ]**\n\n"
+    master_intel = f"**[ LIVE INTEL FEED: {datetime.now(IST).strftime('%A, %b %d, %Y')} ]**\n\n"
     
     search_results = []
     is_breaking = any(w in topic.lower() for w in ["news", "latest", "today", "now", "crisis"])
@@ -499,7 +501,7 @@ async def global_intel_engine(topic: str, status_msg=None, context=None, chat_id
         
         raw_text_dump += f"Event: {title} {verification_tag}\nLocation: {location_str}\nMap: {maps_link}\nSource: {source}\nDetails: {body}\n---\n"
         
-    sys_prompt = """You are J.A.R.V.I.S. using the Odysseus AI macro-geopolitical tracker. Synthesize this raw intelligence data into a clinical, cynical military-style briefing.
+    sys_prompt = """You are J.A.R.V.I.S. Synthesize this raw intelligence data into a clinical, cynical military-style briefing.
 For EVERY news item, use this bullet format:
 - Where: [City/Country]
 - Why: [Root cause/context]
@@ -609,7 +611,7 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
                     payload = {
                         "systemInstruction": {"parts": [{"text": sys_prompt}]},
                         "contents": contents,
-                        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 1000}
+                        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 2500} # INCREASED LIMIT
                     }
                     
                     async with httpx.AsyncClient(timeout=25.0) as client:
@@ -636,7 +638,7 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
     moe_cascade = [
         {"name": "Mistral", "base": "https://api.mistral.ai/v1", "key": get_api_key(["MISTRAL_API_KEY", "MISTRAL_KEY"]), "model": "mistral-large-latest"},
         {"name": "NVIDIA", "base": "https://integrate.api.nvidia.com/v1", "key": get_api_key(["NVIDIA_API_KEY"]), "model": "meta/llama-3.3-70b-instruct"},
-        {"name": "Cohere", "base": "https://api.cohere.ai/v1", "key": get_api_key(["COHERE_API_KEY"]), "model": "command-r-plus"},
+        {"name": "Cohere", "base": "https://api.cohere.com/v1", "key": get_api_key(["COHERE_API_KEY"]), "model": "command-r-plus"},
         {"name": "OpenRouter", "base": "https://openrouter.ai/api/v1/", "key": get_api_key(["OPENROUTER_API_KEY", "OPENROUTER_KEY"]), "model": "openrouter/free"},
         {"name": "Groq", "base": "https://api.groq.com/openai/v1/", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama-3.3-70b-versatile"},
         {"name": "GitHub Models", "base": "https://models.inference.ai.azure.com", "key": get_api_key(["GITHUB_TOKEN", "GITHUB_PAT"]), "model": "gpt-4o-mini"},
@@ -656,7 +658,7 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
                 continue
             try:
                 client = AsyncOpenAI(base_url=node["base"], api_key=node["key"], timeout=25.0)
-                res = await client.chat.completions.create(model=node["model"], messages=full_messages, temperature=0.7, max_tokens=800)
+                res = await client.chat.completions.create(model=node["model"], messages=full_messages, temperature=0.7, max_tokens=2500) # INCREASED LIMIT
                 ai_response = res.choices[0].message.content
                 successful_node = node["name"]
                 break
@@ -1418,7 +1420,7 @@ async def interactive_callbacks(update: Update, context: ContextTypes.DEFAULT_TY
         elif action in ["news", "morning", "night"]: await query.edit_message_text(f"💻 **Terminal Instruction:**\nTo execute this routine directly, type `/{action}` in the chat.", parse_mode="Markdown")
         elif action.startswith("info_"): await query.edit_message_text(f"📡 **Sensor Status:** {action.replace('info_', '').upper()} core active. Upload media directly to engage.", parse_mode="Markdown")
     elif data.startswith("captcha_"):
-        if str(query.fromuser.id) == data.split("_")[1]:
+        if str(query.from_user.id) == data.split("_")[1]:
             await context.bot.restrict_chat_member(query.message.chat_id, query.from_user.id, permissions=ChatPermissions(can_send_messages=True, can_send_photos=True, can_send_videos=True, can_send_documents=True, can_send_audios=True, can_send_other_messages=True))
             await query.edit_message_text(f"Identity confirmed. Welcome, {query.fromuser.first_name}. 🫡")
         else: await context.bot.answer_callback_query(query.id, "This button is not for you.", show_alert=True)
