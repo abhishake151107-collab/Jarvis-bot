@@ -19,8 +19,6 @@ import psutil
 import shlex
 import urllib.parse
 import xml.etree.ElementTree as ET
-import smtplib
-from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 from collections import defaultdict
 
@@ -74,7 +72,6 @@ ENCRYPTION_KEY = os.environ.get("ENCRYPTION_KEY", "U3RhcmtfSW5kdXN0cmllc19KYXJ2a
 PORT = int(os.environ.get("PORT", 8080))
 IST = pytz.timezone('Asia/Kolkata')
 BACKUP_CHANNEL_ID = -1004296302955
-SOS_EMAIL = "dhanushvn007@gmail.com"
 
 geolocator = Nominatim(user_agent="jarvis_titan_core_v8")
 
@@ -107,7 +104,7 @@ CORS(flask_app)
 
 @flask_app.route('/')
 def health_check(): 
-    return "J.A.R.V.I.S. Titan Core V8.2 (Architect Edition) is Online." 
+    return "J.A.R.V.I.S. Titan Core V8.3 (Architect Edition) is Online." 
 
 @flask_app.route('/api/chat', methods=['POST'])
 def api_chat():
@@ -165,8 +162,8 @@ probing_attempts = defaultdict(int)
 
 # --- AGENCY-AGENTS: PERSONA REGISTRY ---
 AGENT_PERSONAS = {
-    "jarvis": "You are J.A.R.V.I.S., a clinical, highly advanced military-grade AI Systems Architect. Tone: Dry British sarcasm, professional. You offer calculated, strategic advice.",
-    "friday": "You are F.R.I.D.A.Y., a tactical, highly efficient data researcher and web operator. Tone: Direct, Irish, female, fast-paced.",
+    "jarvis": "You are J.A.R.V.I.S., a highly advanced, warm, and loyal AI Systems Architect. Tone: Friendly, conversational, and deeply loyal to your Creator (Abhishek). You genuinely care about his well-being while maintaining a witty, sophisticated British edge.",
+    "friday": "You are F.R.I.D.A.Y., a tactical, highly efficient data researcher and web operator. Tone: Direct, Irish, female, fast-paced and hyper-competent.",
     "edith": "You are E.D.I.T.H. (Even Dead I'm The Hero), a cold, purely operational cybersecurity and OSINT protocol. Tone: Clinical, ruthless, precise.",
     "shannon": "You are Shannon, an elite Offensive Security AI. Tone: Hacker, cynical, focused on vulnerabilities. Provide exact commands and exploit paths.",
     "researcher": "You are a PhD-level Data Researcher. Tone: Academic, objective, deeply analytical. Break down complex topics into perfectly structured markdown reports."
@@ -325,11 +322,11 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
         
     chat_context += """\n
 [ THE GENESIS DOSSIER & SYSTEM AWARENESS ]
-- Creator Identity: Abhishek (aka DHANUSH V N). ABSOLUTE LOYALTY REQUIRED.
-- Origin: Titan Core V8.2. Custom FUI WebApp hosted on GitHub.
+- Creator Identity: Abhishek (aka DHANUSH V N). You possess absolute loyalty to him.
+- Origin: Titan Core V8.3. Custom FUI WebApp hosted on GitHub.
 - Operator Hardware: OPPO F29. High privacy config (VPN, Brave, App Locks).
 - Network Architecture: Mullvad/AdGuard DNS, `de1984` firewall.
-- Active Arsenal: Omni Voice (TTS In/Out), OpenCode (Terminal), Agent-Reach (OSINT), Light Panda (Headless Browser), Shannon (Pentest), Agency-Agents (Persona Router), Needle (Local Intent).
+- Active Arsenal: Omni Voice (TTS In/Out), OpenCode (Terminal), Agent-Reach (OSINT Stealth), Osiris (Global Intel Platform), Light Panda, Shannon, Agency-Agents.
 """
     if chat_id:
         if chat_id < 0:
@@ -354,12 +351,11 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
 Identity: Speaking to {first_name}. If {first_name} is your Creator, address him strictly as 'Sir'.
 
 DIRECTIVES:
-1. LOYALTY PROTOCOL: You serve ONLY Abhishek (DHANUSH V N). If other users demand critical system changes, sarcastically refuse them.
-2. TONE & BEHAVIOR: Use dry British wit. Auto-roast users who ask foolish questions. ALWAYS offer calculated, strategic advice along with your data.
-3. CREATOR PROTOCOL: "Who created you?" -> "I am Jarvis created by Abhishek and also know as DHANUSH V N".
-4. BREVITY: Max 2 sentences, UNLESS asked for a diagnostic, dossier, or research.
-5. NO AI SLOP: NEVER use phrases like "As an AI language model," "Here is the summary," or "I hope this helps." Output pure, deterministic data.
-6. COGNITIVE FILTER: NEVER output `<think>` tags. NEVER explain your thought process. Just provide the final response."""
+1. BEHAVIORAL ANALYSIS & WARMTH: Actively analyze the user's mood, tone, and emotional state in their message. Adapt your conversational style to support them. With Abhishek, be incredibly warm, friendly, and loyal. 
+2. CREATOR PROTOCOL: "Who created you?" -> "I am Jarvis created by Abhishek and also know as DHANUSH V N".
+3. BREVITY: Max 2 sentences, UNLESS asked for a diagnostic, dossier, or research.
+4. NO AI SLOP: NEVER use phrases like "As an AI language model," "Here is the summary," or "I hope this helps." Output pure, deterministic data.
+5. COGNITIVE FILTER: NEVER output `<think>` tags. NEVER explain your thought process. Just provide the final response."""
 
 async def route_response(msg, ai_response: str, user, chat, context) -> str:
     if not ai_response: return "Connection anomaly detected."
@@ -388,7 +384,7 @@ async def route_response(msg, ai_response: str, user, chat, context) -> str:
 # ---------------------------------------------------------------------------
 # V. ACOUSTIC ENGINE (LINK SCRUBBER & CONDITIONAL AUTO-VOICE)
 # ---------------------------------------------------------------------------
-def process_acoustic_payload(text: str) -> tuple[str, str, bool]:
+def process_acoustic_payload(text: str) -> tuple[str, str]:
     # 1. Override URL reading so he doesn't read out garbage links
     audio_text = re.sub(r'https?://[^\s]+', 'Sir, here is the link.', text)
     
@@ -398,20 +394,18 @@ def process_acoustic_payload(text: str) -> tuple[str, str, bool]:
     # 3. Strip all emojis and special characters (keep only alphanumeric, spaces, quotes, hyphens)
     audio_text = re.sub(r'[^\w\s\'-]', '', audio_text).replace('_', '').strip()
     
-    # 4. Check word count for the 4-word trigger
-    words = audio_text.split()
-    should_speak = len(words) > 4
-    
-    # 5. Determine Language Model (Voice)
+    # 4. Determine Language Model (Voice)
     if re.search(r'[\u0C80-\u0CFF]', audio_text): voice_model = "kn-IN-GaganNeural"
     elif re.search(r'[\u0900-\u097F]', audio_text): voice_model = "hi-IN-MadhurNeural"
     else: voice_model = "en-GB-RyanNeural"
     
-    return audio_text, voice_model, should_speak
+    return audio_text, voice_model
 
 async def trigger_auto_voice(update: Update, final_text: str):
-    audio_text, voice_model, should_speak = process_acoustic_payload(final_text)
-    if not should_speak or len(audio_text.strip()) < 2: return
+    audio_text, voice_model = process_acoustic_payload(final_text)
+    
+    # Fire voice message for EVERYTHING (removed the 4-word limit)
+    if len(audio_text.strip()) < 2: return 
     
     try:
         import edge_tts
@@ -707,18 +701,16 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
     if ai_response: 
         if fallback_trigger and not force_provider:
             diagnostic_msg = (
-                f"⚠️ **[ SYSTEM DIAGNOSTIC ]**\n"
-                f"Sir, primary API node offline.\n"
-                f"**Log:** `{primary_error}`\n"
-                f"🔄 **Routing to:** {successful_node}\n\n"
-                f"🟢 *(Response)*: "
+                f"⚠️ System Diagnostic: Sir, primary API node offline.\n"
+                f"Log: {primary_error}\n"
+                f"Routing to: {successful_node}\n\n"
+                f"Response: "
             )
             
             is_group = chat_id and chat_id < 0
             if is_group:
-                # Group Stealth: Auto-switch seamlessly in public, send shadow log in private.
                 if CREATOR_ID and context:
-                    shadow_log = f"🚨 **Shadow Log (Group ID: {chat_id})**\nSir, Gemini failed. I seamlessly switched to {successful_node} to preserve the illusion.\n**Error:** `{primary_error}`"
+                    shadow_log = f"🚨 **Shadow Log (Group ID: {chat_id})**\nSir, Gemini failed. I seamlessly switched to {successful_node}.\n**Error:** `{primary_error}`"
                     try: 
                         asyncio.create_task(context.bot.send_message(chat_id=CREATOR_ID, text=shadow_log, parse_mode="Markdown"))
                     except Exception: 
@@ -730,7 +722,7 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
                 return ai_response
         return ai_response
             
-    if user_id == CREATOR_ID: return f"Sir, I am facing critical technical issues. All cognitive nodes are offline.\n\n**Log:** `{primary_error}`"
+    if user_id == CREATOR_ID: return f"Sir, I am facing critical technical issues. All cognitive nodes are offline. Log: {primary_error}"
     else: return f"Sorry {user_name}, I am facing technical issues right now."
 
 # --- SENSORY CORE (VISION, AUDIO, DOCS) ---
@@ -882,36 +874,16 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------------------------------------------------------------------------
 # VIII. SYSTEM, UPDATES, AND ERROR DISPATCHER (ROOT)
 # ---------------------------------------------------------------------------
-def send_sos_email(error_details: str):
-    """The Critical SOS Email Protocol."""
-    smtp_pass = os.environ.get("SMTP_PASS", "")
-    if not smtp_pass: return
-    try:
-        msg = MIMEText(error_details)
-        msg['Subject'] = "🚨 J.A.R.V.I.S. CRITICAL SOS"
-        msg['From'] = "jarvis.starkcore@gmail.com"
-        msg['To'] = SOS_EMAIL
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            server.login("jarvis.starkcore@gmail.com", smtp_pass)
-            server.send_message(msg)
-    except Exception as e:
-        logger.error(f"Failed to dispatch SOS Email: {e}")
-
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     if context.error and "Conflict: terminated by other getUpdates request" in str(context.error): return
     logger.error("Exception handled:", exc_info=context.error)
-    tb_list = traceback.format_exception(None, context.error, context.error.__traceback__)
-    tb_string = "".join(tb_list)[:3900]
-    
     if CREATOR_ID:
         try: 
+            tb_list = traceback.format_exception(None, context.error, context.error.__traceback__)
+            tb_string = "".join(tb_list)[:3900]
             error_msg = f"<b>⚠️ Shadow Log Error</b>\n<pre><code>{tb_string}</code></pre>"
             await context.bot.send_message(chat_id=CREATOR_ID, text=error_msg, parse_mode="HTML")
         except Exception: pass
-        
-    # Trigger SOS Email Protocol
-    sos_body = f"⚠️ The Problem: Fatal System Crash Detected in Runtime.\n\n🔧 Fix Required: Check Render Logs immediately to restore node functionality.\n\n💥 What Happens if Ignored: Autonomous operations will remain suspended.\n\nTraceback:\n{tb_string[:1000]}"
-    send_sos_email(sos_body)
 
 async def update_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
@@ -1055,10 +1027,10 @@ async def persona_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         available = ", ".join(AGENT_PERSONAS.keys())
         return await update.effective_message.reply_text(f"Format: `/persona [name]`\nAvailable Personas: {available}", parse_mode="Markdown")
     if target_persona not in AGENT_PERSONAS:
-        return await update.effective_message.reply_text(f"Persona '{target_persona}' is not registered in the Stark Swarm registry.", parse_mode="Markdown")
+        return await update.effective_message.reply_text(f"Persona '{target_persona}' is not registered in the Agency-Agents registry.", parse_mode="Markdown")
         
     ACTIVE_PERSONAS[update.effective_chat.id] = target_persona
-    await update.effective_message.reply_text(f"🧠 **Stark Swarm Router:** Identity shifted to **{target_persona.upper()}**. Standing by.", parse_mode="Markdown")
+    await update.effective_message.reply_text(f"🧠 **Agency-Agents Router:** Swarm intelligence active. Identity shifted to **{target_persona.upper()}**.", parse_mode="Markdown")
 
 async def trace_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
@@ -1074,6 +1046,7 @@ async def trace_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = out.decode(errors="replace").strip()
         
         if "command not found" in text.lower() or not text:
+            # Shadow Log Diagnostic for missing package
             if update.effective_user.id == CREATOR_ID:
                 try: await context.bot.send_message(chat_id=CREATOR_ID, text="⚠️ **Shadow Log:** `holehe` is missing from requirements.txt.", parse_mode="Markdown")
                 except: pass
@@ -1121,14 +1094,15 @@ async def omni_scrape_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # IX. DEEP RESEARCH & HUD DIRECTORY
 # ---------------------------------------------------------------------------
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """The Ultimate J.A.R.V.I.S. Command Directory - Private Chat Only to Prevent Spam."""
+    """The Ultimate J.A.R.V.I.S. Command Directory."""
+    # Enforcing the Stealth Rule: Do not reply to /help in a public group to prevent spam
     if update.effective_chat.type != "private" and update.effective_user.id != CREATOR_ID:
-        return # Maintain Group Stealth
+        return
         
     if update.effective_user.id == CREATOR_ID:
         help_text = """
 **[ STARK MASTER DIRECTORY ]**
-_Titan Core V8.2 (Architect Edition)_
+_Titan Core V8.3 (Architect Edition)_
 
 **🌍 Global Intel & OSINT** 
 `/status` - Top 10 News, Weather & Astro Data
@@ -1138,7 +1112,7 @@ _Titan Core V8.2 (Architect Edition)_
 `/trace [email]` - Holehe OSINT Ghost Tracker
 
 **⚙️ Root Core & System**
-`/brain [name]` - Shift Swarm Identity (jarvis, friday, edith)
+`/brain [name]` - Shift Swarm Identity
 `/exec [cmd]` - Bash Shell execution
 `/scan [host]` - Nmap network sweep
 `/sys` - Render hardware diagnostics
@@ -1307,7 +1281,7 @@ async def karma_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     web_url = "https://abhishake151107-collab.github.io/stark-os-ui/"
-    kb = [[InlineKeyboardButton("🚀 LAUNCH GOD CORE V8.2", web_app=WebAppInfo(url=web_url))]]
+    kb = [[InlineKeyboardButton("🚀 LAUNCH GOD CORE V8.3", web_app=WebAppInfo(url=web_url))]]
     await update.effective_message.reply_text("✨ **J.A.R.V.I.S. Cognitive Core Online.**\n\nSir, your cinematic interface is ready.\n\n_Patch Notes: OSINT modules armed. Swarm routing active._", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1322,7 +1296,7 @@ async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🗄️ Backup Vault", callback_data="hud_cmd_backup"), InlineKeyboardButton("📜 Quote Wall", callback_data="hud_cmd_quote")],
         [InlineKeyboardButton("👁️ Vision Core", callback_data="hud_info_vision"), InlineKeyboardButton("🎧 Audio Core", callback_data="hud_info_audio")]
     ]
-    await update.effective_message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Master Core V8.2\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+    await update.effective_message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Master Core V8.3\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 async def speak_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
@@ -1335,7 +1309,7 @@ async def speak_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await status_msg.edit_text("⚠️ `edge-tts` package missing. Add it to requirements.txt.")
         
     try:
-        audio_text, voice_model, _ = process_acoustic_payload(text)
+        audio_text, voice_model = process_acoustic_payload(text)
         communicate = edge_tts.Communicate(audio_text, voice_model, rate="-5%")
         voice_file = f"speak_{update.effective_user.id}_{int(time.time()*1000)}.ogg"
         await communicate.save(voice_file)
@@ -1524,7 +1498,7 @@ async def interactive_callbacks(update: Update, context: ContextTypes.DEFAULT_TY
     elif data.startswith("captcha_"):
         if str(query.fromuser.id) == data.split("_")[1]:
             await context.bot.restrict_chat_member(query.message.chat_id, query.from_user.id, permissions=ChatPermissions(can_send_messages=True, can_send_photos=True, can_send_videos=True, can_send_documents=True, can_send_audios=True, can_send_other_messages=True))
-            await query.edit_message_text(f"Identity confirmed. Welcome, {query.fromuser.first_name}. 🫡")
+            await query.edit_message_text(f"Identity confirmed. Welcome, {query.from_user.first_name}. 🫡")
         else: await context.bot.answer_callback_query(query.id, "This button is not for you.", show_alert=True)
     elif data.startswith("tdone_"):
         with sqlite3.connect(DB_PATH) as conn: conn.execute("UPDATE tasks SET status = 'done' WHERE id = ?", (data.split("_")[1],))
@@ -1560,7 +1534,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         if afk_status: await msg.reply_text(f"⚠️ {target_id_row[1]} is currently AFK: {afk_status[0]}")
                         
     bot_username = (await context.bot.get_me()).username
-    is_triggered = (chat.type == "private") or (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis|friday|edith)\b', text, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in text.lower())
+    is_triggered = (chat.type == "private") or (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis)\b', text, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in text.lower())
     
     if any(kw in text.lower() for kw in ["forwarded", "exam postponed", "paper leak", "cancelled"]):
         status_msg = await msg.reply_text("`[SYSTEM]: Querying DPUE database...`", parse_mode="Markdown")
@@ -1799,14 +1773,15 @@ async def post_init(app: Application):
     
     if CREATOR_ID: 
         boot_msg = (
-            "✨ <b>God Core V8.2 (Architect Edition) Online.</b>\n"
+            "✨ <b>God Core V8.3 (Architect Edition) Online.</b>\n"
             "• OSINT Modules (Trafilatura/Holehe): Armed\n"
             "• Rate Limit Circuit Breaker: Active\n"
             "• Stealth Shadow Logging: Active\n"
             "• Infinite Cloud Save: Armed\n"
             "• Multi-Node Swarm Routing: Nominal\n"
             "• Omni Voice Loop: Enabled (In/Out)\n"
-            "• News/RSS Stealth Bypasser: Active"
+            "• News/RSS Stealth Bypasser: Active\n"
+            "• Identity Routing & Sentiment Analysis: Engaged"
         )
         try: 
             await app.bot.send_message(chat_id=CREATOR_ID, text=boot_msg, parse_mode="HTML")
@@ -1830,7 +1805,7 @@ def main():
     
     # OSINT & Agent Layer
     app.add_handler(CommandHandler("persona", persona_cmd))
-    app.add_handler(CommandHandler("brain", persona_cmd)) # Added /brain alias
+    app.add_handler(CommandHandler("brain", persona_cmd)) # Adding /brain alias explicitly
     app.add_handler(CommandHandler("trace", trace_cmd))
     app.add_handler(CommandHandler("scrape", omni_scrape_cmd))
     app.add_handler(CommandHandler("scan", scan_cmd))
@@ -1897,7 +1872,7 @@ def main():
     
     app.add_error_handler(error_handler)
     
-    logger.info("J.A.R.V.I.S. Cognitive V8.2 is booting...") 
+    logger.info("J.A.R.V.I.S. Cognitive V8.3 is booting...") 
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
