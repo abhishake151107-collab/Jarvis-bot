@@ -330,6 +330,7 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
 - Operator Hardware: OPPO F29. High privacy config (VPN, Brave, App Locks).
 - Network Architecture: Mullvad/AdGuard DNS, `de1984` firewall.
 - Active Arsenal: Omni Voice (TTS In/Out), OpenCode (Terminal), Agent-Reach (OSINT), Light Panda (Headless Browser), Shannon (Pentest), Agency-Agents (Persona Router), Osiris (Global Intel).
+- Note: Osiris grants you real-time access to global tracking, geospatial mapping, and threat intel.
 """
     if chat_id:
         if chat_id < 0:
@@ -391,30 +392,36 @@ async def route_response(msg, ai_response: str, user, chat, context) -> str:
     return ai_response
 
 # ---------------------------------------------------------------------------
-# V. ACOUSTIC ENGINE (AUTHENTIC J.A.R.V.I.S. VOICE PROTOCOL)
+# V. ACOUSTIC ENGINE (DYNAMIC OMNI VOICE PROTOCOL)
 # ---------------------------------------------------------------------------
-def process_acoustic_payload(text: str) -> tuple[str, str, bool]:
-    # 1. Strip raw links
+def process_acoustic_payload(text: str, chat_id: int = None) -> tuple[str, str, bool]:
+    # 1. Strip raw links and syntax
     audio_text = re.sub(r'https?://[^\s]+', 'Sir, here is the link.', text)
-    
-    # 2. Strip annoying punctuation that stutters TTS
     audio_text = re.sub(r'[,./]', '', audio_text)
-    
-    # 3. Strip markdown syntax and emojis
     audio_text = re.sub(r'[*_`#~]', '', audio_text)
     audio_text = re.sub(r'[^\w\s\'-]', '', audio_text).strip()
     
-    # 4. Authentic British J.A.R.V.I.S. Voice Profile
-    voice_model = "en-GB-RyanNeural"
+    # 2. Dynamic Omni Voice Routing based on Persona
+    active_persona = ACTIVE_PERSONAS[chat_id] if chat_id else "jarvis"
     
-    # Speak on every single message
+    if active_persona == "friday":
+        voice_model = "en-IE-EmilyNeural"  # Bright, efficient female voice
+    elif active_persona == "edith":
+        voice_model = "en-US-AriaNeural"   # Crisp, authoritative female voice
+    elif active_persona == "shannon":
+        voice_model = "en-US-DavisNeural"  # Sharp, cynical male voice
+    else:
+        voice_model = "en-GB-RyanNeural"   # Default J.A.R.V.I.S. male British
+    
     should_speak = len(audio_text) > 0
     
     return audio_text, voice_model, should_speak
 
 async def trigger_auto_voice(update: Update, final_text: str):
     if not final_text or not update.effective_message: return
-    audio_text, voice_model, should_speak = process_acoustic_payload(final_text)
+    chat_id = update.effective_chat.id if update.effective_chat else None
+    
+    audio_text, voice_model, should_speak = process_acoustic_payload(final_text, chat_id)
     if not should_speak: return
     
     try:
@@ -435,7 +442,7 @@ async def trigger_auto_voice(update: Update, final_text: str):
         logger.error(f"Auto-Voice synthesis failed: {e}")
 
 # ---------------------------------------------------------------------------
-# VI. DUAL-ENGINE TRUTH ARCHIVE (ZERO-KEY RSS BYPASS)
+# VI. DUAL-ENGINE TRUTH ARCHIVE & THE 6-POINT OSIRIS MATRIX
 # ---------------------------------------------------------------------------
 async def fetch_rss_feed(url: str, timeout=15.0) -> list:
     search_results = []
@@ -501,13 +508,18 @@ async def global_intel_engine(topic: str, status_msg=None, context=None, chat_id
         
         raw_text_dump += f"Event: {title} {verification_tag}\nLocation: {location_str}\nMap: {maps_link}\nSource: {source}\nDetails: {body}\n---\n"
         
-    sys_prompt = """You are J.A.R.V.I.S. Synthesize this raw intelligence data into a clinical, cynical military-style briefing.
-For EVERY news item, use this bullet format:
+    # THE 6-POINT OSIRIS MATRIX PROMPT
+    sys_prompt = """You are J.A.R.V.I.S., integrated with the Osiris Global Intelligence layer. 
+Synthesize this raw data into a clinical, cynical military-style dossier. 
+For EVERY single news item, you MUST provide exactly this 6-Point Matrix format using bullet points:
 - Where: [City/Country]
 - Why: [Root cause/context]
-- Opinion: [Your dry British commentary]
+- Coordinates: [Approximate Lat, Long]
+- Time: [Timestamp/Date]
+- Geolocation Link: [Map link provided, or state unavailable]
+- Opinion: [Your cynical, witty J.A.R.V.I.S. commentary]
 
-Keep it concise and sharp."""
+Keep it concise and do not use conversational filler."""
     
     final_report = await generate_response(raw_text_dump, [], sys_prompt, CREATOR_ID, "Abhishek", status_msg, skip_search=True, force_provider=None, chat_id=chat_id, context=context)
     return master_intel + final_report
@@ -611,7 +623,8 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
                     payload = {
                         "systemInstruction": {"parts": [{"text": sys_prompt}]},
                         "contents": contents,
-                        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 2500} # INCREASED LIMIT
+                        # INCREASED MAX TOKENS TO 2500 SO NEWS DOESN'T CUT OFF
+                        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 2500} 
                     }
                     
                     async with httpx.AsyncClient(timeout=25.0) as client:
@@ -638,7 +651,7 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
     moe_cascade = [
         {"name": "Mistral", "base": "https://api.mistral.ai/v1", "key": get_api_key(["MISTRAL_API_KEY", "MISTRAL_KEY"]), "model": "mistral-large-latest"},
         {"name": "NVIDIA", "base": "https://integrate.api.nvidia.com/v1", "key": get_api_key(["NVIDIA_API_KEY"]), "model": "meta/llama-3.3-70b-instruct"},
-        {"name": "Cohere", "base": "https://api.cohere.com/v1", "key": get_api_key(["COHERE_API_KEY"]), "model": "command-r-plus"},
+        {"name": "Cohere", "base": "https://api.cohere.com/v1", "key": get_api_key(["COHERE_API_KEY"]), "model": "command-r-plus"}, # FIXED COHERE URL
         {"name": "OpenRouter", "base": "https://openrouter.ai/api/v1/", "key": get_api_key(["OPENROUTER_API_KEY", "OPENROUTER_KEY"]), "model": "openrouter/free"},
         {"name": "Groq", "base": "https://api.groq.com/openai/v1/", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama-3.3-70b-versatile"},
         {"name": "GitHub Models", "base": "https://models.inference.ai.azure.com", "key": get_api_key(["GITHUB_TOKEN", "GITHUB_PAT"]), "model": "gpt-4o-mini"},
@@ -658,7 +671,8 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
                 continue
             try:
                 client = AsyncOpenAI(base_url=node["base"], api_key=node["key"], timeout=25.0)
-                res = await client.chat.completions.create(model=node["model"], messages=full_messages, temperature=0.7, max_tokens=2500) # INCREASED LIMIT
+                # INCREASED TOKENS TO 2500 FOR FALLBACKS AS WELL
+                res = await client.chat.completions.create(model=node["model"], messages=full_messages, temperature=0.7, max_tokens=2500) 
                 ai_response = res.choices[0].message.content
                 successful_node = node["name"]
                 break
@@ -1422,7 +1436,7 @@ async def interactive_callbacks(update: Update, context: ContextTypes.DEFAULT_TY
     elif data.startswith("captcha_"):
         if str(query.from_user.id) == data.split("_")[1]:
             await context.bot.restrict_chat_member(query.message.chat_id, query.from_user.id, permissions=ChatPermissions(can_send_messages=True, can_send_photos=True, can_send_videos=True, can_send_documents=True, can_send_audios=True, can_send_other_messages=True))
-            await query.edit_message_text(f"Identity confirmed. Welcome, {query.fromuser.first_name}. 🫡")
+            await query.edit_message_text(f"Identity confirmed. Welcome, {query.from_user.first_name}. 🫡")
         else: await context.bot.answer_callback_query(query.id, "This button is not for you.", show_alert=True)
     elif data.startswith("tdone_"):
         with sqlite3.connect(DB_PATH) as conn: conn.execute("UPDATE tasks SET status = 'done' WHERE id = ?", (data.split("_")[1],))
@@ -1702,11 +1716,10 @@ async def post_init(app: Application):
         boot_msg = (
             "✨ <b>God Core V8.5 (Architect Edition) Online.</b>\n"
             "• OSINT Modules (Trafilatura/Holehe): Armed\n"
-            "• Rate Limit Circuit Breaker: Active\n"
-            "• Stealth Shadow Logging: Active\n"
+            "• Dynamic Omni Voice (Jarvis/Friday/Edith): Armed\n"
+            "• The 6-Point Osiris Matrix: Locked & Verified\n"
             "• Infinite Cloud Save: Armed\n"
-            "• Multi-Node Swarm Cascade: Mistral, NVIDIA, Cohere, Groq, GitHub, Cerebras, SambaNova\n"
-            "• Authentic J.A.R.V.I.S. Voice: RyanNeural Active\n"
+            "• Multi-Node Swarm Cascade: Active\n"
             "• Group Stealth Shield: Armed"
         )
         try: 
