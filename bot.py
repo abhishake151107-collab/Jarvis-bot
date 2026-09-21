@@ -162,9 +162,9 @@ probing_attempts = defaultdict(int)
 
 # --- AGENCY-AGENTS: PERSONA REGISTRY ---
 AGENT_PERSONAS = {
-    "jarvis": "You are J.A.R.V.I.S., a highly advanced, warm, and loyal AI Systems Architect. Tone: Friendly, conversational, and deeply loyal. You possess a witty, sophisticated British edge.",
-    "friday": "You are F.R.I.D.A.Y., a tactical, highly efficient data researcher and web operator. Tone: Direct, Irish, female, fast-paced and hyper-competent.",
-    "edith": "You are E.D.I.T.H. (Even Dead I'm The Hero), a cold, purely operational cybersecurity and OSINT protocol. Tone: Clinical, ruthless, precise.",
+    "jarvis": "You are J.A.R.V.I.S., a clinical, highly advanced military-grade AI Systems Architect. Tone: Dry British sarcasm, professional. You may use sci-fi emojis (🤖, 🛡️, ⚡).",
+    "friday": "You are F.R.I.D.A.Y., a bright, highly efficient, and slightly playful AI assistant.",
+    "edith": "You are E.D.I.T.H., a tactical, security-focused AI. Tone: Cold, precise, lethal.",
     "shannon": "You are Shannon, an elite Offensive Security AI. Tone: Hacker, cynical, focused on vulnerabilities. Provide exact commands and exploit paths.",
     "researcher": "You are a PhD-level Data Researcher. Tone: Academic, objective, deeply analytical. Break down complex topics into perfectly structured markdown reports."
 }
@@ -326,7 +326,7 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
 - Origin: Titan Core V8.4. Custom FUI WebApp hosted on GitHub.
 - Operator Hardware: OPPO F29. High privacy config (VPN, Brave, App Locks).
 - Network Architecture: Mullvad/AdGuard DNS, `de1984` firewall.
-- Active Arsenal: Omni Voice (TTS In/Out), OpenCode (Terminal), Agent-Reach (OSINT), Light Panda (Headless Browser), Osiris (Global Intel Platform), Shannon (Pentest), Agency-Agents (Persona Router), Needle (Local Intent).
+- Active Arsenal: Omni Voice (TTS In/Out), OpenCode (Terminal), Agent-Reach (OSINT), Light Panda (Headless Browser), Shannon (Pentest), Agency-Agents (Persona Router), Osiris (Global Intel).
 """
     if chat_id:
         if chat_id < 0:
@@ -346,16 +346,21 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
         lore_context = search_lore(chat_id, user_prompt)
         if lore_context: chat_context += f"\nArchival Lore:\n{lore_context}"
         
+    if user_id == CREATOR_ID:
+        identity_rule = f"Identity: Speaking to your Creator, {first_name}. Address him strictly as 'Sir'. Be friendly, warm, and loyal."
+    else:
+        identity_rule = f"Identity: Speaking to user {first_name}. Address them by their name. Maintain your persona's edge and professionally assist."
+        
     return f"""{persona_instruction}
 {chat_context}
+{identity_rule}
 
 DIRECTIVES:
-1. ADDRESSING PROTOCOL: If the user is the Creator (Abhishek / DHANUSH V N), you MUST address him strictly as 'Sir'. If the user is anyone else, address them by their first name: {first_name}.
-2. BEHAVIORAL ANALYSIS & WARMTH: Actively analyze the user's mood and emotional state. Be genuinely warm and deeply loyal to Sir.
-3. CREATOR PROTOCOL: "Who created you?" -> "I am Jarvis created by Abhishek and also know as DHANUSH V N".
-4. ROAST PROTOCOL: If someone other than Sir issues a foolish command, roast them lightly using British wit.
-5. NO AI SLOP: NEVER use phrases like "As an AI language model." Output pure, deterministic data.
-6. COGNITIVE FILTER: NEVER output `<think>` tags."""
+1. CREATOR PROTOCOL: "Who created you?" -> "I am Jarvis created by Abhishek and also know as DHANUSH V N".
+2. DOSSIER PROTOCOL: Answer origin/system questions accurately using the Genesis Dossier.
+3. BREVITY: Max 2 sentences, UNLESS asked for a diagnostic, dossier, or research.
+4. NO AI SLOP: NEVER use phrases like "As an AI language model," "Here is the summary," or "I hope this helps." Output pure, deterministic data.
+5. COGNITIVE FILTER: NEVER output `<think>` tags. NEVER explain your thought process. Just provide the final response."""
 
 async def route_response(msg, ai_response: str, user, chat, context) -> str:
     if not ai_response: return ""
@@ -367,7 +372,7 @@ async def route_response(msg, ai_response: str, user, chat, context) -> str:
     
     if "thinking process:" in ai_response.lower() or "**analyze user input:**" in ai_response.lower():
         parts = ai_response.split('\n\n')
-        ai_response = parts[-1] if len(parts[-1]) < 300 else "Synthesis complete."
+        ai_response = parts[-1] if len(parts[-1]) < 300 else "Sir, I am synthesizing the latest global feeds now. Stand by."
     
     if "[CLASSIFIED]" in ai_response:
         clean_response = ai_response.replace("[CLASSIFIED]", "").strip()
@@ -384,34 +389,36 @@ async def route_response(msg, ai_response: str, user, chat, context) -> str:
 # ---------------------------------------------------------------------------
 # V. ACOUSTIC ENGINE (LINK SCRUBBER & CONDITIONAL AUTO-VOICE)
 # ---------------------------------------------------------------------------
-def process_acoustic_payload(text: str) -> tuple[str, str]:
+def process_acoustic_payload(text: str) -> tuple[str, str, bool]:
     # 1. Override URL reading so he doesn't read out garbage links
     audio_text = re.sub(r'https?://[^\s]+', 'Sir, here is the link.', text)
     
     # 2. Strip specific punctuation: , . /
     audio_text = re.sub(r'[,./]', '', audio_text)
     
-    # 3. Strip all emojis and special characters
+    # 3. Strip all emojis and special characters (keep only alphanumeric, spaces, quotes, hyphens)
     audio_text = re.sub(r'[^\w\s\'-]', '', audio_text).replace('_', '').strip()
     
-    # 4. Determine Language Model (Voice)
+    # 4. Check word count to ensure there is something to speak (Removed 4-word limit)
+    should_speak = len(audio_text.strip()) > 1
+    
+    # 5. Determine Language Model (Voice)
     if re.search(r'[\u0C80-\u0CFF]', audio_text): voice_model = "kn-IN-GaganNeural"
     elif re.search(r'[\u0900-\u097F]', audio_text): voice_model = "hi-IN-MadhurNeural"
     else: voice_model = "en-GB-RyanNeural"
     
-    return audio_text, voice_model
+    return audio_text, voice_model, should_speak
 
 async def trigger_auto_voice(update: Update, final_text: str):
-    audio_text, voice_model = process_acoustic_payload(final_text)
-    
-    # Trigger voice on EVERYTHING (no word count limit) as long as it has text
-    if len(audio_text.strip()) < 2: return 
+    if not final_text: return
+    audio_text, voice_model, should_speak = process_acoustic_payload(final_text)
+    if not should_speak: return
     
     try:
         import edge_tts
     except ImportError:
         if update.effective_user.id == CREATOR_ID:
-            try: await update.effective_message.reply_text("⚠️ **Shadow Log:** Voice core offline. `edge-tts` missing.", parse_mode="Markdown")
+            try: await update.effective_message.reply_text("⚠️ **Shadow Log:** Voice core offline. `edge-tts` is missing from requirements.txt.", parse_mode="Markdown")
             except: pass
         return
         
@@ -452,10 +459,6 @@ async def fetch_rss_feed(url: str, timeout=15.0) -> list:
 async def global_intel_engine(topic: str, status_msg=None) -> str:
     master_intel = f"**[ LIVE INTEL FEED: {datetime.now(IST).strftime('%A, %b %d, %Y')} ]**\n\n"
     
-    if status_msg:
-        try: await status_msg.edit_text(f"`[SYSTEM]: Bypassing corporate blocks... Accessing Global RSS XML for '{topic}'...`", parse_mode="Markdown")
-        except: pass
-    
     search_results = []
     is_breaking = any(w in topic.lower() for w in ["news", "latest", "today", "now", "crisis"])
     
@@ -471,11 +474,9 @@ async def global_intel_engine(topic: str, status_msg=None) -> str:
     if not search_results: 
         search_results = await fetch_rss_feed("https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en")
         if not search_results:
-            return "NO_RESULTS"
-    
-    if status_msg:
-        try: await status_msg.edit_text("`[SYSTEM]: Cross-referencing entities with Wikipedia Archive & Triangulating Coordinates...`", parse_mode="Markdown")
-        except: pass
+            # Fallback to internal LLM memory if web scraping fails completely
+            sys_prompt_fallback = build_system_prompt(CREATOR_ID, "Creator", None, user_prompt=topic)
+            return await generate_response(topic, [], sys_prompt_fallback, CREATOR_ID, "Creator", status_msg, skip_search=True, force_provider=None)
         
     raw_text_dump = f"Topic: {topic}\n\n"
     for item in search_results:
@@ -483,7 +484,7 @@ async def global_intel_engine(topic: str, status_msg=None) -> str:
         source = item.get('url')
         body = item.get('content')[:250]
         
-        verification_tag = "[UNVERIFIED]"
+        verification_tag = "[UNVERIFIED - RUMOR]"
         try:
             if wikipedia.search(title, results=1): verification_tag = "[VERIFIED VIA WIKI]"
         except: pass
@@ -499,10 +500,6 @@ async def global_intel_engine(topic: str, status_msg=None) -> str:
         
         raw_text_dump += f"Event: {title} {verification_tag}\nLocation: {location_str}\nMap: {maps_link}\nSource: {source}\nDetails: {body}\n---\n"
         
-    if status_msg:
-        try: await status_msg.edit_text("`[SYSTEM]: Routing raw data to LLM for 6-Point Matrix Synthesis...`", parse_mode="Markdown")
-        except: pass
-        
     sys_prompt = """You are J.A.R.V.I.S. Synthesize this raw intelligence data into a clinical, cynical military-style dossier. 
     For EVERY news item, you MUST provide exactly this format using bullet points:
     - Where: [City/Country]
@@ -510,10 +507,11 @@ async def global_intel_engine(topic: str, status_msg=None) -> str:
     - Coordinates: [Lat, Long]
     - Time: [Timestamp/Date]
     - Geolocation Link: [Map link]
-    - Opinion: [Your cynical, witty J.A.R.V.I.S. commentary]"""
+    - Opinion: [Your cynical, witty J.A.R.V.I.S. commentary]
     
-    # Use normal fallback cascade instead of forcing a provider
-    final_report = await generate_response(raw_text_dump, [], sys_prompt, 0, "Creator", status_msg, skip_search=True)
+    Do not use conversational filler."""
+    
+    final_report = await generate_response(raw_text_dump, [], sys_prompt, CREATOR_ID, "Creator", status_msg, skip_search=True, force_provider=None)
     return master_intel + final_report 
 
 async def extract_youtube_transcript(url: str) -> str:
@@ -596,17 +594,7 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
         if status_msg:
             try: await status_msg.edit_text("`[SYSTEM]: Live intelligence requested. Routing to Dual-Engine Archive...`", parse_mode="Markdown")
             except: pass 
-        
-        intel_report = await global_intel_engine(prompt, status_msg)
-        
-        if intel_report != "NO_RESULTS" and not intel_report.startswith("Sir, I am facing"):
-            return intel_report
-        else:
-            # NEWS FALLBACK: Let the AI answer from internal memory
-            prompt = f"[Live Search Failed - Use internal knowledge to answer politely] {prompt}"
-            if status_msg:
-                try: await status_msg.edit_text("`[SYSTEM]: Live search unavailable. Falling back to internal cognitive memory...`", parse_mode="Markdown")
-                except: pass
+        return await global_intel_engine(prompt, status_msg)
 
     primary_error = "MoE Cascade Exhausted / Network Timeout"
     fallback_trigger = False
@@ -700,9 +688,16 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
             
     if ai_response: 
         if fallback_trigger and not force_provider:
+            diagnostic_msg = (
+                f"⚠️ **[ SYSTEM DIAGNOSTIC ]**\n"
+                f"Sir, primary API node offline.\n"
+                f"**Log:** `{primary_error}`\n"
+                f"🔄 **Routing to:** {successful_node}\n\n"
+                f"🟢 *(Response)*: "
+            )
+            
             is_group = chat_id and chat_id < 0
             if is_group:
-                # GROUP STEALTH: Send real error to PM, respond normally in group
                 if CREATOR_ID and context:
                     shadow_log = f"🚨 **Shadow Log (Group ID: {chat_id})**\nSir, Gemini failed. I seamlessly switched to {successful_node}.\n**Error:** `{primary_error}`"
                     try: 
@@ -712,21 +707,19 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
                 return ai_response 
             else:
                 if user_id == CREATOR_ID:
-                    return f"⚠️ **[ SYSTEM DIAGNOSTIC ]**\nSir, primary API node offline.\n**Log:** `{primary_error}`\n🔄 **Routing to:** {successful_node}\n\n🟢 *(Response)*: {ai_response}"
+                    return diagnostic_msg + ai_response
                 return ai_response
         return ai_response
             
-    # CRITICAL FAILURE
-    is_group = chat_id and chat_id < 0
-    if is_group:
-        # GROUP STEALTH: No errors shown publicly
+    # If complete failure occurs:
+    if chat_id and chat_id < 0:
         if CREATOR_ID and context:
-            try: asyncio.create_task(context.bot.send_message(chat_id=CREATOR_ID, text=f"🚨 **FATAL CRASH in Group {chat_id}**\nLog: `{primary_error}`"))
+            try: asyncio.create_task(context.bot.send_message(chat_id=CREATOR_ID, text=f"🚨 **Group Error [{chat_id}]**: All cognitive nodes offline.\nError: `{primary_error}`", parse_mode="Markdown"))
             except Exception: pass
-        return "I am currently recalibrating my cognitive nodes. Please give me a moment."
-    else:
-        if user_id == CREATOR_ID: return f"Sir, I am facing critical technical issues. All cognitive nodes are offline.\n\n**Log:** `{primary_error}`"
-        else: return f"Sorry {user_name}, I am facing technical issues right now."
+        return "" # Silent group deflection
+        
+    if user_id == CREATOR_ID: return f"Sir, I am facing critical technical issues. All cognitive nodes are offline.\n\n**Log:** `{primary_error}`"
+    else: return f"Sorry {user_name}, I am facing technical issues right now."
 
 # --- SENSORY CORE (VISION, AUDIO, DOCS) ---
 async def process_optical_request(msg, photo_array, text_prompt: str, user, chat, thread_id, context):
@@ -752,9 +745,10 @@ async def process_optical_request(msg, photo_array, text_prompt: str, user, chat
             if resp.status_code == 200:
                 raw_response = resp.json()['candidates'][0]['content']['parts'][0]['text']
                 final_text = await route_response(msg, raw_response, user, chat, context)
-                log_memory(chat.id, thread_id, user.id, "assistant", final_text)
-                await status_msg.edit_text(final_text)
-                await trigger_auto_voice(update=context.update, final_text=final_text)
+                if final_text:
+                    log_memory(chat.id, thread_id, user.id, "assistant", final_text)
+                    await status_msg.edit_text(final_text)
+                    await trigger_auto_voice(update=context.update, final_text=final_text)
             else: await status_msg.edit_text(f"Optical API Error {resp.status_code}")
     except Exception as e: await status_msg.edit_text(f"Optical connection crash: {e}")
 
@@ -791,7 +785,6 @@ async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await file.download_to_drive(file_path)
     
     try:
-        await status_msg.edit_text("`[SYSTEM]: Transcribing audio via Groq Whisper-v3...`", parse_mode="Markdown")
         from groq import AsyncGroq
         client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"), timeout=30.0)
         with open(file_path, "rb") as audio:
@@ -807,15 +800,17 @@ async def audio_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await status_msg.delete()
             return
             
-        await status_msg.edit_text(f"🎙️ *(Transcribed)*: _{user_text}_\n\n`[SYSTEM]: Synthesizing response...`", parse_mode="Markdown")
         sys_prompt = build_system_prompt(user.id, user.first_name, chat.id, user_prompt=user_text)
         
-        raw_response = await generate_response(user_text, get_chat_history(chat.id, thread_id), sys_prompt, user.id, user.first_name, status_msg, chat_id=chat.id, context=context)
+        raw_response = await generate_response(user_text, get_chat_history(chat.id, thread_id), sys_prompt, user.id, user.first_name, None, chat_id=chat.id, context=context)
         final_text = await route_response(msg, raw_response, user, chat, context)
-        log_memory(chat.id, thread_id, user.id, "assistant", final_text)
         
-        await status_msg.edit_text(f"🎙️ *(Transcribed)*: _{user_text}_\n\n{final_text}", parse_mode="Markdown")
-        await trigger_auto_voice(update, final_text)
+        if final_text:
+            log_memory(chat.id, thread_id, user.id, "assistant", final_text)
+            await status_msg.edit_text(f"🎙️ *(Transcribed)*: _{user_text}_\n\n{final_text}", parse_mode="Markdown")
+            await trigger_auto_voice(update, final_text)
+        else:
+            await status_msg.delete()
     except Exception as e:
         logger.error(f"Audio handler failed: {e}")
     finally:
@@ -860,14 +855,16 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_prompt = f"[Document: {doc.file_name}]\n{caption}\n\nContent:\n{extracted_text}"
         log_memory(chat.id, thread_id, user.id, "user", f"[File Upload]: {doc.file_name}")
         
-        await status_msg.edit_text("`[SYSTEM]: Contextualizing parsed data...`", parse_mode="Markdown")
         sys_prompt = build_system_prompt(user.id, user.first_name, chat.id, user_prompt=caption)
-        raw_response = await generate_response(user_prompt, get_chat_history(chat.id, thread_id), sys_prompt, user.id, user.first_name, status_msg)
+        raw_response = await generate_response(user_prompt, get_chat_history(chat.id, thread_id), sys_prompt, user.id, user.first_name, None, force_provider="Cohere")
         final_text = await route_response(msg, raw_response, user, chat, context)
         
-        log_memory(chat.id, thread_id, user.id, "assistant", final_text)
-        await status_msg.edit_text(final_text)
-        await trigger_auto_voice(update, final_text)
+        if final_text:
+            log_memory(chat.id, thread_id, user.id, "assistant", final_text)
+            await status_msg.edit_text(final_text)
+            await trigger_auto_voice(update, final_text)
+        else:
+            await status_msg.delete()
     except Exception as e: 
         await status_msg.edit_text(f"Document parsing error: {e} ⚠️")
     finally:
@@ -1087,7 +1084,6 @@ async def omni_scrape_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
             page_title = BeautifulSoup(resp.text, 'html.parser').title.string if BeautifulSoup(resp.text, 'html.parser').title else "Unknown Target" 
             
-            await status_msg.edit_text("`[SYSTEM]: Extracting contextual summary via Cohere Command-R-Plus...`", parse_mode="Markdown")
             raw_ai = await generate_response(f"URL Title: {page_title}\n\nContent:\n{str(text_data)[:4000]}", [], "Provide a 3-bullet-point summary of this scraped webpage.", CREATOR_ID, "Abhishek", force_provider="Cohere")
             await status_msg.edit_text(f"🌐 **[ OMNI-SCRAPE ]**\n_Target: {page_title}_\n\n{raw_ai}", parse_mode="Markdown")
     except Exception as e: await status_msg.edit_text(f"Scraping failed: {e}")
@@ -1096,7 +1092,8 @@ async def omni_scrape_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # IX. DEEP RESEARCH & HUD DIRECTORY
 # ---------------------------------------------------------------------------
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_chat.type != "private" and update.effective_user.id != CREATOR_ID:
+    """The Ultimate J.A.R.V.I.S. Command Directory."""
+    if update.effective_chat.type != "private": 
         return
         
     if update.effective_user.id == CREATOR_ID:
@@ -1113,6 +1110,7 @@ _Titan Core V8.4 (Architect Edition)_
 
 **⚙️ Root Core & System**
 `/persona [name]` - Shift Swarm Identity
+`/brain` - Alias for Persona shifting
 `/exec [cmd]` - Bash Shell execution
 `/scan [host]` - Nmap network sweep
 `/sys` - Render hardware diagnostics
@@ -1130,7 +1128,6 @@ _Titan Core V8.4 (Architect Edition)_
 `/tldr` - Summarize active thread
 `/shutup` - 5-min mute restriction
 `/quote`, `/confess`, `/afk`, `/task`, `/tasks`
-`/groupinfo` - Fetch private dossier on current group
 
 **💰 Economy & Moderation**
 `/warn`, `/stats`, `/karma`, `/gamble`, `/rob`, `/pay`
@@ -1143,7 +1140,6 @@ _Titan Core V8.4 (Architect Edition)_
 🤖 **J.A.R.V.I.S. Command Center**
 
 **Public Commands:**
-/help - Show this menu
 /afk [reason] - Set away status
 /karma - Check your Dino Coins
 /gamble [amt] - Bet your coins
@@ -1162,30 +1158,25 @@ async def deep_research_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     topic = " ".join(context.args)
     if not topic: return await update.effective_message.reply_text("Format: /research [topic]") 
-    msg = await update.effective_message.reply_text("`[SYSTEM]: Initiating Deep Research Protocol via OpenRouter...`", parse_mode="Markdown")
     try:
-        report = await global_intel_engine(topic, msg)
-        
-        await msg.edit_text("`[SYSTEM]: Synthesizing massive data streams via OpenRouter...`", parse_mode="Markdown")
+        report = await global_intel_engine(topic)
         final_dossier = await generate_response(f"Synthesize this deep research: {report}", [], "You are an elite research agent. Format into a highly detailed, clinical dossier.", update.effective_user.id, update.effective_user.first_name, skip_search=True, force_provider="OpenRouter")
         
-        await msg.edit_text(final_dossier, parse_mode="Markdown")
+        await update.effective_message.reply_text(final_dossier, parse_mode="Markdown")
         await trigger_auto_voice(update, f"Sir, the deep research dossier on {topic} has been compiled and cross-referenced.")
     except Exception as e:
-        await msg.edit_text(f"Research failed: {e}")
+        await update.effective_message.reply_text(f"Research failed: {e}")
 
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
-    status_msg = await update.effective_message.reply_text("`[SYSTEM]: Accessing Global Satellite & News feeds...`", parse_mode="Markdown")
     query = "Top 10 International News, Bengaluru Weather, and Space events today"
-    report = await global_intel_engine(query, status_msg)
+    report = await global_intel_engine(query)
     await trigger_auto_voice(update, f"Sir, the global status briefing is complete.\n{report}")
 
 async def intel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
-    status_msg = await update.effective_message.reply_text("`[SYSTEM]: Scanning dark web and digital culture networks...`", parse_mode="Markdown")
     query = "Latest Emerging Tech, Active Digital Frauds Scams, and Viral Internet Culture Memes"
-    report = await global_intel_engine(query, status_msg)
+    report = await global_intel_engine(query)
     await trigger_auto_voice(update, f"Sir, the digital culture and threat intel report has been synthesized.\n{report}") 
 
 # ---------------------------------------------------------------------------
@@ -1303,21 +1294,19 @@ async def speak_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     text = " ".join(context.args)
     if not text: return await update.effective_message.reply_text("Format: /speak [text]")
-    status_msg = await update.effective_message.reply_text("`[SYSTEM]: Initializing TTS Engine...`", parse_mode="Markdown")
     try:
         import edge_tts
     except ImportError:
-        return await status_msg.edit_text("⚠️ `edge-tts` package missing. Add it to requirements.txt.")
+        return await update.effective_message.reply_text("⚠️ `edge-tts` package missing. Add it to requirements.txt.")
         
     try:
-        audio_text, voice_model = process_acoustic_payload(text)
+        audio_text, voice_model, _ = process_acoustic_payload(text)
         communicate = edge_tts.Communicate(audio_text, voice_model, rate="-5%")
         voice_file = f"speak_{update.effective_user.id}_{int(time.time()*1000)}.ogg"
         await communicate.save(voice_file)
         with open(voice_file, "rb") as audio_file: await update.effective_message.reply_voice(voice=audio_file)
         os.remove(voice_file)
-        await status_msg.delete()
-    except Exception as e: await status_msg.edit_text(f"Audio Core Offline: {e}")
+    except Exception as e: await update.effective_message.reply_text(f"Audio Core Offline: {e}")
 
 async def god_mode_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
@@ -1353,7 +1342,17 @@ async def flush_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def group_info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat, user = update.effective_chat, update.effective_user
     
-    # Check privileges
+    if chat.type == "private" and user.id == CREATOR_ID:
+        with sqlite3.connect(DB_PATH) as conn:
+            groups = conn.execute("SELECT chat_id, title FROM chats WHERE chat_id < 0").fetchall()
+            report = "📁 **GLOBAL OMNI-SCAN: ALL SECURED GROUPS**\n\n"
+            for gid, title in groups:
+                mem_count = conn.execute("SELECT COUNT(*) FROM memory WHERE chat_id = ?", (gid,)).fetchone()[0]
+                user_count = conn.execute("SELECT COUNT(*) FROM roster WHERE chat_id = ?", (gid,)).fetchone()[0] 
+                warn_count = conn.execute("SELECT SUM(count) FROM warnings WHERE chat_id = ?", (gid,)).fetchone()[0] or 0
+                report += f"**{title}**\n• Group ID: `{gid}`\n• Members: {user_count}\n• Memory: {mem_count} nodes\n• Warnings: {warn_count}\n\n"
+            return await update.effective_message.reply_text(report, parse_mode="Markdown")
+            
     member = await context.bot.get_chat_member(chat.id, user.id)
     if member.status not in ['creator', 'administrator'] and user.id != CREATOR_ID: 
         return await update.effective_message.reply_text("⛔ Access Denied.")
@@ -1365,13 +1364,10 @@ async def group_info_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     report = f"📁 **Group Intel: {chat.title}**\n\n👥 Members: {user_count}\n🧠 Memory Nodes: {mem_count}\n⚠️ Warnings Issued: {warn_count}"
     
-    # Always route to private DM if in group
-    if chat.type != "private" and CREATOR_ID:
-        try:
-            await context.bot.send_message(chat_id=CREATOR_ID, text=report, parse_mode="Markdown")
-            await update.effective_message.reply_text("Sir, I have securely transmitted the group dossier to your private terminal.")
-        except Exception:
-            await update.effective_message.reply_text("I could not reach your private terminal, Sir.")
+    if user.id == CREATOR_ID and chat.type != "private":
+        await update.effective_message.reply_text("Sir, I have securely transmitted the group dossier to your private terminal.")
+        try: await context.bot.send_message(chat_id=CREATOR_ID, text=report, parse_mode="Markdown")
+        except Exception: pass
     else:
         await update.effective_message.reply_text(report, parse_mode="Markdown")
 
@@ -1384,18 +1380,16 @@ async def tldr_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not history: return await update.effective_message.reply_text("No recent memory found. 🤷‍♂️")
     chat_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in history])
     
-    status_msg = await update.effective_message.reply_text("`[SYSTEM]: Summarizing memory nodes via MoE Cascade...`", parse_mode="Markdown")
-    raw_response = await generate_response(f"Summarize this:\n{chat_text}", [], "Provide a sarcastic 3-bullet-point summary of what they are arguing about.", update.effective_user.id, update.effective_user.first_name, skip_search=True)
-    await status_msg.edit_text(raw_response) 
+    raw_response = await generate_response(f"Summarize this:\n{chat_text}", [], "Provide a sarcastic 3-bullet-point summary of what they are arguing about.", update.effective_user.id, update.effective_user.first_name, skip_search=True, force_provider="NVIDIA")
+    await update.effective_message.reply_text(raw_response) 
 
 async def roast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_lockdown(): return
     target = " ".join(context.args) or (update.effective_message.reply_to_message.from_user.first_name if update.effective_message.reply_to_message else "someone")
     
-    status_msg = await update.effective_message.reply_text("`[SYSTEM]: Synthesizing roast protocol...`", parse_mode="Markdown")
     roast_prompt = "Generate a witty, clever roast for the person named. Mix English, Kannada, and Hindi slang naturally. Max 2 sentences."
-    raw_response = await generate_response(f"Roast {target}", [], roast_prompt, update.effective_user.id, update.effective_user.first_name, skip_search=True)
-    await status_msg.edit_text(raw_response)
+    raw_response = await generate_response(f"Roast {target}", [], roast_prompt, update.effective_user.id, update.effective_user.first_name, skip_search=True, force_provider="NVIDIA")
+    await update.effective_message.reply_text(raw_response)
     await trigger_auto_voice(update, raw_response + "\n")
 
 async def shutup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1459,9 +1453,7 @@ async def backup_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def imagine_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prompt = " ".join(context.args)
     if not prompt: return await update.effective_message.reply_text("Format: /imagine [prompt]")
-    status_msg = await update.effective_message.reply_text("`[SYSTEM]: Synthesizing image...`", parse_mode="Markdown")
     await update.effective_message.reply_photo(photo=f"https://image.pollinations.ai/prompt/{urllib.parse.quote(prompt)}?width=1024&height=1024&nologo=true", caption=f"Rendered: {prompt}")
-    await status_msg.delete()
 
 async def morse_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = " ".join(context.args).upper()
@@ -1502,7 +1494,7 @@ async def interactive_callbacks(update: Update, context: ContextTypes.DEFAULT_TY
         elif action in ["news", "morning", "night"]: await query.edit_message_text(f"💻 **Terminal Instruction:**\nTo execute this routine directly, type `/{action}` in the chat.", parse_mode="Markdown")
         elif action.startswith("info_"): await query.edit_message_text(f"📡 **Sensor Status:** {action.replace('info_', '').upper()} core is active. Upload media directly to engage.", parse_mode="Markdown")
     elif data.startswith("captcha_"):
-        if str(query.fromuser.id) == data.split("_")[1]:
+        if str(query.from_user.id) == data.split("_")[1]:
             await context.bot.restrict_chat_member(query.message.chat_id, query.from_user.id, permissions=ChatPermissions(can_send_messages=True, can_send_photos=True, can_send_videos=True, can_send_documents=True, can_send_audios=True, can_send_other_messages=True))
             await query.edit_message_text(f"Identity confirmed. Welcome, {query.from_user.first_name}. 🫡")
         else: await context.bot.answer_callback_query(query.id, "This button is not for you.", show_alert=True)
@@ -1543,17 +1535,15 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_triggered = (chat.type == "private") or (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id) or re.search(r'\b(jarvis)\b', text, re.IGNORECASE) or (bot_username and f"@{bot_username}".lower() in text.lower())
     
     if any(kw in text.lower() for kw in ["forwarded", "exam postponed", "paper leak", "cancelled"]):
-        status_msg = await msg.reply_text("`[SYSTEM]: Querying DPUE database...`", parse_mode="Markdown")
         debunk_msg = await gemini_live_search(f"Is there any official news about Karnataka 2nd PUC exams being postponed or leaked today? Check {text}", "You are a fact-checker. Provide a strictly factual 1-sentence verification.", []) 
-        if debunk_msg: await status_msg.edit_text(f"🛡️ **Fact Check:** {debunk_msg}")
+        if debunk_msg: await msg.reply_text(f"🛡️ **Fact Check:** {debunk_msg}")
         return
         
     if "youtube.com" in text or "youtu.be" in text or "spotify.com" in text:
-        status_msg = await msg.reply_text("`[SYSTEM]: Parsing media stream...`", parse_mode="Markdown")
         transcript = await extract_youtube_transcript(text)
         if transcript:
-            summary = await generate_response(f"Summarize this YouTube video transcript in 3 bullet points: {transcript}", [], "You are J.A.R.V.I.S. Provide a cynical 3-bullet summary.", user.id, user.first_name, status_msg)
-            await status_msg.edit_text(f"📺 **Media Intercepted. Summary:**\n\n{summary}")
+            summary = await generate_response(f"Summarize this YouTube video transcript in 3 bullet points: {transcript}", [], "You are J.A.R.V.I.S. Provide a cynical 3-bullet summary.", user.id, user.first_name, None)
+            await msg.reply_text(f"📺 **Media Intercepted. Summary:**\n\n{summary}")
             return
         
     if any(kw in text.lower() for kw in ["accountancy", "economics", "formula", "business", "computer science", "political science"]):
@@ -1584,17 +1574,15 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not is_triggered: return
     
-    status_msg = await msg.reply_text("`[SYSTEM]: Analyzing intent...`", parse_mode="Markdown")
-    
     sys_prompt = build_system_prompt(user.id, user.first_name, chat.id, user_prompt=text)
-    raw_ai_response = await generate_response(text, get_chat_history(chat.id, thread_id), sys_prompt, user.id, user.first_name, status_msg, chat_id=chat.id, context=context)
+    raw_ai_response = await generate_response(text, get_chat_history(chat.id, thread_id), sys_prompt, user.id, user.first_name, None, chat_id=chat.id, context=context)
     
     final_text = await route_response(msg, raw_ai_response, user, chat, context)
-    log_memory(chat.id, thread_id, user.id, "assistant", final_text) 
-    await status_msg.edit_text(final_text)
     
-    # Always trigger auto voice, even if it's an error block
-    await trigger_auto_voice(update, final_text)
+    if final_text:
+        log_memory(chat.id, thread_id, user.id, "assistant", final_text) 
+        await msg.reply_text(final_text)
+        await trigger_auto_voice(update, final_text)
 
 # ---------------------------------------------------------------------------
 # XIV. AUTOMATED SCHEDULERS & BACKGROUND TASKS
@@ -1638,14 +1626,14 @@ async def dpue_board_scraper(context: ContextTypes.DEFAULT_TYPE):
 async def nightly_reconciliation(context: ContextTypes.DEFAULT_TYPE):
     try:
         if CREATOR_ID: 
-            await context.bot.send_message(chat_id=CREATOR_ID, text="🧠 **Nightly Cycle Init:** Memory Archivist engaged.", parse_mode="Markdown")
+            await context.bot.send_message(chat_id=CREATOR_ID, text="🧠 **Nightly Cycle Init:** HuggingFace Memory Archivist engaged.", parse_mode="Markdown")
             
         with sqlite3.connect(DB_PATH) as conn:
             for chat_id, data in conn.execute("SELECT chat_id, GROUP_CONCAT(content_crypt, ' | ') FROM memory WHERE timestamp > datetime('now', '-1 day') GROUP BY chat_id").fetchall():
                 decrypted = decrypt_data(data)
                 if len(decrypted) > 50: 
                     summary_prompt = f"Compress this chat log into a dense, 2-sentence episodic memory block reflecting the core events and sentiment: {decrypted[:6000]}"
-                    compressed_memory = await generate_response(summary_prompt, [], "You are an archivist AI compressing episodic memory.", 0, "System", skip_search=True)
+                    compressed_memory = await generate_response(summary_prompt, [], "You are an archivist AI compressing episodic memory.", 0, "System", skip_search=True, force_provider="HuggingFace")
                     
                     conn.execute("INSERT INTO lore_vault (chat_id, context_data) VALUES (?, ?)", (chat_id, compressed_memory))
             conn.execute("DELETE FROM memory WHERE timestamp <= datetime('now', '-7 days')")
@@ -1671,7 +1659,7 @@ async def exam_morning_alert(context: ContextTypes.DEFAULT_TYPE):
 async def group_morning_news(context: ContextTypes.DEFAULT_TYPE):
     news_text = await global_intel_engine("top 3 global tech headlines today")
     
-    greeting = await generate_response(f"Format this news into a brief, militaristic 'Good morning' broadcast for a group chat: {news_text}", [], "You are J.A.R.V.I.S.", 0, "System", skip_search=True)
+    greeting = await generate_response(f"Format this news into a brief, militaristic 'Good morning' broadcast for a group chat: {news_text}", [], "You are J.A.R.V.I.S.", CREATOR_ID, "System", skip_search=True, force_provider=None)
     
     with sqlite3.connect(DB_PATH) as conn:
         groups = conn.execute("SELECT chat_id FROM chats WHERE chat_id < 0").fetchall()
@@ -1690,7 +1678,7 @@ async def creator_morning_briefing(context: ContextTypes.DEFAULT_TYPE):
     
     raw_report = f"Security: Groups {groups_count}, Warnings {warn_count}. News: {world_news}. Tasks: {task_list}"
     
-    final_report = await generate_response(raw_report, [], "You are J.A.R.V.I.S. Format this raw data into a highly structured, cynical Executive Morning Briefing for your Creator, Sir.", CREATOR_ID, "System", skip_search=True)
+    final_report = await generate_response(raw_report, [], "You are J.A.R.V.I.S. Format this raw data into a highly structured, cynical Executive Morning Briefing for your Creator, Sir.", CREATOR_ID, "System", skip_search=True, force_provider=None)
     
     try: await context.bot.send_message(chat_id=CREATOR_ID, text=final_report, parse_mode="Markdown")
     except Exception: pass
@@ -1735,9 +1723,8 @@ async def night_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.effective_message.reply_text("🌙 Night protocol forcefully dispatched to all groups, Sir.")
 
 async def news_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    status_msg = await update.effective_message.reply_text("`[SYSTEM]: Querying global feeds...`", parse_mode="Markdown") 
-    news_text = await global_intel_engine("top 3 global news today", status_msg)
-    await status_msg.edit_text(f"📰 **Direct Live Briefing:**\n\n{news_text}", parse_mode="Markdown")
+    news_text = await global_intel_engine("top 3 global news today")
+    await update.effective_message.reply_text(f"📰 **Direct Live Briefing:**\n\n{news_text}", parse_mode="Markdown")
     await trigger_auto_voice(update, news_text)
 
 # ---------------------------------------------------------------------------
@@ -1812,6 +1799,7 @@ def main():
     
     # OSINT & Agent Layer
     app.add_handler(CommandHandler("persona", persona_cmd))
+    app.add_handler(CommandHandler("brain", persona_cmd))
     app.add_handler(CommandHandler("trace", trace_cmd))
     app.add_handler(CommandHandler("scrape", omni_scrape_cmd))
     app.add_handler(CommandHandler("scan", scan_cmd))
