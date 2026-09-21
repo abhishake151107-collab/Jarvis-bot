@@ -104,7 +104,7 @@ CORS(flask_app)
 
 @flask_app.route('/')
 def health_check(): 
-    return "J.A.R.V.I.S. Titan Core V8.5 (Architect Edition) is Online." 
+    return "J.A.R.V.I.S. Titan Core V8.6 (Architect Edition) is Online." 
 
 @flask_app.route('/api/chat', methods=['POST'])
 def api_chat():
@@ -326,7 +326,7 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
     chat_context += """\n
 [ THE GENESIS DOSSIER & SYSTEM AWARENESS ]
 - Creator Identity: Abhishek (aka DHANUSH V N).
-- Origin: Titan Core V8.5. Custom FUI WebApp hosted on GitHub.
+- Origin: Titan Core V8.6. Custom FUI WebApp hosted on GitHub.
 - Operator Hardware: OPPO F29. High privacy config (VPN, Brave, App Locks).
 - Network Architecture: Mullvad/AdGuard DNS, `de1984` firewall.
 - Active Arsenal: Omni Voice (TTS In/Out), OpenCode (Terminal), Agent-Reach (OSINT), Light Panda (Headless Browser), Shannon (Pentest), Agency-Agents (Persona Router), Osiris (Global Intel).
@@ -392,16 +392,28 @@ async def route_response(msg, ai_response: str, user, chat, context) -> str:
     return ai_response
 
 # ---------------------------------------------------------------------------
-# V. ACOUSTIC ENGINE (DYNAMIC OMNI VOICE PROTOCOL)
+# V. ACOUSTIC ENGINE (DYNAMIC OMNI VOICE & PUNCTUATION FIX)
 # ---------------------------------------------------------------------------
 def process_acoustic_payload(text: str, chat_id: int = None) -> tuple[str, str, bool]:
-    # 1. Strip raw links and syntax
+    # 1. Strip raw links and heavy markdown that stutters TTS
     audio_text = re.sub(r'https?://[^\s]+', 'Sir, here is the link.', text)
-    audio_text = re.sub(r'[,./]', '', audio_text)
     audio_text = re.sub(r'[*_`#~]', '', audio_text)
-    audio_text = re.sub(r'[^\w\s\'-]', '', audio_text).strip()
     
-    # 2. Dynamic Omni Voice Routing based on Persona
+    # 2. IMPORTANT: Keep basic punctuation (. , ? ! - ' ") so the voice engine can "breathe" 
+    # and chunk massive paragraphs. Strip weird unicode emojis.
+    audio_text = re.sub(r'[^\w\s.,?!;:\'"-]', '', audio_text).strip()
+    
+    # 3. TRUNCATION SAFETY NET: If the text is massive (like a full global intelligence report), 
+    # we cap the audio so Telegram doesn't time out the voice note delivery.
+    if len(audio_text) > 800:
+        # Find the last period before 800 characters to cut the sentence cleanly
+        cut_point = audio_text[:800].rfind('.')
+        if cut_point != -1:
+            audio_text = audio_text[:cut_point] + ". Sir, the rest of the detailed report is rendered on your screen."
+        else:
+            audio_text = audio_text[:800] + "... Sir, the rest of the report is on your screen."
+            
+    # 4. Dynamic Omni Voice Routing based on Persona (FRIDAY, EDITH, JARVIS)
     active_persona = ACTIVE_PERSONAS[chat_id] if chat_id else "jarvis"
     
     if active_persona == "friday":
@@ -521,6 +533,7 @@ For EVERY single news item, you MUST provide exactly this 6-Point Matrix format 
 
 Keep it concise and do not use conversational filler."""
     
+    # Passing None to force_provider triggers the full MoE Fallback Cascade
     final_report = await generate_response(raw_text_dump, [], sys_prompt, CREATOR_ID, "Abhishek", status_msg, skip_search=True, force_provider=None, chat_id=chat_id, context=context)
     return master_intel + final_report
 
@@ -651,7 +664,8 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
     moe_cascade = [
         {"name": "Mistral", "base": "https://api.mistral.ai/v1", "key": get_api_key(["MISTRAL_API_KEY", "MISTRAL_KEY"]), "model": "mistral-large-latest"},
         {"name": "NVIDIA", "base": "https://integrate.api.nvidia.com/v1", "key": get_api_key(["NVIDIA_API_KEY"]), "model": "meta/llama-3.3-70b-instruct"},
-        {"name": "Cohere", "base": "https://api.cohere.com/v1", "key": get_api_key(["COHERE_API_KEY"]), "model": "command-r-plus"}, # FIXED COHERE URL
+        # FIXED COHERE URL (Using api.cohere.com/v1 instead of .ai for OpenAI drop-in compat)
+        {"name": "Cohere", "base": "https://api.cohere.com/v1", "key": get_api_key(["COHERE_API_KEY"]), "model": "command-r-plus"},
         {"name": "OpenRouter", "base": "https://openrouter.ai/api/v1/", "key": get_api_key(["OPENROUTER_API_KEY", "OPENROUTER_KEY"]), "model": "openrouter/free"},
         {"name": "Groq", "base": "https://api.groq.com/openai/v1/", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama-3.3-70b-versatile"},
         {"name": "GitHub Models", "base": "https://models.inference.ai.azure.com", "key": get_api_key(["GITHUB_TOKEN", "GITHUB_PAT"]), "model": "gpt-4o-mini"},
@@ -1055,7 +1069,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id == CREATOR_ID:
         help_text = """
 **[ STARK MASTER DIRECTORY ]**
-_Titan Core V8.5 (Architect Edition)_
+_Titan Core V8.6 (Architect Edition)_
 
 **🌍 Global Intel & OSINT** 
 `/status` - Top 10 News, Weather & Astro Data
@@ -1224,7 +1238,7 @@ async def karma_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     web_url = "https://abhishake151107-collab.github.io/stark-os-ui/"
-    kb = [[InlineKeyboardButton("🚀 LAUNCH GOD CORE V8.5", web_app=WebAppInfo(url=web_url))]]
+    kb = [[InlineKeyboardButton("🚀 LAUNCH GOD CORE V8.6", web_app=WebAppInfo(url=web_url))]]
     await update.effective_message.reply_text("✨ **J.A.R.V.I.S. Cognitive Core Online.**\n\nSir, your cinematic interface is ready.\n\n_Swarm routing active. Cascade unchained._", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1239,7 +1253,7 @@ async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🗄️ Backup Vault", callback_data="hud_cmd_backup"), InlineKeyboardButton("📜 Quote Wall", callback_data="hud_cmd_quote")],
         [InlineKeyboardButton("👁️ Vision Core", callback_data="hud_info_vision"), InlineKeyboardButton("🎧 Audio Core", callback_data="hud_info_audio")]
     ]
-    await update.effective_message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Master Core V8.5\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+    await update.effective_message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Master Core V8.6\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 async def speak_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
@@ -1714,13 +1728,12 @@ async def post_init(app: Application):
     
     if CREATOR_ID: 
         boot_msg = (
-            "✨ <b>God Core V8.5 (Architect Edition) Online.</b>\n"
+            "✨ <b>God Core V8.6 (Architect Edition) Online.</b>\n"
             "• OSINT Modules (Trafilatura/Holehe): Armed\n"
-            "• Dynamic Omni Voice (Jarvis/Friday/Edith): Armed\n"
-            "• The 6-Point Osiris Matrix: Locked & Verified\n"
             "• Infinite Cloud Save: Armed\n"
             "• Multi-Node Swarm Cascade: Active\n"
-            "• Group Stealth Shield: Armed"
+            "• Omni Voice Loop: Punctuation Parsing Repaired\n"
+            "• Voice Truncation Failsafe: Active"
         )
         try: 
             await app.bot.send_message(chat_id=CREATOR_ID, text=boot_msg, parse_mode="HTML")
@@ -1808,7 +1821,7 @@ def main():
     
     app.add_error_handler(error_handler)
     
-    logger.info("J.A.R.V.I.S. Cognitive V8.5 initialized. Starting polling...") 
+    logger.info("J.A.R.V.I.S. Cognitive V8.6 initialized. Starting polling...") 
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
