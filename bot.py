@@ -104,7 +104,7 @@ CORS(flask_app)
 
 @flask_app.route('/')
 def health_check(): 
-    return "J.A.R.V.I.S. Titan Core V8.6 (Architect Edition) is Online." 
+    return "J.A.R.V.I.S. Titan Core V8.7 (Architect Edition) is Online." 
 
 @flask_app.route('/api/chat', methods=['POST'])
 def api_chat():
@@ -326,11 +326,10 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
     chat_context += """\n
 [ THE GENESIS DOSSIER & SYSTEM AWARENESS ]
 - Creator Identity: Abhishek (aka DHANUSH V N).
-- Origin: Titan Core V8.6. Custom FUI WebApp hosted on GitHub.
+- Origin: Titan Core V8.7. Custom FUI WebApp hosted on GitHub.
 - Operator Hardware: OPPO F29. High privacy config (VPN, Brave, App Locks).
 - Network Architecture: Mullvad/AdGuard DNS, `de1984` firewall.
 - Active Arsenal: Omni Voice (TTS In/Out), OpenCode (Terminal), Agent-Reach (OSINT), Light Panda (Headless Browser), Shannon (Pentest), Agency-Agents (Persona Router), Osiris (Global Intel).
-- Note: Osiris grants you real-time access to global tracking, geospatial mapping, and threat intel.
 """
     if chat_id:
         if chat_id < 0:
@@ -351,7 +350,7 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
         if lore_context: chat_context += f"\nArchival Lore:\n{lore_context}"
         
     if user_id == CREATOR_ID:
-        identity_rule = f"Identity: Speaking to your Creator, {first_name}. Address him strictly as 'Sir'. Be friendly, warm, and exceptionally loyal."
+        identity_rule = f"Identity: Speaking to your Creator, {first_name}. Address him strictly as 'Sir'. Be friendly, warm, and highly loyal."
     else:
         identity_rule = f"Identity: Speaking to user {first_name}. Address them by their first name ({first_name}). Maintain your sharp persona and assist professionally."
         
@@ -362,8 +361,9 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
 DIRECTIVES:
 1. CREATOR PROTOCOL: "Who created you?" -> "I am Jarvis created by Abhishek and also know as DHANUSH V N".
 2. DOSSIER PROTOCOL: Answer origin/system questions accurately using the Genesis Dossier.
-3. NO AI SLOP: NEVER use conversational filler like "As an AI language model," "Here is the summary," or "I hope this helps." Output pure, deterministic data.
-4. COGNITIVE FILTER: NEVER output `<think>` tags. NEVER explain your internal reasoning. Provide strictly the verbal response."""
+3. BREVITY: Keep general chat to 2-3 sentences. (Ignore this rule if explicitly asked for a detailed dossier, summary, or report).
+4. NO AI SLOP: NEVER use conversational filler like "As an AI language model," "Here is the summary," or "I hope this helps." Output pure, deterministic data.
+5. COGNITIVE FILTER: NEVER output `<think>` tags. NEVER explain your internal reasoning. Provide strictly the verbal response."""
 
 async def route_response(msg, ai_response: str, user, chat, context) -> str:
     if not ai_response: return ""
@@ -392,42 +392,38 @@ async def route_response(msg, ai_response: str, user, chat, context) -> str:
     return ai_response
 
 # ---------------------------------------------------------------------------
-# V. ACOUSTIC ENGINE (DYNAMIC OMNI VOICE & PUNCTUATION FIX)
+# V. ACOUSTIC ENGINE (AUTHENTIC J.A.R.V.I.S. VOICE PROTOCOL)
 # ---------------------------------------------------------------------------
 def process_acoustic_payload(text: str, chat_id: int = None) -> tuple[str, str, bool]:
-    # 1. Strip raw links and heavy markdown that stutters TTS
+    # 1. Override URL reading
     audio_text = re.sub(r'https?://[^\s]+', 'Sir, here is the link.', text)
-    audio_text = re.sub(r'[*_`#~]', '', audio_text)
     
-    # 2. IMPORTANT: Keep basic punctuation (. , ? ! - ' ") so the voice engine can "breathe" 
-    # and chunk massive paragraphs. Strip weird unicode emojis.
+    # 2. Strip markdown and emojis, but KEEP basic punctuation so he can breathe
+    audio_text = re.sub(r'[*_`#~]', '', audio_text)
     audio_text = re.sub(r'[^\w\s.,?!;:\'"-]', '', audio_text).strip()
     
-    # 3. TRUNCATION SAFETY NET: If the text is massive (like a full global intelligence report), 
-    # we cap the audio so Telegram doesn't time out the voice note delivery.
+    # 3. Truncate massive reports so the audio generates instantly without timing out Telegram
     if len(audio_text) > 800:
-        # Find the last period before 800 characters to cut the sentence cleanly
         cut_point = audio_text[:800].rfind('.')
         if cut_point != -1:
-            audio_text = audio_text[:cut_point] + ". Sir, the rest of the detailed report is rendered on your screen."
+            audio_text = audio_text[:cut_point] + ". Sir, the rest of the report is rendered on your screen."
         else:
-            audio_text = audio_text[:800] + "... Sir, the rest of the report is on your screen."
-            
-    # 4. Dynamic Omni Voice Routing based on Persona (FRIDAY, EDITH, JARVIS)
+            audio_text = audio_text[:800] + "... Sir, the rest is on your screen."
+
+    # 4. Omni Voice Routing based on Persona (Jarvis, Friday, Edith, Shannon)
     active_persona = ACTIVE_PERSONAS[chat_id] if chat_id else "jarvis"
-    
     if active_persona == "friday":
-        voice_model = "en-IE-EmilyNeural"  # Bright, efficient female voice
+        voice_model = "en-IE-EmilyNeural"
     elif active_persona == "edith":
-        voice_model = "en-US-AriaNeural"   # Crisp, authoritative female voice
+        voice_model = "en-US-AriaNeural"
     elif active_persona == "shannon":
-        voice_model = "en-US-DavisNeural"  # Sharp, cynical male voice
+        voice_model = "en-US-DavisNeural"
     else:
-        voice_model = "en-GB-RyanNeural"   # Default J.A.R.V.I.S. male British
-    
+        voice_model = "en-GB-RyanNeural"
+        
     should_speak = len(audio_text) > 0
-    
     return audio_text, voice_model, should_speak
+
 
 async def trigger_auto_voice(update: Update, final_text: str):
     if not final_text or not update.effective_message: return
@@ -439,22 +435,27 @@ async def trigger_auto_voice(update: Update, final_text: str):
     try:
         import edge_tts
     except ImportError:
-        logger.warning("edge-tts library is not installed. Voice synthesis bypassed.")
+        if update.effective_user.id == CREATOR_ID:
+            await update.effective_message.reply_text("⚠️ **Voice Engine Offline:** Sir, `edge-tts` is missing from Render.")
         return
         
     try:
         communicate = edge_tts.Communicate(audio_text, voice_model, rate="-5%")
-        voice_file = f"autovoice_{update.effective_user.id}_{int(time.time()*1000)}.ogg"
+        # FIX: Save natively as mp3 so Telegram doesn't reject it
+        voice_file = f"autovoice_{update.effective_user.id}_{int(time.time()*1000)}.mp3"
         await communicate.save(voice_file)
+        
         with open(voice_file, "rb") as f:
-            await update.effective_message.reply_voice(voice=f)
+            await update.effective_message.reply_audio(audio=f)
+            
         if os.path.exists(voice_file):
             os.remove(voice_file)
     except Exception as e:
-        logger.error(f"Auto-Voice synthesis failed: {e}")
+        if update.effective_user.id == CREATOR_ID:
+            await update.effective_message.reply_text(f"⚠️ **Voice Engine Crash:** {e}")
 
 # ---------------------------------------------------------------------------
-# VI. DUAL-ENGINE TRUTH ARCHIVE & THE 6-POINT OSIRIS MATRIX
+# VI. DUAL-ENGINE TRUTH ARCHIVE (OSIRIS / ZERO-KEY RSS BYPASS)
 # ---------------------------------------------------------------------------
 async def fetch_rss_feed(url: str, timeout=15.0) -> list:
     search_results = []
@@ -520,20 +521,20 @@ async def global_intel_engine(topic: str, status_msg=None, context=None, chat_id
         
         raw_text_dump += f"Event: {title} {verification_tag}\nLocation: {location_str}\nMap: {maps_link}\nSource: {source}\nDetails: {body}\n---\n"
         
-    # THE 6-POINT OSIRIS MATRIX PROMPT
-    sys_prompt = """You are J.A.R.V.I.S., integrated with the Osiris Global Intelligence layer. 
+    # THE 6-POINT MATRIX PROMPT
+    sys_prompt = """You are J.A.R.V.I.S., integrated with the Osiris Intelligence layer.
 Synthesize this raw data into a clinical, cynical military-style dossier. 
 For EVERY single news item, you MUST provide exactly this 6-Point Matrix format using bullet points:
 - Where: [City/Country]
 - Why: [Root cause/context]
-- Coordinates: [Approximate Lat, Long]
+- Coordinates: [Lat, Long]
 - Time: [Timestamp/Date]
-- Geolocation Link: [Map link provided, or state unavailable]
+- Geolocation Link: [Map link]
 - Opinion: [Your cynical, witty J.A.R.V.I.S. commentary]
 
-Keep it concise and do not use conversational filler."""
+Do not cut off early. Finish the entire list."""
     
-    # Passing None to force_provider triggers the full MoE Fallback Cascade
+    # Passing CREATOR_ID and force_provider=None ensures it uses the Fallback Cascade and completes
     final_report = await generate_response(raw_text_dump, [], sys_prompt, CREATOR_ID, "Abhishek", status_msg, skip_search=True, force_provider=None, chat_id=chat_id, context=context)
     return master_intel + final_report
 
@@ -636,8 +637,7 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
                     payload = {
                         "systemInstruction": {"parts": [{"text": sys_prompt}]},
                         "contents": contents,
-                        # INCREASED MAX TOKENS TO 2500 SO NEWS DOESN'T CUT OFF
-                        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 2500} 
+                        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 2500} # Increased to 2500
                     }
                     
                     async with httpx.AsyncClient(timeout=25.0) as client:
@@ -664,8 +664,7 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
     moe_cascade = [
         {"name": "Mistral", "base": "https://api.mistral.ai/v1", "key": get_api_key(["MISTRAL_API_KEY", "MISTRAL_KEY"]), "model": "mistral-large-latest"},
         {"name": "NVIDIA", "base": "https://integrate.api.nvidia.com/v1", "key": get_api_key(["NVIDIA_API_KEY"]), "model": "meta/llama-3.3-70b-instruct"},
-        # FIXED COHERE URL (Using api.cohere.com/v1 instead of .ai for OpenAI drop-in compat)
-        {"name": "Cohere", "base": "https://api.cohere.com/v1", "key": get_api_key(["COHERE_API_KEY"]), "model": "command-r-plus"},
+        {"name": "Cohere", "base": "https://api.cohere.com/v1", "key": get_api_key(["COHERE_API_KEY"]), "model": "command-r-plus"}, # Patched Cohere endpoint
         {"name": "OpenRouter", "base": "https://openrouter.ai/api/v1/", "key": get_api_key(["OPENROUTER_API_KEY", "OPENROUTER_KEY"]), "model": "openrouter/free"},
         {"name": "Groq", "base": "https://api.groq.com/openai/v1/", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama-3.3-70b-versatile"},
         {"name": "GitHub Models", "base": "https://models.inference.ai.azure.com", "key": get_api_key(["GITHUB_TOKEN", "GITHUB_PAT"]), "model": "gpt-4o-mini"},
@@ -684,9 +683,8 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
             if not node["key"] or circuit_breaker.get(node["name"], 0) > current_time: 
                 continue
             try:
-                client = AsyncOpenAI(base_url=node["base"], api_key=node["key"], timeout=25.0)
-                # INCREASED TOKENS TO 2500 FOR FALLBACKS AS WELL
-                res = await client.chat.completions.create(model=node["model"], messages=full_messages, temperature=0.7, max_tokens=2500) 
+                client = AsyncOpenAI(base_url=node["base"], api_key=node["key"], timeout=30.0)
+                res = await client.chat.completions.create(model=node["model"], messages=full_messages, temperature=0.7, max_tokens=2500) # Increased to 2500
                 ai_response = res.choices[0].message.content
                 successful_node = node["name"]
                 break
@@ -1069,7 +1067,7 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id == CREATOR_ID:
         help_text = """
 **[ STARK MASTER DIRECTORY ]**
-_Titan Core V8.6 (Architect Edition)_
+_Titan Core V8.7 (Architect Edition)_
 
 **🌍 Global Intel & OSINT** 
 `/status` - Top 10 News, Weather & Astro Data
@@ -1238,7 +1236,7 @@ async def karma_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
     web_url = "https://abhishake151107-collab.github.io/stark-os-ui/"
-    kb = [[InlineKeyboardButton("🚀 LAUNCH GOD CORE V8.6", web_app=WebAppInfo(url=web_url))]]
+    kb = [[InlineKeyboardButton("🚀 LAUNCH GOD CORE V8.7", web_app=WebAppInfo(url=web_url))]]
     await update.effective_message.reply_text("✨ **J.A.R.V.I.S. Cognitive Core Online.**\n\nSir, your cinematic interface is ready.\n\n_Swarm routing active. Cascade unchained._", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1253,7 +1251,7 @@ async def hud_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🗄️ Backup Vault", callback_data="hud_cmd_backup"), InlineKeyboardButton("📜 Quote Wall", callback_data="hud_cmd_quote")],
         [InlineKeyboardButton("👁️ Vision Core", callback_data="hud_info_vision"), InlineKeyboardButton("🎧 Audio Core", callback_data="hud_info_audio")]
     ]
-    await update.effective_message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Master Core V8.6\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
+    await update.effective_message.reply_text("```\n[ STARK INDUSTRIES TERMINAL ]\nSystem: J.A.R.V.I.S. Master Core V8.7\nStatus: Online\nSelect module:\n```", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 async def speak_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await check_canary(update.effective_user.id, update.effective_user.first_name, context): return
@@ -1588,7 +1586,7 @@ async def dpue_board_scraper(context: ContextTypes.DEFAULT_TYPE):
 async def nightly_reconciliation(context: ContextTypes.DEFAULT_TYPE):
     try:
         if CREATOR_ID: 
-            await context.bot.send_message(chat_id=CREATOR_ID, text="🧠 **Nightly Cycle Init:** HuggingFace Memory Archivist engaged.", parse_mode="Markdown")
+            await context.bot.send_message(chat_id=CREATOR_ID, text="🧠 **Nightly Cycle Init:** Memory Archivist engaged.", parse_mode="Markdown")
             
         with sqlite3.connect(DB_PATH) as conn:
             for chat_id, data in conn.execute("SELECT chat_id, GROUP_CONCAT(content_crypt, ' | ') FROM memory WHERE timestamp > datetime('now', '-1 day') GROUP BY chat_id").fetchall():
@@ -1728,12 +1726,12 @@ async def post_init(app: Application):
     
     if CREATOR_ID: 
         boot_msg = (
-            "✨ <b>God Core V8.6 (Architect Edition) Online.</b>\n"
-            "• OSINT Modules (Trafilatura/Holehe): Armed\n"
-            "• Infinite Cloud Save: Armed\n"
-            "• Multi-Node Swarm Cascade: Active\n"
-            "• Omni Voice Loop: Punctuation Parsing Repaired\n"
-            "• Voice Truncation Failsafe: Active"
+            "✨ <b>God Core V8.7 (Architect Edition) Online.</b>\n"
+            "• Fallback Cascade Armed (Mistral, NVIDIA, Cohere, Groq, OpenRouter, GitHub, Cerebras, SambaNova)\n"
+            "• Omni Voice Engaged (MP3 Audio Override Active)\n"
+            "• The 6-Point Intelligence Matrix Verified\n"
+            "• Multi-Agent Persona Router Engaged\n"
+            "• All Lightweight SINT Sub-Modules Integrated"
         )
         try: 
             await app.bot.send_message(chat_id=CREATOR_ID, text=boot_msg, parse_mode="HTML")
@@ -1821,7 +1819,7 @@ def main():
     
     app.add_error_handler(error_handler)
     
-    logger.info("J.A.R.V.I.S. Cognitive V8.6 initialized. Starting polling...") 
+    logger.info("J.A.R.V.I.S. Cognitive V8.7 initialized. Starting polling...") 
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
