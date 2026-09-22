@@ -12,5 +12,5 @@ wikipedia1.4.0
 geopy2.4.1
 httpx0.27.0
 psutil5.9.8
-gTTS2.5.1
+gTTS==2.5.1
 trafilatura1.7.0
