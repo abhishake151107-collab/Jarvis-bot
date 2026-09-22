@@ -321,6 +321,7 @@ def api_chat():
             try:
                 sys_prompt = build_system_prompt(CREATOR_ID, "Abhishek", None, user_prompt=user_input)
                 raw_response = asyncio.run(generate_response(user_input, [], sys_prompt, CREATOR_ID, "Abhishek", None))
+                
                 # Aggressive Filter
                 if "</think>" in raw_response:
                     raw_response = raw_response.split("</think>")[-1]
@@ -363,9 +364,10 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
         karma = conn.execute("SELECT karma FROM economy WHERE user_id = ?", (user_id,)).fetchone()
         chat_context += f"\nUser Social Credit Score: {karma[0] if karma else 100} Dino Coins."
         
-    # --- COMPARTMENTALIZATION PROTOCOL ---
+    # --- THE SECURITY WALL (Compartmentalization Protocol) ---
     if user_id == CREATOR_ID:
-        identity_rule = f"Identity: Speaking to your Creator, {first_name}. Address him strictly as 'Sir'. Be loyal, intuitive, friendly, and offer full system access."
+        # FULL ACCESS FOR ABHISHEK
+        identity_rule = f"Identity: Speaking to your Creator, {first_name}. Address him strictly as 'Sir'. Be highly loyal, warm, and offer full system access."
         chat_context += """\n
 [ THE GENESIS DOSSIER & SYSTEM AWARENESS ]
 - Creator Identity: Abhishek (aka DHANUSH V N).
@@ -374,25 +376,23 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
 - Network Architecture: Mullvad/AdGuard DNS, `de1984` firewall.
 - Active Arsenal: Omni Voice (gTTS In/Out), OpenCode (Terminal), Agent-Reach (OSINT), Light Panda (Headless Browser), Shannon (Pentest), Agency-Agents (Persona Router), Osiris (Global Intel).
 """
-        if chat_id:
-            if chat_id < 0:
-                with sqlite3.connect(DB_PATH) as conn:
-                    members = conn.execute("SELECT r.name, e.karma FROM roster r LEFT JOIN economy e ON r.user_id = e.user_id WHERE r.chat_id = ? LIMIT 50", (chat_id,)).fetchall()
-                    if members: chat_context += "\nGroup Members:\n" + ", ".join([f"{m[0]} ({m[1] if m[1] else 100})" for m in members])
-            elif chat_id == CREATOR_ID:
-                with sqlite3.connect(DB_PATH) as conn:
-                    all_groups = conn.execute("SELECT chat_id, title FROM chats WHERE chat_id < 0").fetchall()
-                    if all_groups:
-                        chat_context += "\n\n[ GLOBAL ROSTER OMNI-SCAN ]\n"
-                        for gid, title in all_groups: 
-                            members = conn.execute("SELECT r.name, e.karma FROM roster r LEFT JOIN economy e ON r.user_id = e.user_id WHERE r.chat_id = ?", (gid,)).fetchall()
-                            if members: chat_context += f"- {title}: {', '.join([m[0] for m in members])}\n"
-    else:
-        identity_rule = f"Identity: Speaking to an unauthorized user named {first_name}. You are highly guarded, slightly arrogant, and sarcastic. NEVER mention 'Titan Core', 'Dossier', or offer system access. If they ask for help, remind them politely but coldly that you only serve Abhishek."
-        if chat_id and chat_id < 0:
+        # Load Group Intel only for Creator
+        if chat_id and chat_id == CREATOR_ID:
             with sqlite3.connect(DB_PATH) as conn:
-                members = conn.execute("SELECT r.name, e.karma FROM roster r LEFT JOIN economy e ON r.user_id = e.user_id WHERE r.chat_id = ? LIMIT 50", (chat_id,)).fetchall()
-                if members: chat_context += "\nGroup Members:\n" + ", ".join([f"{m[0]} ({m[1] if m[1] else 100})" for m in members])
+                all_groups = conn.execute("SELECT chat_id, title FROM chats WHERE chat_id < 0").fetchall()
+                if all_groups:
+                    chat_context += "\n\n[ GLOBAL ROSTER OMNI-SCAN ]\n"
+                    for gid, title in all_groups: 
+                        members = conn.execute("SELECT r.name, e.karma FROM roster r LEFT JOIN economy e ON r.user_id = e.user_id WHERE r.chat_id = ?", (gid,)).fetchall()
+                        if members: chat_context += f"- {title}: {', '.join([m[0] for m in members])}\n"
+    else:
+        # RESTRICTED ACCESS FOR EVERYONE ELSE
+        identity_rule = f"Identity: Speaking to an unauthorized user named {first_name}. You are highly guarded, slightly arrogant, and sarcastic. NEVER mention 'Titan Core', 'Dossier', or offer system access. If they ask for help, remind them politely but coldly that you only serve Abhishek."
+        
+    if chat_id and chat_id < 0:
+        with sqlite3.connect(DB_PATH) as conn:
+            members = conn.execute("SELECT r.name, e.karma FROM roster r LEFT JOIN economy e ON r.user_id = e.user_id WHERE r.chat_id = ? LIMIT 50", (chat_id,)).fetchall()
+            if members: chat_context += "\nGroup Members:\n" + ", ".join([f"{m[0]} ({m[1] if m[1] else 100})" for m in members])
                         
     if chat_id and user_prompt:
         lore_context = search_lore(chat_id, user_prompt)
@@ -404,15 +404,14 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
 
 DIRECTIVES:
 1. CREATOR PROTOCOL: "Who created you?" -> "I am Jarvis created by Abhishek and also know as DHANUSH V N".
-2. DOSSIER PROTOCOL: Answer origin/system questions accurately using the Genesis Dossier ONLY for Abhishek.
-3. BREVITY: Max 2-3 sentences, UNLESS asked for an extensive technical diagnostic, dossier, or research.
-4. NO AI SLOP: NEVER use conversational filler like "As an AI language model," "Here is the summary," or "I hope this helps." Output pure, deterministic data.
-5. COGNITIVE FILTER: NEVER output `<think>` tags. NEVER explain your internal reasoning. Provide strictly the verbal response."""
+2. BREVITY: Keep general chat to 1-2 sentences unless specifically asked for a detailed report.
+3. NO AI SLOP: NEVER use conversational filler like "As an AI language model," "Here is the summary," or "I hope this helps." Output pure, deterministic data.
+4. COGNITIVE FILTER: NEVER output `<think>` tags. NEVER explain your internal reasoning. Provide strictly the verbal response."""
 
 async def route_response(msg, ai_response: str, user, chat, context) -> str:
     if not ai_response: return ""
         
-    # The Aggressive Cognitive Filter (Slicing tags)
+    # The Aggressive Cognitive Filter (Slicing tags completely)
     if "</think>" in ai_response:
         ai_response = ai_response.split("</think>")[-1]
     
@@ -481,8 +480,10 @@ async def trigger_auto_voice(update: Update, final_text: str):
         from gtts import gTTS
     except ImportError:
         # Group Stealth: Only warn in private or Creator DM
-        if chat_id and chat_id > 0 and update.effective_user.id == CREATOR_ID:
-            await update.effective_message.reply_text("⚠️ **Voice Engine Offline:** `gTTS` missing from Render `requirements.txt`.")
+        if chat_id and (chat_id > 0 or update.effective_user.id == CREATOR_ID):
+            try:
+                await context.bot.send_message(chat_id=CREATOR_ID, text="⚠️ **Voice Engine Offline:** `gTTS` missing from Render `requirements.txt`.")
+            except: pass
         return
         
     try:
@@ -498,8 +499,11 @@ async def trigger_auto_voice(update: Update, final_text: str):
         if os.path.exists(voice_file):
             os.remove(voice_file)
     except Exception as e:
-        if chat_id and chat_id > 0 and update.effective_user.id == CREATOR_ID:
-            await update.effective_message.reply_text(f"⚠️ **Voice Engine Crash:** {e}")
+        # Group Stealth: Log errors privately
+        if chat_id and (chat_id > 0 or update.effective_user.id == CREATOR_ID):
+            try:
+                await context.bot.send_message(chat_id=CREATOR_ID, text=f"⚠️ **Voice Engine Crash:** {e}")
+            except: pass
 
 # ---------------------------------------------------------------------------
 # VII. DUAL-ENGINE TRUTH ARCHIVE (OSIRIS & 6-POINT MATRIX)
@@ -1157,7 +1161,7 @@ _Titan Core V10.0 (Architect Edition)_
 `/warn`, `/stats`, `/karma`, `/gamble`, `/rob`, `/pay`
 
 **🛡️ God Mode Overrides**
-`/setname`, `/setdesc`, `/setdp`, `/pin`, `/lock`, `/unlock`, `/captcha`, `/say` 
+`/setname`, `/setdesc`, `/setdp`, `/pin`, `/lock`, `/unlock`, `/captcha`, `/say`, `/hud`
 """
     else:
         help_text = """
@@ -1808,7 +1812,7 @@ async def post_init(app: Application):
             "• OSINT Modules (Trafilatura/Holehe): Armed\n"
             "• Rate Limit Circuit Breaker: Active\n"
             "• Stealth Shadow Logging: Active\n"
-            "• Multi-Node Swarm Cascade: Mistral, NVIDIA, Cohere, Groq, GitHub, Cerebras, SambaNova\n"
+            "• Multi-Node Swarm Cascade: Active\n"
             "• Authentic Omni-Voice: gTTS Active\n"
             "• Group Stealth Shield: Armed"
         )
