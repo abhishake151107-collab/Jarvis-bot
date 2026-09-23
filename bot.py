@@ -174,22 +174,22 @@ HTML_DASHBOARD = """
         <div class="log-entry sys-ok"><span class="badge">ONLINE</span> Cognitive MoE: Gemini/Mistral Active</div>
         <div class="log-entry sys-ok"><span class="badge">ACTIVE</span> Absolute Protection Protocol: Enabled</div>
         <div class="log-entry sys-warn"><span class="badge" style="background:#b08800">SECURE</span> Compartmentalization: Creator-Gated</div>
-        <div class="log-entry sys-crit"><span class="badge" style="background:#da3633">ROUTING</span> Local Hardware / Pi Integration: Standing By</div>
+        <div class="log-entry sys-crit"><span class="badge" style="background:#da3633">ROUTING</span> Live OSINT / Security Tools: Active</div>
         
         <div class="matrix-grid">
             <div class="module">
                 <h3>God Mode Override</h3>
                 <p class="sys-ok">[+] /say (Ventriloquism)</p>
                 <p class="sys-ok">[+] /lockdown (Emergency Stop)</p>
-                <p class="sys-crit">[+] /vulnclaw (Local Worker)</p>
-                <p class="sys-crit">[+] /torbot (Local Worker)</p>
+                <p class="sys-crit">[+] /vulnclaw (Live Analysis)</p>
+                <p class="sys-crit">[+] /torbot (Deep Intel Trace)</p>
             </div>
             <div class="module">
                 <h3>Tactical OSINT Toolkit (Render)</h3>
                 <p class="sys-ok">[+] Phantom Scraper (/read)</p>
                 <p class="sys-ok">[+] Native Recon Engine (/recon)</p>
                 <p class="sys-ok">[+] Geo-IP Locator (/geolocate)</p>
-                <p class="sys-ok">[+] SSL Subdomain Enum (/subdomains)</p>
+                <p class="sys-ok">[+] Subdomain Enum (/subdomains)</p>
             </div>
         </div>
     </div>
@@ -317,7 +317,7 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
     return ""
 
 # ============================================================================
-# VIII. GOD MODE OVERRIDES & SYSTEM CONTROLS
+# VIII. GOD MODE OVERRIDES & LIVE SECURITY TOOLS
 # ============================================================================
 async def say_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != CREATOR_ID: return
@@ -334,10 +334,9 @@ async def lockdown_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with open(LOCKDOWN_FILE, "w") as f: f.write("LOCKED")
         await update.message.reply_text("🔒 LOCKDOWN INITIATED. All non-creator inputs will be dropped.")
 
-# --- HYBRID ARCHITECTURE (LOCAL WORKER BRIDGES / LIVE EXECUTION) ---
 async def vulnclaw_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != CREATOR_ID: return
-    try: await update.message.delete() # Stealth: Delete the command message
+    try: await update.message.delete() # Stealth: Delete trigger message
     except: pass
     if not context.args: return await context.bot.send_message(chat_id=CREATOR_ID, text="Syntax: /vulnclaw [domain]")
     target = context.args[0].replace("https://", "").replace("http://", "").split("/")[0]
@@ -371,7 +370,7 @@ async def vulnclaw_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def torbot_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != CREATOR_ID: return
-    try: await update.message.delete() # Stealth: Delete the command message
+    try: await update.message.delete() # Stealth: Delete trigger message
     except: pass
     if not context.args: return await context.bot.send_message(chat_id=CREATOR_ID, text="Syntax: /torbot [IP/Domain]")
     target = context.args[0].replace("https://", "").replace("http://", "").split("/")[0]
@@ -404,7 +403,7 @@ async def torbot_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def agentzero_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != CREATOR_ID: return
-    try: await update.message.delete() # Stealth: Delete the command message
+    try: await update.message.delete() # Stealth: Delete trigger message
     except: pass
     if not context.args: return await context.bot.send_message(chat_id=CREATOR_ID, text="Syntax: /agentzero [Task Description]")
     prompt = " ".join(context.args)
@@ -421,7 +420,6 @@ async def agentzero_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
         if not code_response: raise Exception("Cognitive Node failed to generate code.")
         
-        # Save to temporary file and send to Creator
         filename = f"agent_zero_payload_{int(time.time())}.py"
         with open(filename, "w") as f: f.write(code_response)
         
@@ -435,7 +433,7 @@ async def agentzero_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================================================
 async def read_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != CREATOR_ID: return
-    try: await update.message.delete() # Stealth: Delete the command message
+    try: await update.message.delete() # Stealth: Delete trigger message
     except: pass
     if not context.args: return await context.bot.send_message(chat_id=CREATOR_ID, text="Syntax: /read [URL]")
     target_url = context.args[0]
@@ -450,7 +448,7 @@ async def read_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def recon_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != CREATOR_ID: return
-    try: await update.message.delete() # Stealth: Delete the command message
+    try: await update.message.delete() # Stealth: Delete trigger message
     except: pass
     if not context.args: return await context.bot.send_message(chat_id=CREATOR_ID, text="Syntax: /recon [domain.com]")
     target = context.args[0].replace("https://", "").replace("http://", "").split("/")[0]
@@ -523,8 +521,8 @@ async def post_init(app: Application):
             "• Cognitive Brain (Render): Online 🌐\n"
             "• Absolute Protection Protocol: ARMED 🛡️\n"
             "• Compartmentalization Patch: SECURE 🔒\n"
-            "• Local Worker Dispatchers: Standing By ⚡\n"
-            "• Uncensored God-Gate (Shannon/Zero): Authorized 💀"
+            "• Live Security Nodes: Active ⚡\n"
+            "• Stealth DM Routing: Authorized 💀"
         )
         try: await app.bot.send_message(chat_id=CREATOR_ID, text=boot_msg, parse_mode="HTML")
         except: pass
@@ -536,12 +534,10 @@ def main():
     app.add_handler(CommandHandler("lockdown", lockdown_cmd))
     app.add_handler(CommandHandler("say", say_cmd))
     
-    # Local Node Dummy Dispatches
+    # Live Tactical Tools (Stealth Enabled)
     app.add_handler(CommandHandler("vulnclaw", vulnclaw_cmd))
     app.add_handler(CommandHandler("torbot", torbot_cmd))
     app.add_handler(CommandHandler("agentzero", agentzero_cmd))
-    
-    # Render OSINT
     app.add_handler(CommandHandler("read", read_cmd))
     app.add_handler(CommandHandler("recon", recon_cmd))
     
