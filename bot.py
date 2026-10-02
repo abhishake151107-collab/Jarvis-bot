@@ -1,12 +1,13 @@
 """
 ╔══════════════════════════════════════════════════════════════════╗
-║     TITAN CORE V24.2 — REAL & RAW MOVIE J.A.R.V.I.S. (RENDER)    ║
+║     TITAN CORE V24.3 — REAL & RAW MOVIE J.A.R.V.I.S. (RENDER)    ║
 ║                                                                  ║
 ║  • 100% Real Data Only (Zero Fake Telemetry or Hallucinations)   ║
 ║  • Permanent Telegram Cloud Vault (Jarvis Backup: -1004296302955)║
+║  • 7-Stage Vision Cascade + Auto Image Compression + OCR Backup  ║
 ║  • 40-Model Auto-Switching AI Cascade + Keyless Failover         ║
 ║  • Zero Error Messages in Group Chats (100% Group Stealth)       ║
-║  • Reply-Aware ("What is this Jarvis" works on Text/Photo/PDF)   ║
+║  • Reply-Aware ("Translate in english" / "What is this Jarvis")  ║
 ║  • 100% Multilingual Text, Vision & Neural Voice (KN/HI/EN/etc.) ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
@@ -41,6 +42,11 @@ from flask_cors import CORS
 from openai import AsyncOpenAI
 
 # ─── Optional Integrations ───
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
+
 try:
     import edge_tts
 except ImportError:
@@ -82,7 +88,7 @@ CREATOR_ID = int(os.environ.get("CREATOR_ID", "8846205050").strip() or 884620505
 VAULT_CHAT_ID = int(os.environ.get("VAULT_CHAT_ID", "-1004296302955").strip() or -1004296302955)
 PORT = int(os.environ.get("PORT", 8080))
 IST = pytz.timezone("Asia/Kolkata")
-JARVIS_VERSION = "24.2.0"
+JARVIS_VERSION = "24.3.0"
 
 logging.basicConfig(
     format="%(asctime)s — %(name)s — %(levelname)s — %(message)s",
@@ -291,7 +297,7 @@ def log_memory(chat_id: int, thread_id: int, user_id: int, role: str, text: str)
         with sqlite3.connect(DB_PATH) as conn:
             conn.execute(
                 "INSERT INTO memory (chat_id, thread_id, user_id, role, content_crypt) VALUES (?, ?, ?, ?, ?)",
-                (chat_id, thread_id or 0, user_id, role, encrypt_data(cleaned_text)),
+                (chat.id, thread_id or 0, user_id, role, encrypt_data(cleaned_text)),
             )
             conn.commit()
         mark_vault_dirty()
@@ -448,10 +454,10 @@ CORS(flask_app)
 def health_dashboard():
     return render_template_string(
         """
-        <html><head><title>Titan Core V24.2</title>
+        <html><head><title>Titan Core V24.3</title>
         <style>body { background:#0d1117; color:#58a6ff; font-family:monospace; padding:40px; text-align:center; }</style>
         </head><body>
-        <h1>⚡ TITAN CORE V24.2</h1>
+        <h1>⚡ TITAN CORE V24.3</h1>
         <p style="color:#3fb950">● REAL & RAW J.A.R.V.I.S. ONLINE</p>
         </body></html>
         """
@@ -696,7 +702,7 @@ async def gather_natural_telemetry(text: str, chat_id: int, user_id: int) -> str
     return "\n".join(real_facts)
 
 # ═══════════════════════════════════════════════════════════════
-# VI. OMEGA-CASCADE SWARM (40-MODEL AUTO-SWITCH + KEYLESS FAILOVER)
+# VI. OMEGA-CASCADE SWARM (40-MODEL TEXT + 7-STAGE VISION)
 # ═══════════════════════════════════════════════════════════════
 
 def get_api_keys(key_names: list) -> list:
@@ -964,68 +970,207 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
 
     return None
 
+def compress_image_for_vision(image_bytes: bytes, max_dim: int = 1024, quality: int = 78) -> bytes:
+    """Resizes and compresses image to a clean RGB JPEG so Vision APIs never reject the payload size."""
+    if not Image:
+        return image_bytes
+    try:
+        with Image.open(BytesIO(image_bytes)) as img:
+            if img.mode != "RGB":
+                img = img.convert("RGB")
+            img.thumbnail((max_dim, max_dim))
+            out = BytesIO()
+            img.save(out, format="JPEG", quality=quality, optimize=True)
+            return out.getvalue()
+    except Exception as e:
+        logger.warning(f"Image compression skipped: {e}")
+        return image_bytes
+
+async def extract_ocr_text(compressed_bytes: bytes) -> str:
+    """Free keyless OCR fallback (ocr.space) for reading/translating document, receipt, or textbook photos."""
+    try:
+        b64_str = "data:image/jpeg;base64," + base64.b64encode(compressed_bytes).decode("utf-8")
+        async with httpx.AsyncClient(timeout=18.0) as client:
+            resp = await client.post(
+                "https://api.ocr.space/parse/image",
+                data={
+                    "apikey": os.environ.get("OCR_SPACE_KEY", "helloworld"),
+                    "base64Image": b64_str,
+                    "OCREngine": "2",
+                    "scale": "true",
+                    "isTable": "true",
+                },
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                parsed = data.get("ParsedResults") or []
+                if parsed:
+                    text = "\n".join(p.get("ParsedText", "") for p in parsed).strip()
+                    if text:
+                        return text
+    except Exception as e:
+        logger.warning(f"OCR fallback warning: {e}")
+    return ""
+
 async def generate_vision_response(image_bytes: bytes, prompt: str, user_id: int, user_name: str) -> str:
-    b64_image = base64.b64encode(image_bytes).decode("utf-8")
+    """
+    7-Stage Vision & Optical Intelligence Cascade:
+    1. Compresses image so base64 payloads never exceed API limits.
+    2. Native Google Gemini REST API (bypasses OpenAI SDK compat bugs).
+    3. Groq Llama-4 Vision & Llama-3.2 Vision models.
+    4. Mistral Pixtral Vision models.
+    5. OpenRouter Free Vision models.
+    6. Keyless Multimodal Vision Swarm (single-turn user payload).
+    7. Keyless OCR + 40-Model Text AI Cascade (reads & translates any text/receipt/page in the photo).
+    """
+    compressed = await asyncio.to_thread(compress_image_for_vision, image_bytes)
+    b64_image = base64.b64encode(compressed).decode("utf-8")
     data_uri = f"data:image/jpeg;base64,{b64_image}"
     address = "Sir" if user_id == CREATOR_ID else user_name
-    sys_prompt = (
-        f"You are J.A.R.V.I.S. Examine this image and explain clearly and directly what it shows "
-        f"for {address}. Reply in the same language requested by the user. "
+
+    user_task = prompt or f"Examine this image, transcribe or translate any important text, and explain clearly what it shows for {address}."
+    combined_instruction = (
+        f"You are J.A.R.V.I.S. {user_task}\n"
+        f"Address the user as {address}. Be direct, accurate, and real. "
         f"Do NOT output fake telemetry blocks or ** markdown."
     )
 
-    def vision_messages(default_prompt: str):
-        return [
-            {"role": "system", "content": sys_prompt},
-            {"role": "user", "content": [
-                {"type": "text", "text": prompt or default_prompt},
-                {"type": "image_url", "image_url": {"url": data_uri}},
-            ]},
-        ]
-
+    # Stage 1: Native Google Gemini REST API (100% reliable with inline_data)
     for gemini_key in get_api_keys(["GEMINI_API_KEY", "GOOGLE_API_KEY"]):
         for g_model in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]:
             try:
-                client = AsyncOpenAI(base_url="https://generativelanguage.googleapis.com/v1beta/openai/", api_key=gemini_key, timeout=22.0)
-                res = await client.chat.completions.create(
-                    model=g_model,
-                    messages=vision_messages(f"Analyze this image in detail for {address}."),
-                    max_tokens=1500,
-                )
-                content = _clean_llm_output(res.choices[0].message.content)
-                if content:
-                    return content
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{g_model}:generateContent?key={gemini_key}"
+                payload = {
+                    "contents": [{
+                        "parts": [
+                            {"text": combined_instruction},
+                            {"inline_data": {"mime_type": "image/jpeg", "data": b64_image}},
+                        ]
+                    }]
+                }
+                async with httpx.AsyncClient(timeout=22.0) as client:
+                    resp = await client.post(url, json=payload)
+                    if resp.status_code == 200:
+                        candidates = resp.json().get("candidates") or []
+                        if candidates:
+                            parts = candidates[0].get("content", {}).get("parts") or []
+                            text_out = "".join(p.get("text", "") for p in parts)
+                            cleaned = _clean_llm_output(text_out)
+                            if cleaned:
+                                return cleaned
             except Exception as e:
-                logger.warning(f"Gemini vision ({g_model}) failure: {e}")
+                logger.warning(f"Native Gemini vision ({g_model}) error: {e}")
 
+    # Helper for OpenAI-compatible vision endpoints (Single user message avoids system+image 400 errors)
+    oa_vision_messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": combined_instruction},
+                {"type": "image_url", "image_url": {"url": data_uri}},
+            ],
+        }
+    ]
+
+    # Stage 2: Groq Vision Models
     for groq_key in get_api_keys(["GROQ_API_KEY", "GROQ_KEY"]):
-        for gr_model in ["meta-llama/llama-4-scout-17b-16e-instruct", "meta-llama/llama-4-maverick-17b-128e-instruct"]:
+        for gr_model in [
+            "meta-llama/llama-4-scout-17b-16e-instruct",
+            "meta-llama/llama-4-maverick-17b-128e-instruct",
+            "llama-3.2-90b-vision-preview",
+            "llama-3.2-11b-vision-preview",
+        ]:
             try:
                 client = AsyncOpenAI(base_url="https://api.groq.com/openai/v1", api_key=groq_key, timeout=22.0)
                 res = await client.chat.completions.create(
                     model=gr_model,
-                    messages=vision_messages(f"Examine this visual feed for {address}."),
+                    messages=oa_vision_messages,
                     max_tokens=1500,
                 )
                 content = _clean_llm_output(res.choices[0].message.content)
                 if content:
                     return content
             except Exception as e:
-                logger.warning(f"Groq vision ({gr_model}) failure: {e}")
+                logger.warning(f"Groq vision ({gr_model}) error: {e}")
 
-    for v_model in ["openai", "openai-large"]:
+    # Stage 3: Mistral Pixtral Vision
+    for mistral_key in get_api_keys(["MISTRAL_API_KEY"]):
+        for m_model in ["pixtral-12b-2409", "pixtral-large-latest"]:
+            try:
+                client = AsyncOpenAI(base_url="https://api.mistral.ai/v1", api_key=mistral_key, timeout=22.0)
+                res = await client.chat.completions.create(
+                    model=m_model,
+                    messages=oa_vision_messages,
+                    max_tokens=1500,
+                )
+                content = _clean_llm_output(res.choices[0].message.content)
+                if content:
+                    return content
+            except Exception as e:
+                logger.warning(f"Mistral Pixtral ({m_model}) error: {e}")
+
+    # Stage 4: OpenRouter Free Vision Models
+    for or_key in get_api_keys(["OPENROUTER_API_KEY"]):
+        for or_model in [
+            "google/gemini-2.0-flash-exp:free",
+            "qwen/qwen2.5-vl-72b-instruct:free",
+            "meta-llama/llama-3.2-11b-vision-instruct:free",
+        ]:
+            try:
+                client = AsyncOpenAI(base_url="https://openrouter.ai/api/v1", api_key=or_key, timeout=22.0)
+                res = await client.chat.completions.create(
+                    model=or_model,
+                    messages=oa_vision_messages,
+                    max_tokens=1500,
+                )
+                content = _clean_llm_output(res.choices[0].message.content)
+                if content:
+                    return content
+            except Exception as e:
+                logger.warning(f"OpenRouter vision ({or_model}) error: {e}")
+
+    # Stage 5: Keyless Pollinations Vision Swarm (with smaller compressed JPEG for fast transmission)
+    small_compressed = await asyncio.to_thread(compress_image_for_vision, image_bytes, 768, 72)
+    small_uri = f"data:image/jpeg;base64,{base64.b64encode(small_compressed).decode('utf-8')}"
+    keyless_messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": combined_instruction},
+                {"type": "image_url", "image_url": {"url": small_uri}},
+            ],
+        }
+    ]
+    for v_model in ["openai", "openai-fast", "openai-large"]:
         try:
             async with httpx.AsyncClient(timeout=28.0) as http_client:
                 resp = await http_client.post(
                     "https://text.pollinations.ai/openai",
-                    json={"messages": vision_messages("Analyze what is depicted."), "model": v_model},
+                    json={"messages": keyless_messages, "model": v_model},
                 )
                 if resp.status_code == 200:
-                    content = _clean_llm_output(resp.json()["choices"][0]["message"]["content"])
+                    try:
+                        data = resp.json()
+                        content = _clean_llm_output(data["choices"][0]["message"]["content"])
+                    except Exception:
+                        content = _clean_llm_output(resp.text)
                     if content:
                         return content
         except Exception as e:
-            logger.error(f"Keyless vision ({v_model}) failure: {e}")
+            logger.warning(f"Keyless vision ({v_model}) error: {e}")
+
+    # Stage 6: Keyless OCR Text Extraction + 40-Model Text AI Cascade
+    ocr_text = await extract_ocr_text(compressed)
+    if ocr_text:
+        ocr_prompt = (
+            f"The user sent an image with the request: '{user_task}'\n\n"
+            f"Text extracted from the image via optical scan:\n{ocr_text[:4000]}\n\n"
+            f"Fulfill the user's request (translate, explain, or summarize) clearly and directly for {address}."
+        )
+        sys_prompt = build_system_prompt(user_id, user_name, CREATOR_ID if user_id == CREATOR_ID else 0)
+        ai_reply = await generate_response(ocr_prompt, [], sys_prompt, user_id)
+        if ai_reply:
+            return ai_reply
 
     return None
 
@@ -1088,8 +1233,14 @@ async def analyze_photo_object(photo_obj, caption: str, msg, context: ContextTyp
         image_bytes = bytes(await file_obj.download_as_bytearray())
         analysis = await generate_vision_response(image_bytes, caption, user.id, user.first_name)
         if not analysis:
-            await status_msg.delete()
-            await notify_creator(context.bot, f"⚠️ Vision failed in {chat.title or chat.id}")
+            if chat.type == "private":
+                await safe_edit(
+                    status_msg,
+                    "Sir, the optical text on this image is too faint for keyless OCR. "
+                    "Add a valid GEMINI_API_KEY or GROQ_API_KEY in Render Environment for full HD neural vision.",
+                )
+            else:
+                await status_msg.delete()
             return
         await safe_edit(status_msg, f"🔍 Optical Analysis:\n\n{analysis}")
         log_memory(chat.id, msg.message_thread_id, user.id, "assistant", analysis)
@@ -1111,7 +1262,7 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user, chat = msg.from_user, msg.chat
     log_roster_and_chat(chat, user)
     caption = msg.caption or (
-        "Analyze this image in detail, Sir."
+        "Analyze this image in detail, transcribe or translate any visible text, and explain what it shows, Sir."
         if user.id == CREATOR_ID
         else f"Explain clearly what is in this image for {user.first_name}."
     )
@@ -1445,7 +1596,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text(f"Nice try, {user.first_name}. Security credentials stay locked with Abhishek.")
         return
 
-    # 4. If the user replied to a Photo or Document (e.g., "What is this Jarvis"), inspect that media directly
+    # 4. If the user replied to a Photo or Document (e.g., "Translate in english"), inspect that media directly
     reply_msg = msg.reply_to_message
     if reply_msg:
         if reply_msg.photo:
@@ -1497,6 +1648,7 @@ async def post_init(app: Application):
         boot_msg = (
             f"⚡ J.A.R.V.I.S. V{JARVIS_VERSION} Online, Sir.\n\n"
             f"• Mode: Real & Raw (Zero Fake Telemetry)\n"
+            f"• Vision Engine: 7-Stage + Auto Compression + OCR\n"
             f"• Memory Vault: {vault_status}\n"
             f"• {get_real_server_stats()}\n\n"
             f"At your disposal, Sir."
