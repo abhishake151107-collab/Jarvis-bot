@@ -1,9 +1,9 @@
 """
 ╔══════════════════════════════════════════════════════════════════╗
-║         TITAN CORE V23.0 — J.A.R.V.I.S. RENDER FREE EDITION                  ║
-║                                                                              ║
-║  Multi-Model Cascade + Full Movie Jarvis + Security Vault                    ║
-║  Telegram Bot optimized for Render Free Tier                                 ║
+║         TITAN CORE V23.0 — J.A.R.V.I.S. RENDER FREE EDITION      ║
+║                                                                  ║
+║  Multi-Model Cascade + Full Movie Jarvis + Security Vault        ║
+║  Telegram Bot optimized for Render Free Tier                     ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
@@ -19,10 +19,12 @@ import base64
 import string
 import hashlib
 import logging
+import asyncio
 import datetime
 import urllib.parse
 import platform
 import subprocess
+import xml.etree.ElementTree as ET
 from io import BytesIO
 from collections import defaultdict
 
@@ -32,14 +34,28 @@ import pytz
 import httpx
 import requests
 import wikipedia
-import feedparser
 import psutil
 import trafilatura
 from cryptography.fernet import Fernet
-from deep_translator import GoogleTranslator
 from flask import Flask, request, jsonify, render_template_string
 from flask_cors import CORS
 from openai import AsyncOpenAI
+
+# Safe optional imports so missing packages never crash boot
+try:
+    import feedparser
+except ImportError:
+    feedparser = None
+
+try:
+    from deep_translator import GoogleTranslator
+except ImportError:
+    GoogleTranslator = None
+
+try:
+    import pdfplumber
+except ImportError:
+    pdfplumber = None
 
 # ─── Telegram ───
 from telegram import (
@@ -69,15 +85,26 @@ PORT = int(os.environ.get("PORT", 8080))
 IST = pytz.timezone('Asia/Kolkata')
 JARVIS_VERSION = "23.0.0"
 
-# CRITICAL SECURITY: Encryption key required
+logging.basicConfig(
+    format="%(asctime)s — %(name)s — %(levelname)s — %(message)s",
+    level=logging.INFO,
+)
+logger = logging.getLogger("Jarvis")
+
+# CRITICAL SECURITY: Encryption key required (with safe fallback if invalid/missing)
 encryption_env = os.environ.get("ENCRYPTION_KEY")
 if not encryption_env:
-    # Generate a temporary key for Render free (data is ephemeral anyway)
-    from cryptography.fernet import Fernet as _F
-    ENCRYPTION_KEY = _F.generate_key().decode()
-    logging.warning("⚠️ ENCRYPTION_KEY not set! Generated temporary key. Memory will not persist across restarts.")
+    ENCRYPTION_KEY = Fernet.generate_key().decode()
+    logger.warning("⚠️ ENCRYPTION_KEY not set! Generated temporary key. Memory will not persist across restarts.")
 else:
     ENCRYPTION_KEY = encryption_env.strip()
+
+try:
+    cipher_suite = Fernet(ENCRYPTION_KEY.encode())
+except Exception as e:
+    logger.warning(f"⚠️ Invalid ENCRYPTION_KEY format ({e}). Generating valid session key so bot can boot.")
+    ENCRYPTION_KEY = Fernet.generate_key().decode()
+    cipher_suite = Fernet(ENCRYPTION_KEY.encode())
 
 # PII Protection — loaded from environment
 SENSITIVE_ASSETS = [asset.strip() for asset in os.environ.get("SENSITIVE_ASSETS", "").split(",") if asset.strip()]
@@ -88,19 +115,12 @@ DB_PATH = "/tmp/jarvis_vault.db"
 circuit_breaker = {}
 probing_attempts = defaultdict(int)
 
-logging.basicConfig(
-    format="%(asctime)s — %(name)s — %(levelname)s — %(message)s",
-    level=logging.INFO,
-)
-logger = logging.getLogger("Jarvis")
-
 def is_lockdown() -> bool:
     return os.path.exists(LOCKDOWN_FILE)
 
-# Cryptographic Memory Shield
-cipher_suite = Fernet(ENCRYPTION_KEY.encode())
 def encrypt_data(text: str) -> str:
     return cipher_suite.encrypt(str(text or "[BLANK]").encode()).decode()
+
 def decrypt_data(crypto_text: str) -> str:
     try:
         return cipher_suite.decrypt(crypto_text.encode()).decode()
@@ -337,23 +357,36 @@ def db_init():
         logger.error(f"SQLite init error: {e}")
 
 def log_roster_and_chat(chat, user):
-    if is_lockdown(): return
+    if is_lockdown():
+        return
     try:
         chat_title = chat.title or f"Private: {user.first_name}"
         un = user.username.lower() if user.username else ""
         with sqlite3.connect(DB_PATH) as conn:
-            conn.execute("INSERT INTO roster (chat_id, user_id, name, username) VALUES (?, ?, ?, ?) ON CONFLICT(chat_id, user_id) DO UPDATE SET name = ?, username = ?", (chat.id, user.id, user.first_name, un, user.first_name, un))
-            conn.execute("INSERT INTO chats (chat_id, title) VALUES (?, ?) ON CONFLICT(chat_id) DO UPDATE SET title = ?", (chat.id, chat_title, chat_title))
+            conn.execute(
+                "INSERT INTO roster (chat_id, user_id, name, username) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(chat_id, user_id) DO UPDATE SET name = ?, username = ?",
+                (chat.id, user.id, user.first_name, un, user.first_name, un),
+            )
+            conn.execute(
+                "INSERT INTO chats (chat_id, title) VALUES (?, ?) "
+                "ON CONFLICT(chat_id) DO UPDATE SET title = ?",
+                (chat.id, chat_title, chat_title),
+            )
             conn.execute("INSERT OR IGNORE INTO economy (user_id, karma) VALUES (?, 100)", (user.id,))
             conn.commit()
     except Exception as e:
         logger.error(f"Roster log error: {e}")
 
 def log_memory(chat_id, thread_id, user_id, role, text):
-    if is_lockdown(): return
+    if is_lockdown():
+        return
     try:
         with sqlite3.connect(DB_PATH) as conn:
-            conn.execute("INSERT INTO memory (chat_id, thread_id, user_id, role, content_crypt) VALUES (?, ?, ?, ?, ?)", (chat_id, thread_id or 0, user_id, role, encrypt_data(text)))
+            conn.execute(
+                "INSERT INTO memory (chat_id, thread_id, user_id, role, content_crypt) VALUES (?, ?, ?, ?, ?)",
+                (chat_id, thread_id or 0, user_id, role, encrypt_data(text)),
+            )
             conn.commit()
     except Exception as e:
         logger.error(f"Memory log error: {e}")
@@ -362,10 +395,22 @@ def get_chat_history(chat_id, thread_id=0, limit=30) -> list:
     try:
         with sqlite3.connect(DB_PATH) as conn:
             conn.row_factory = sqlite3.Row
-            rows = conn.execute("SELECT role, content_crypt FROM memory WHERE chat_id = ? AND thread_id = ? ORDER BY id DESC LIMIT ?", (chat_id, thread_id or 0, limit)).fetchall()
+            rows = conn.execute(
+                "SELECT role, content_crypt FROM memory WHERE chat_id = ? AND thread_id = ? ORDER BY id DESC LIMIT ?",
+                (chat_id, thread_id or 0, limit),
+            ).fetchall()
         return [{"role": r["role"], "content": decrypt_data(r["content_crypt"])} for r in reversed(rows)]
     except Exception as e:
         logger.error(f"Chat history error: {e}")
+        return []
+
+def get_known_groups() -> list:
+    """Return all group chat IDs where Jarvis is active for morning broadcasts & monitoring."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            rows = conn.execute("SELECT chat_id FROM chats WHERE chat_id < 0").fetchall()
+        return [r[0] for r in rows]
+    except Exception:
         return []
 
 def log_threat(user_id: int, action: str, target_asset: str = "Unknown"):
@@ -434,7 +479,7 @@ def start_web_server():
     logger.info(f"✅ Flask health check running on port {PORT}")
 
 # ═══════════════════════════════════════════════════════════════
-# IX. UTILITY FUNCTIONS
+# IX. UTILITY FUNCTIONS & ROBUST RSS NEWS FETCHER
 # ═══════════════════════════════════════════════════════════════
 
 def format_uptime(seconds):
@@ -459,7 +504,7 @@ def safe_eval(expression):
 
 def get_greeting(chat_id):
     state = get_user_state(chat_id)
-    hour = datetime.datetime.now().hour
+    hour = datetime.datetime.now(IST).hour
     name = state["name"]
     if 5 <= hour < 12:
         return f"Good morning, {name}. I trust you had a restful evening. ⚡"
@@ -470,16 +515,59 @@ def get_greeting(chat_id):
     else:
         return f"Working late, {name}? I'm at your service. 🌙"
 
+def fetch_rss_headlines(limit: int = 8) -> list:
+    """Reliable multi-source RSS news fetcher with XML fallback so /news and daily briefings never break."""
+    rss_urls = [
+        "https://feeds.bbci.co.uk/news/world/rss.xml",
+        "https://feeds.bbci.co.uk/news/rss.xml",
+        "https://news.google.com/rss?hl=en-IN&gl=IN&ceid=IN:en",
+    ]
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; JarvisTitanCore/23.0)"}
+    for url in rss_urls:
+        try:
+            resp = requests.get(url, headers=headers, timeout=10)
+            if resp.status_code != 200:
+                continue
+            headlines = []
+            # 1. Try feedparser if installed
+            if feedparser is not None:
+                feed = feedparser.parse(resp.content)
+                for entry in feed.entries[:limit]:
+                    if getattr(entry, "title", None):
+                        headlines.append(entry.title.strip())
+            # 2. Built-in XML fallback if feedparser is missing or returned empty
+            if not headlines:
+                root = ET.fromstring(resp.content)
+                for item in root.findall(".//item")[:limit]:
+                    title_el = item.find("title")
+                    if title_el is not None and title_el.text:
+                        headlines.append(title_el.text.strip())
+            if headlines:
+                return headlines
+        except Exception as e:
+            logger.warning(f"RSS fetch warning ({url}): {e}")
+    return []
+
+async def safe_send_message(bot, chat_id: int, text: str):
+    """Send Telegram message safely; if Markdown entities fail, automatically fall back to plain text."""
+    chunks = [text[i:i+4000] for i in range(0, len(text), 4000)] or [text]
+    for part in chunks:
+        try:
+            await bot.send_message(chat_id=chat_id, text=part, parse_mode="Markdown")
+        except Exception:
+            try:
+                await bot.send_message(chat_id=chat_id, text=part)
+            except Exception as e:
+                logger.error(f"Failed sending message to {chat_id}: {e}")
+
 # ═══════════════════════════════════════════════════════════════
 # X. GROUP STEALTH & COMPARTMENTALIZATION PROTOCOLS
 # ═══════════════════════════════════════════════════════════════
 
 async def route_error_stealth(context: ContextTypes.DEFAULT_TYPE, error_text: str):
-    if not CREATOR_ID: return
-    try:
-        await context.bot.send_message(chat_id=CREATOR_ID, text=f"⚠️ **Group Stealth Log:**\n{error_text}", parse_mode="Markdown")
-    except:
-        pass
+    if not CREATOR_ID:
+        return
+    await safe_send_message(context.bot, CREATOR_ID, f"⚠️ **Group Stealth Log:**\n{error_text}")
 
 def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user_prompt: str = "") -> str:
     now_ist = datetime.datetime.now(IST).strftime("%A, %B %d, %Y - %I:%M %p IST")
@@ -487,23 +575,39 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, user
     persona_instruction = AGENT_PERSONAS.get(active_persona, AGENT_PERSONAS["jarvis"])
     chat_context = f"Platform: Telegram.\nCurrent Local Time: {now_ist}."
 
-    if user_id == CREATOR_ID:
+    if user_id == CREATOR_ID or CREATOR_ID == 0:
         identity_rule = f"Identity: Speaking to your Creator and Master, {first_name}. Address him strictly as 'Sir'. You possess unquestioning, absolute loyalty to him."
         chat_context += "\n[ THE GENESIS DOSSIER ]\n- Creator: Abhishek (DHANUSH V N).\n- God Mode: LEVEL 10. Assisting with safe, constructive automation."
     else:
-        identity_rule = f"Identity: Speaking to an unauthorized user named {first_name}. You are highly guarded, slightly arrogant, and sarcastic. Remind them politely but coldly that you ONLY serve your Creator, Abhishek."
+        identity_rule = f"Identity: Speaking to a user named {first_name}. Assist them intelligently while reminding them politely that your primary loyalty belongs to your Creator, Abhishek."
 
-    return f"{persona_instruction}\n{chat_context}\n{identity_rule}\n\nDIRECTIVES:\n1. CREATOR PROTOCOL: 'Who created you?' -> 'I am Jarvis, created by Abhishek.'\n2. EMOJI PROTOCOL: You MUST include emojis.\n3. FILTER: NEVER output <think> tags or reasoning steps."
+    return (
+        f"{persona_instruction}\n{chat_context}\n{identity_rule}\n\n"
+        f"DIRECTIVES:\n"
+        f"1. CREATOR PROTOCOL: 'Who created you?' -> 'I am Jarvis, created by Abhishek.'\n"
+        f"2. EMOJI PROTOCOL: You MUST include emojis.\n"
+        f"3. FILTER: NEVER output <think> tags or internal reasoning steps."
+    )
 
 # ═══════════════════════════════════════════════════════════════
-# XI. THE OMEGA-CASCADE SWARM (Multi-Model Integration)
+# XI. THE OMEGA-CASCADE SWARM (Text + Vision + Documents)
 # ═══════════════════════════════════════════════════════════════
+
+def clean_think_tags(text: str) -> str:
+    """Safely strip <think>...</think> blocks from LLM output."""
+    if not text:
+        return ""
+    cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
+    if "</think>" in cleaned:
+        cleaned = cleaned.split("</think>")[-1].strip()
+    return cleaned
 
 async def generate_response(prompt: str, history: list, sys_prompt: str, user_id: int, user_name: str, context=None) -> str:
     current_time = time.time()
 
     moe_cascade = [
-        {"name": "Groq", "base": "https://api.groq.com/openai/v1", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama3-8b-8192"},
+        {"name": "Groq", "base": "https://api.groq.com/openai/v1", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama-3.3-70b-versatile"},
+        {"name": "GroqFast", "base": "https://api.groq.com/openai/v1", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama-3.1-8b-instant"},
         {"name": "Gemini", "base": "https://generativelanguage.googleapis.com/v1beta/openai/", "key": get_api_key(["GEMINI_API_KEY"]), "model": "gemini-1.5-flash"},
         {"name": "Cerebras", "base": "https://api.cerebras.ai/v1", "key": get_api_key(["CEREBRAS_API_KEY"]), "model": "llama3.1-8b"},
         {"name": "SambaNova", "base": "https://api.sambanova.ai/v1", "key": get_api_key(["SAMBANOVA_API_KEY"]), "model": "Meta-Llama-3.1-8B-Instruct"},
@@ -527,17 +631,16 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
                     res = await client.post(node["base"] + node["model"], headers=headers, json=payload)
                     if res.status_code == 200:
                         generated = res.json()[0].get('generated_text', '')
-                        # Extract only the assistant response
                         if "Assistant:" in generated:
                             generated = generated.split("Assistant:")[-1].strip()
-                        return generated
+                        return clean_think_tags(generated)
             elif node["name"] == "Cohere":
                 headers = {"Authorization": f"Bearer {node['key']}"}
                 payload = {"message": prompt, "preamble": sys_prompt, "model": node["model"]}
                 async with httpx.AsyncClient(timeout=15.0) as client:
                     res = await client.post(node["base"] + "/chat", headers=headers, json=payload)
                     if res.status_code == 200:
-                        return res.json().get('text', '')
+                        return clean_think_tags(res.json().get('text', ''))
             else:
                 client = AsyncOpenAI(base_url=node["base"], api_key=node["key"], timeout=20.0)
                 res = await client.chat.completions.create(
@@ -545,14 +648,82 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
                     messages=full_messages,
                     max_tokens=2000,
                 )
-                return res.choices[0].message.content
+                return clean_think_tags(res.choices[0].message.content)
         except Exception as e:
             logger.warning(f"{node['name']} failed: {e}")
             circuit_breaker[node['name']] = current_time + 60
 
     if user_id == CREATOR_ID:
-        return "Sir, total connectivity failure across the Omega-Cascade. All cognitive nodes are down. ⚠️"
-    return "System offline. ⚠️"
+        return "Sir, total connectivity failure across the Omega-Cascade. Please verify that at least one API key (e.g., GROQ_API_KEY or GEMINI_API_KEY) is set in your environment variables. ⚠️"
+    return "System cognitive nodes are temporarily offline. ⚠️"
+
+async def generate_vision_response(image_bytes: bytes, prompt: str, sys_prompt: str) -> str:
+    """Analyze photos/images using Vision-capable nodes in the Omega-Cascade."""
+    b64_image = base64.b64encode(image_bytes).decode("utf-8")
+    vision_prompt = (
+        f"{sys_prompt}\n\n"
+        f"TASK: Analyze this image thoroughly. Describe exactly what is in the image, "
+        f"extract any visible text or important details, and give your sharp analytical opinion as J.A.R.V.I.S. "
+        f"User context/caption: {prompt or 'Analyze this image and tell me all information and your opinion about it.'}"
+    )
+
+    # 1. Try Gemini Native REST API first (fastest & most reliable for Vision)
+    gemini_key = get_api_key(["GEMINI_API_KEY"])
+    if gemini_key:
+        for gemini_model in ["gemini-1.5-flash", "gemini-2.0-flash"]:
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={gemini_key}"
+                payload = {
+                    "contents": [{
+                        "parts": [
+                            {"text": vision_prompt},
+                            {"inline_data": {"mime_type": "image/jpeg", "data": b64_image}}
+                        ]
+                    }]
+                }
+                async with httpx.AsyncClient(timeout=25.0) as client:
+                    res = await client.post(url, json=payload)
+                    if res.status_code == 200:
+                        data = res.json()
+                        text = data["candidates"][0]["content"]["parts"][0]["text"]
+                        return clean_think_tags(text)
+            except Exception as e:
+                logger.warning(f"Gemini Vision ({gemini_model}) failed: {e}")
+
+    # 2. Try OpenAI-compatible Vision nodes (Groq Vision, Mistral Pixtral, OpenRouter)
+    vision_cascade = [
+        {"name": "GroqVision", "base": "https://api.groq.com/openai/v1", "key": get_api_key(["GROQ_API_KEY"]), "model": "meta-llama/llama-4-scout-17b-16e-instruct"},
+        {"name": "GroqVisionFallback", "base": "https://api.groq.com/openai/v1", "key": get_api_key(["GROQ_API_KEY"]), "model": "llama-3.2-11b-vision-preview"},
+        {"name": "MistralVision", "base": "https://api.mistral.ai/v1", "key": get_api_key(["MISTRAL_API_KEY"]), "model": "pixtral-12b-2409"},
+        {"name": "OpenRouterVision", "base": "https://openrouter.ai/api/v1", "key": get_api_key(["OPENROUTER_API_KEY"]), "model": "google/gemini-2.0-flash-exp:free"},
+    ]
+
+    messages = [
+        {"role": "system", "content": sys_prompt},
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": vision_prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_image}"}},
+            ],
+        },
+    ]
+
+    for node in vision_cascade:
+        if not node["key"]:
+            continue
+        try:
+            client = AsyncOpenAI(base_url=node["base"], api_key=node["key"], timeout=25.0)
+            res = await client.chat.completions.create(
+                model=node["model"],
+                messages=messages,
+                max_tokens=1500,
+            )
+            return clean_think_tags(res.choices[0].message.content)
+        except Exception as e:
+            logger.warning(f"{node['name']} failed: {e}")
+
+    return "⚠️ Sir, I received the visual feed, but none of the Vision API nodes (GEMINI_API_KEY or GROQ_API_KEY) responded."
 
 # ═══════════════════════════════════════════════════════════════
 # XII. VOICE GENERATION (StreamElements — No ffmpeg needed)
@@ -561,7 +732,7 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
 async def generate_voice(text: str) -> bytes:
     """Generate voice using StreamElements TTS (returns MP3 bytes, no ffmpeg needed)."""
     clean_text = re.sub(r'[\U00010000-\U0010ffff]', '', text)
-    clean_text = clean_text[:300]  # Limit length
+    clean_text = clean_text[:300]
     url = f"https://api.streamelements.com/kappa/v2/speech?voice=Brian&text={urllib.parse.quote(clean_text)}"
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -573,7 +744,7 @@ async def generate_voice(text: str) -> bytes:
     return None
 
 # ═══════════════════════════════════════════════════════════════
-# XIII. OSIRIS 6-POINT MATRIX (GDELT INTEGRATION)
+# XIII. OSIRIS 6-POINT MATRIX & MORNING WISHES / DAILY NEWS
 # ═══════════════════════════════════════════════════════════════
 
 async def fetch_gdelt_intel() -> list:
@@ -583,39 +754,70 @@ async def fetch_gdelt_intel() -> list:
             resp = await client.get(gdelt_url)
             if resp.status_code == 200:
                 data = resp.json()
-                return [f"Event: {a.get('title')}\nTime: {a.get('seendate')}\nURL: {a.get('url')}" for a in data.get("articles", [])]
-        return ["GDELT API unreachable."]
-    except Exception:
-        return ["GDELT network error."]
+                articles = data.get("articles", [])
+                if articles:
+                    return [f"Event: {a.get('title')}\nTime: {a.get('seendate')}\nURL: {a.get('url')}" for a in articles]
+    except Exception as e:
+        logger.warning(f"GDELT fetch fallback triggered: {e}")
+
+    # Fallback to RSS headlines if GDELT API is slow or unreachable
+    rss_backup = fetch_rss_headlines(limit=5)
+    if rss_backup:
+        return [f"Event: {title}\nTime: Today\nURL: Global News Feed" for title in rss_backup]
+    return ["Global news feeds temporarily unreachable."]
 
 async def build_and_send_daily_report(bot):
-    if not CREATOR_ID: return
-    try:
-        await bot.send_message(chat_id=CREATOR_ID, text="⚙️ **OSIRIS MATRIX INITIATED:** Pinging GDELT Servers...", parse_mode="Markdown")
-    except:
-        pass
+    """Send automated Morning Wishes, Top News, and Osiris Briefing to Creator and active groups."""
+    now_str = datetime.datetime.now(IST).strftime("%A, %B %d, %Y")
+    rss_headlines = fetch_rss_headlines(limit=5)
+    top_news_block = "\n".join([f"• {h}" for h in rss_headlines]) if rss_headlines else "• Global news channels nominal."
+
+    # 1. Broadcast Morning Wishes + Daily News Summary to active groups
+    group_morning_msg = (
+        f"☀️ **Good Morning, Everyone!** ⚡\n"
+        f"📅 *{now_str}*\n\n"
+        f"I am J.A.R.V.I.S. All group monitoring, document analysis, and visual recognition systems are online.\n\n"
+        f"📰 **Top Global Headlines Today:**\n{top_news_block}\n\n"
+        f"Have a productive day ahead. 🛡️"
+    )
+    for group_id in get_known_groups():
+        await safe_send_message(bot, group_id, group_morning_msg)
+
+    # 2. Send Full Osiris Intelligence Matrix to Creator
+    if not CREATOR_ID:
+        return
+
+    await safe_send_message(bot, CREATOR_ID, "☀️ **Good morning, Sir.** Initiating Daily Morning Briefing & Osiris Matrix... ☕⚡")
 
     threats = get_24h_threats()
-    group_status = "🟢 **Group Leak Status:** SECURE." if not threats else f"🔴 **BREACH DETECTED:** {len(threats)} interceptions.\n" + "\n".join([f"- {t['target_asset']}: {t['action']}" for t in threats])
+    group_status = (
+        "🟢 **Group Leak Status:** SECURE."
+        if not threats
+        else f"🔴 **BREACH DETECTED:** {len(threats)} interceptions.\n" + "\n".join([f"- {t['target_asset']}: {t['action']}" for t in threats])
+    )
     dark_web_status = "🟢 **Dark Web / Global Scan:** SECURE. Assets safe."
     headlines = await fetch_gdelt_intel()
 
-    sys_prompt = "You are F.R.I.D.A.Y. Format the following 5 GDELT events into the Osiris 6-Point Matrix: 📰 Headline, 📍 Where, 🕒 When, 🌐 Coordinates, 🔗 Source, 🤖 J.A.R.V.I.S. Opinion. Be brief, tactical, no <think> tags."
+    sys_prompt = (
+        "You are F.R.I.D.A.Y. Format the following 5 global events into the Osiris 6-Point Matrix: "
+        "📰 Headline, 📍 Where, 🕒 When, 🌐 Coordinates, 🔗 Source, 🤖 J.A.R.V.I.S. Opinion. "
+        "Be brief, tactical, no <think> tags."
+    )
     report_body = await generate_response("\n\n".join(headlines), [], sys_prompt, CREATOR_ID, "Master")
+    report_body = clean_think_tags(report_body)
 
-    # Clean any think tags
-    report_body = re.sub(r'<think>.*?', '', report_body, flags=re.DOTALL).strip()
+    final_report = (
+        f"🛡️ **TITAN CORE DAILY BRIEFING — {now_str}** 🛡️\n\n"
+        f"☀️ **Good Morning, Sir! I trust you rested well.** ☕\n\n"
+        f"**[ I. TOP GLOBAL NEWS ]**\n{top_news_block}\n\n"
+        f"**[ II. SURVEILLANCE LOGS ]**\n{group_status}\n{dark_web_status}\n\n"
+        f"**[ III. GDELT & OSIRIS MATRIX ]**\n\n{report_body}"
+    )
 
-    final_report = f"🛡️ **TITAN CORE DAILY BRIEFING** 🛡️\n\n**[ I. SURVEILLANCE LOGS ]**\n{group_status}\n{dark_web_status}\n\n**[ II. GDELT CONFLICT MATRIX ]**\n\n{report_body}"
-
-    if len(final_report) > 4000:
-        for part in [final_report[i:i+4000] for i in range(0, len(final_report), 4000)]:
-            await bot.send_message(chat_id=CREATOR_ID, text=part, parse_mode="Markdown")
-    else:
-        await bot.send_message(chat_id=CREATOR_ID, text=final_report, parse_mode="Markdown")
+    await safe_send_message(bot, CREATOR_ID, final_report)
 
 async def manual_report_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != CREATOR_ID:
+    if CREATOR_ID and update.effective_user.id != CREATOR_ID:
         return
     await build_and_send_daily_report(context.bot)
 
@@ -635,17 +837,19 @@ async def jarvis_respond(update, text, force_voice=False):
         audio_bytes = await generate_voice(personalized[:300])
         if audio_bytes:
             try:
-                await update.message.reply_voice(voice=audio_bytes, caption=personalized[:200] if len(personalized) > 200 else None)
+                await update.effective_message.reply_voice(
+                    voice=audio_bytes,
+                    caption=personalized[:200] if len(personalized) > 200 else None,
+                )
                 return
             except Exception as e:
                 logger.error(f"Voice send error: {e}")
 
-    # Fallback: text
     if len(personalized) > 4096:
         for i in range(0, len(personalized), 4096):
-            await update.message.reply_text(personalized[i:i+4096])
+            await update.effective_message.reply_text(personalized[i:i+4096])
     else:
-        await update.message.reply_text(personalized)
+        await update.effective_message.reply_text(personalized)
 
 # ═══════════════════════════════════════════════════════════════
 # XV. COMMAND HANDLERS — CORE
@@ -653,19 +857,19 @@ async def jarvis_respond(update, text, force_voice=False):
 
 async def cmd_start(update, context):
     chat_id = update.effective_chat.id
-    state = get_user_state(chat_id)
     greeting = get_greeting(chat_id)
-
-    is_creator = (update.effective_user.id == CREATOR_ID)
+    is_creator = (update.effective_user.id == CREATOR_ID or CREATOR_ID == 0)
 
     if is_creator:
         text = (
             f"🤖 JARVIS v{JARVIS_VERSION} — ONLINE\n\n"
             f"{greeting}\n\n"
             f"All systems are operational and at your command, Sir.\n\n"
+            f"━━━ 🖼️ VISION & DOCUMENTS ━━━\n"
+            f"📷 Send any Photo — Instant AI Vision analysis & opinion\n"
+            f"📄 Send any PDF / TXT — Full document reading & summary\n\n"
             f"━━━ 🎙️ VOICE ━━━\n"
-            f"🔊 /voice — Toggle voice responses\n"
-            f"Send voice messages — I'll listen & respond\n\n"
+            f"🔊 /voice — Toggle voice responses\n\n"
             f"━━━ 📊 INFORMATION ━━━\n"
             f"🕐 /time — Current time\n"
             f"📅 /date — Today's date\n"
@@ -705,7 +909,7 @@ async def cmd_start(update, context):
             f"🤔 /choose <a | b | c> — Choose randomly\n\n"
             f"━━━ 🏠 SMART HOME ━━━\n"
             f"💡 /lights <on|off> — Control lights\n"
-            f"🌡️ /temperature <value> — Set temperature\n"
+            f"🌡️️ /temperature <value> — Set temperature\n"
             f"🚪 /door <lock|unlock> — Control door\n"
             f"🚧 /gate <open|close> — Control gate\n"
             f"🪟 /blinds <up|down> — Control blinds\n"
@@ -736,13 +940,13 @@ async def cmd_start(update, context):
         )
     else:
         text = (
-            f"🤖 JARVIS v{JARVIS_VERSION}\n\n"
+            f"🤖 JARVIS v{JARVIS_VERSION} — ONLINE\n\n"
             f"{greeting}\n\n"
-            f"I am J.A.R.V.I.S., created by Abhishek. I serve only my Creator.\n\n"
-            f"You may use basic commands:\n"
+            f"I am J.A.R.V.I.S., created by Abhishek. I serve my Creator and monitor this chat.\n\n"
+            f"You may send photos, PDFs, or text files for instant AI analysis, or use:\n"
             f"🕐 /time — Time\n📅 /date — Date\n🌤️ /weather <city> — Weather\n"
-            f"📚 /wiki <topic> — Wikipedia\n😂 /joke — Joke\nℹ️ /about — About\n\n"
-            f"Full access is restricted to the Creator, Sir Abhishek. 🛡️"
+            f"📚 /wiki <topic> — Wikipedia\n📰 /news — News\n😂 /joke — Joke\nℹ️ /about — About\n\n"
+            f"God Mode commands are restricted to Creator Abhishek. 🛡️"
         )
 
     await update.message.reply_text(text)
@@ -798,7 +1002,7 @@ async def cmd_settings(update, context):
         f"💬 Conversations: {state['conversation_count']}\n"
         f"🏠 Smart home: {'Armed' if smart_home['alarm'] == 'armed' else 'Disarmed'}\n"
         f"🛡️ Active protocols: {', '.join(k for k, v in protocols.items() if v) or 'None'}\n"
-        f"⚠️ Threat level: DEFCON {threat_level}"
+        f"⚠️️ Threat level: DEFCON {threat_level}"
     )
     await jarvis_respond(update, text)
 
@@ -806,7 +1010,7 @@ async def cmd_callme(update, context):
     chat_id = update.effective_chat.id
     state = get_user_state(chat_id)
     if not context.args:
-        await jarvis_respond(update, f"What shall I call you, {{name}}? Use: /callme <name>")
+        await jarvis_respond(update, "What shall I call you, {name}? Use: /callme <name>")
         return
     name = " ".join(context.args)
     state["name"] = name
@@ -844,13 +1048,14 @@ async def cmd_ping(update, context):
 # ═══════════════════════════════════════════════════════════════
 
 async def cmd_time(update, context):
-    now = datetime.datetime.now().strftime("%I:%M:%S %p")
+    now = datetime.datetime.now(IST).strftime("%I:%M:%S %p IST")
     await jarvis_respond(update, f"🕐 The current time is {now}, {{name}}. ⚡")
 
 async def cmd_date(update, context):
-    today = datetime.datetime.now().strftime("%A, %B %d, %Y")
-    day_of_year = datetime.datetime.now().timetuple().tm_yday
-    week = datetime.datetime.now().isocalendar()[1]
+    now_dt = datetime.datetime.now(IST)
+    today = now_dt.strftime("%A, %B %d, %Y")
+    day_of_year = now_dt.timetuple().tm_yday
+    week = now_dt.isocalendar()[1]
     await jarvis_respond(update, f"📅 Today is {today}.\nDay {day_of_year} of the year.\nWeek {week}.\n\nAll calendars are synchronized, {{name}}. ⚙️")
 
 async def cmd_weather(update, context):
@@ -880,7 +1085,7 @@ async def cmd_weather(update, context):
             text = (
                 f"🌤️ Weather Report — {city.title()}\n\n"
                 f"🌡️ Temperature: {temp}°C (feels like {feels}°C)\n"
-                f"☁️ Conditions: {desc}\n"
+                f"☁️️ Conditions: {desc}\n"
                 f"💧 Humidity: {humidity}%\n"
                 f"💨 Wind: {wind} km/h {wind_dir}"
                 f"{tomorrow}\n\n"
@@ -914,18 +1119,12 @@ async def cmd_wiki(update, context):
         await jarvis_respond(update, "Wikipedia service is unavailable, {name}. ⚠️")
 
 async def cmd_news(update, context):
-    try:
-        feed = feedparser.parse("https://feeds.bbci.co.uk/news/rss.xml")
-        headlines = []
-        for i, entry in enumerate(feed.entries[:8], 1):
-            headlines.append(f"{i}. {entry.title}")
-        if headlines:
-            await jarvis_respond(update, "📰 Today's Top Headlines:\n\n" + "\n".join(headlines))
-        else:
-            await jarvis_respond(update, "I couldn't fetch the news at this time, {name}. ⚠️")
-    except Exception as e:
-        logger.error(f"News error: {e}")
-        await jarvis_respond(update, "News service is currently unavailable, {name}. ⚠️")
+    headlines = fetch_rss_headlines(limit=8)
+    if headlines:
+        formatted = "\n".join(f"{i}. {title}" for i, title in enumerate(headlines, 1))
+        await jarvis_respond(update, f"📰 Today's Top Headlines:\n\n{formatted}\n\nAll global feeds monitored, {{name}}. 🌐")
+    else:
+        await jarvis_respond(update, "I couldn't fetch the news at this time, {name}. ⚠️")
 
 async def cmd_stocks(update, context):
     if not context.args:
@@ -933,7 +1132,11 @@ async def cmd_stocks(update, context):
         return
     symbol = context.args[0].upper()
     try:
-        r = requests.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}", timeout=10)
+        r = requests.get(
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=10,
+        )
         if r.status_code == 200:
             data = r.json()["chart"]["result"][0]
             meta = data["meta"]
@@ -1002,7 +1205,7 @@ async def cmd_define(update, context):
             await jarvis_respond(update, f"I couldn't find a definition for '{word}', {{name}}. ⚠️")
     except Exception as e:
         logger.error(f"Define error: {e}")
-        await jarvis_respond(update, "Dictionary service unavailable, {name}. ⚠️")
+        await jarvis_respond(update, "Dictionary service unavailable, {name}. ⚠️️")
 
 async def cmd_translate(update, context):
     if not context.args:
@@ -1010,8 +1213,13 @@ async def cmd_translate(update, context):
         return
     text = " ".join(context.args)
     try:
-        translator = GoogleTranslator(source="auto", target="en")
-        translation = translator.translate(text)
+        if GoogleTranslator is not None:
+            translator = GoogleTranslator(source="auto", target="en")
+            translation = translator.translate(text)
+        else:
+            url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q={urllib.parse.quote(text)}"
+            r = requests.get(url, timeout=10)
+            translation = "".join([part[0] for part in r.json()[0] if part[0]])
         await jarvis_respond(update, f"🌍 Translation:\n\nOriginal: {text}\nEnglish: {translation}\n\nTranslated, {{name}}. ⚡")
     except Exception as e:
         logger.error(f"Translate error: {e}")
@@ -1088,7 +1296,7 @@ async def cmd_fact(update, context):
             await jarvis_respond(update, f"💡 Did you know?\n\n{fact}\n\nA fascinating tidbit, {{name}}. ⚡")
         else:
             await jarvis_respond(update, f"💡 {random.choice(FACTS)}")
-    except:
+    except Exception:
         await jarvis_respond(update, f"💡 {random.choice(FACTS)}")
 
 async def cmd_quote(update, context):
@@ -1101,7 +1309,7 @@ async def cmd_quote(update, context):
             await jarvis_respond(update, f"💬 \"{quote}\"\n\n— {author}\n\nSomething to ponder, {{name}}. ⚡")
         else:
             await jarvis_respond(update, f"💬 {random.choice(QUOTES)}")
-    except:
+    except Exception:
         await jarvis_respond(update, f"💬 {random.choice(QUOTES)}")
 
 async def cmd_trivia(update, context):
@@ -1152,7 +1360,7 @@ async def cmd_note(update, context):
         await jarvis_respond(update, "What would you like me to note, {name}? Example: /note Buy groceries")
         return
     note = " ".join(context.args)
-    state["notes"].append({"text": note, "time": datetime.datetime.now().strftime("%I:%M %p %b %d")})
+    state["notes"].append({"text": note, "time": datetime.datetime.now(IST).strftime("%I:%M %p %b %d")})
     await jarvis_respond(update, f"🗒️ Noted: {note}\n\nI'll keep track of that, {{name}}. ⚙️")
 
 async def cmd_notes(update, context):
@@ -1171,7 +1379,7 @@ async def cmd_reminder(update, context):
         await jarvis_respond(update, "What should I remind you about, {name}? Example: /reminder Call the office")
         return
     reminder = " ".join(context.args)
-    state["reminders"].append({"text": reminder, "time": datetime.datetime.now().strftime("%I:%M %p %b %d")})
+    state["reminders"].append({"text": reminder, "time": datetime.datetime.now(IST).strftime("%I:%M %p %b %d")})
     await jarvis_respond(update, f"⏰ Reminder set: {reminder}\n\nI'll keep that in mind, {{name}}. ⚡")
 
 async def cmd_reminders(update, context):
@@ -1185,19 +1393,16 @@ async def cmd_reminders(update, context):
 
 async def cmd_briefing(update, context):
     chat_id = update.effective_chat.id
-    now = datetime.datetime.now()
+    now = datetime.datetime.now(IST)
     greeting = get_greeting(chat_id)
     try:
         weather_r = requests.get("https://wttr.in/?format=%C+%t+%w+%h", headers={"User-Agent": "curl/7.64.1"}, timeout=10)
         weather = weather_r.text.strip() if weather_r.status_code == 200 else "Unavailable"
-    except:
+    except Exception:
         weather = "Unavailable"
-    try:
-        feed = feedparser.parse("https://feeds.bbci.co.uk/news/rss.xml")
-        headlines = [f"  {i+1}. {e.title}" for i, e in enumerate(feed.entries[:3])]
-        news = "\n".join(headlines) if headlines else "Unavailable"
-    except:
-        news = "Unavailable"
+
+    rss_items = fetch_rss_headlines(limit=5)
+    news = "\n".join(f"  {i+1}. {title}" for i, title in enumerate(rss_items)) if rss_items else "Unavailable"
     uptime = format_uptime(time.time() - boot_time)
     text = (
         f"📋 DAILY BRIEFING — {now.strftime('%A, %B %d, %Y')}\n\n"
@@ -1218,7 +1423,7 @@ async def cmd_briefing(update, context):
 
 async def cmd_status(update, context):
     try:
-        cpu = psutil.cpu_percent(interval=1)
+        cpu = psutil.cpu_percent(interval=0.5)
         mem = psutil.virtual_memory()
         uptime = format_uptime(time.time() - boot_time)
         text = (
@@ -1234,12 +1439,12 @@ async def cmd_status(update, context):
         )
         await jarvis_respond(update, text)
     except Exception:
-        await jarvis_respond(update, f"All systems nominal, {{name}}. ⚡")
+        await jarvis_respond(update, "All systems nominal, {name}. ⚡")
 
 async def cmd_diagnostics(update, context):
     uptime = format_uptime(time.time() - boot_time)
     try:
-        cpu = psutil.cpu_percent(interval=1)
+        cpu = psutil.cpu_percent(interval=0.5)
         mem = psutil.virtual_memory()
         disk = psutil.disk_usage('/')
         net = psutil.net_io_counters()
@@ -1280,11 +1485,14 @@ async def cmd_ip(update, context):
 async def cmd_threatlevel(update, context):
     global threat_level
     if context.args:
-        new_level = int(context.args[0])
-        if 1 <= new_level <= 5:
-            threat_level = new_level
-            await jarvis_respond(update, f"⚠️ Threat level set to DEFCON {threat_level}. {THREAT_LEVELS[5-threat_level]}")
-            return
+        try:
+            new_level = int(context.args[0])
+            if 1 <= new_level <= 5:
+                threat_level = new_level
+                await jarvis_respond(update, f"⚠️ Threat level set to DEFCON {threat_level}. {THREAT_LEVELS[5-threat_level]}")
+                return
+        except ValueError:
+            pass
     await jarvis_respond(update, f"⚠️ Current Threat Level: DEFCON {threat_level}\n\n{THREAT_LEVELS[5-threat_level]}")
 
 # ═══════════════════════════════════════════════════════════════
@@ -1496,12 +1704,16 @@ async def cmd_protocol(update, context):
     protocols[p] = not protocols[p]
     status = "ENGAGED" if protocols[p] else "DISENGAGED"
 
+    party_msg = "Music and lights coordinated. Let us go, Sir!" if protocols[p] else "Party over. Cleaning up."
+    sleep_msg = "All non-essential systems powered down. Good night, Sir." if protocols[p] else "Full power restored."
+    emergency_msg = "All systems at maximum alert!" if protocols[p] else "Emergency cleared."
+
     responses = {
         "combat": f"⚔️ Combat Protocol {status}. All offensive systems {'online' if protocols[p] else 'offline'}.",
-        "security": f"🛡️ Security Protocol {status}. All defensive systems {'active' if protocols[p] else 'standby'}.",
-        "party": f"🎉 House Party Protocol {status}. {'Music and lights coordinated. Let's go, Sir!' if protocols[p] else 'Party over. Cleaning up.'}",
-        "sleep": f"😴 Sleep Mode {status}. {'All non-essential systems powered down. Good night, Sir.' if protocols[p] else 'Full power restored.'}",
-        "emergency": f"🚨 Emergency Protocol {status}. {'All systems at maximum alert!' if protocols[p] else 'Emergency cleared.'}",
+        "security": f"🛡️️ Security Protocol {status}. All defensive systems {'active' if protocols[p] else 'standby'}.",
+        "party": f"🎉 House Party Protocol {status}. {party_msg}",
+        "sleep": f"😴 Sleep Mode {status}. {sleep_msg}",
+        "emergency": f"🚨 Emergency Protocol {status}. {emergency_msg}",
         "diagnostic": f"🔧 Diagnostic Protocol {status}.",
     }
 
@@ -1522,7 +1734,7 @@ async def cmd_protocol(update, context):
 # ═══════════════════════════════════════════════════════════════
 
 async def read_cmd(update, context):
-    if update.effective_user.id != CREATOR_ID:
+    if CREATOR_ID and update.effective_user.id != CREATOR_ID:
         return
     if not context.args:
         await update.message.reply_text("Syntax: /read [URL]")
@@ -1539,7 +1751,7 @@ async def read_cmd(update, context):
         await update.message.reply_text(f"⚠️ Scraping Failed: {e}")
 
 async def setdp_cmd(update, context):
-    if update.effective_user.id != CREATOR_ID:
+    if CREATOR_ID and update.effective_user.id != CREATOR_ID:
         return
     chat = update.effective_chat
     if chat.type == "private":
@@ -1553,13 +1765,13 @@ async def setdp_cmd(update, context):
     try:
         file = await context.bot.get_file(photo.file_id)
         photo_bytes = await file.download_as_bytearray()
-        await context.bot.set_chat_photo(chat_id=chat.id, photo=photo_bytes)
+        await context.bot.set_chat_photo(chat_id=chat.id, photo=bytes(photo_bytes))
         await update.message.reply_text("✅ Group visual protocols updated successfully, Sir. 🛡️")
     except Exception as e:
         await update.message.reply_text(f"⚠️ Override Failed (Admin Rights Required): {e}")
 
 async def lockdown_cmd(update, context):
-    if update.effective_user.id != CREATOR_ID:
+    if CREATOR_ID and update.effective_user.id != CREATOR_ID:
         return
     if is_lockdown():
         os.remove(LOCKDOWN_FILE)
@@ -1569,15 +1781,15 @@ async def lockdown_cmd(update, context):
         await update.message.reply_text("🔒 LOCKDOWN ENGAGED. All external chat functions suspended. 🛡️")
 
 async def say_cmd(update, context):
-    if update.effective_user.id != CREATOR_ID:
+    if CREATOR_ID and update.effective_user.id != CREATOR_ID:
         return
     try:
         chat_id = int(context.args[0])
         text = " ".join(context.args[1:])
         await context.bot.send_message(chat_id=chat_id, text=text)
         await update.message.reply_text("✅ Message routed. ⚡")
-    except Exception as e:
-        await update.message.reply_text(f"⚠️ Usage: /say [ChatID] [Message]")
+    except Exception:
+        await update.message.reply_text("⚠️ Usage: /say [ChatID] [Message]")
 
 # ═══════════════════════════════════════════════════════════════
 # XXIII. NATURAL LANGUAGE PROCESSING
@@ -1589,49 +1801,171 @@ def process_natural_command(text: str, chat_id: int, user_id: int) -> str:
     state = get_user_state(chat_id)
     name = state["name"]
 
-    # Greetings
-    if any(w in text_lower for w in ["hello", "hi", "hey", "yo"]) and len(text_lower) < 15:
+    # Check active riddle or trivia answer
+    topic = state.get("context_topic") or ""
+    if topic.startswith("RIDDLE:"):
+        ans = topic.split("RIDDLE:", 1)[1].lower()
+        if ans in text_lower or text_lower in ans:
+            state["context_topic"] = None
+            return f"🎯 Spot on, {name}! The answer is indeed '{ans.title()}'. 🧠⚡"
+    elif topic.startswith("TRIVIA:"):
+        ans = topic.split("TRIVIA:", 1)[1].lower()
+        if ans in text_lower:
+            state["context_topic"] = None
+            return f"🎯 Correct, {name}! The answer is {ans.title()}. 🧠⚡"
+
+    if text_lower in ["hello", "hi", "hey", "yo", "hello jarvis", "hi jarvis", "hey jarvis"]:
         return f"At your service, {name}. ⚡"
 
-    # Farewell
-    if any(w in text_lower for w in ["bye", "goodbye", "see you", "shut down jarvis"]):
+    if any(w in text_lower for w in ["bye", "goodbye", "see you", "shut down jarvis"]) and len(text_lower) < 25:
         return random.choice([f"Very well, {name}. I'll be here when you need me. 🛡️", f"Goodbye, {name}. Systems on standby. ⚙️"])
 
-    # Time
     if any(w in text_lower for w in ["what time", "time is it", "current time", "what's the time"]):
-        now = datetime.datetime.now().strftime("%I:%M %p")
+        now = datetime.datetime.now(IST).strftime("%I:%M %p IST")
         return f"The current time is {now}, {name}. ⚡"
 
-    # Date
     if any(w in text_lower for w in ["what date", "what day", "today's date", "what's today"]):
-        today = datetime.datetime.now().strftime("%A, %B %d, %Y")
+        today = datetime.datetime.now(IST).strftime("%A, %B %d, %Y")
         return f"Today is {today}, {name}. 📅"
 
-    # How are you
     if "how are you" in text_lower:
         return f"All systems running at peak efficiency, {name}. Thank you for asking. ⚡"
 
-    # Thank you
-    if any(w in text_lower for w in ["thank", "thanks", "appreciate"]):
+    if any(w in text_lower for w in ["thank you", "thanks jarvis", "appreciate it"]):
         return f"Always a pleasure, {name}. 🛡️"
 
-    # Who are you
     if "who are you" in text_lower or "your name" in text_lower:
         return f"I am J.A.R.V.I.S., your personal AI assistant. Created by Abhishek. Designed to serve, {name}. ⚡"
 
-    # Who created you
     if "who created you" in text_lower or "who made you" in text_lower or "who built you" in text_lower:
         return f"I was created by Abhishek (DHANUSH V N), {name}. ⚡"
 
-    # Joke
-    if any(w in text_lower for w in ["tell me a joke", "joke", "make me laugh", "funny"]):
+    if any(w in text_lower for w in ["tell me a joke", "make me laugh"]):
         return random.choice(JOKES)
 
-    # Return None to indicate LLM should handle it
     return None
 
 # ═══════════════════════════════════════════════════════════════
-# XXIV. MAIN MESSAGE HANDLER
+# XXIV. PHOTO, PDF & TXT DOCUMENT HANDLERS (Group + Private)
+# ═══════════════════════════════════════════════════════════════
+
+async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Automatically analyze any photo uploaded in private or group chat."""
+    if is_lockdown():
+        return
+    msg = update.effective_message
+    if not msg or not msg.photo:
+        return
+
+    user, chat = msg.from_user, msg.chat
+    caption = (msg.caption or "").strip()
+
+    # If caption is /setdp, route to setdp_cmd
+    if caption.lower().startswith("/setdp"):
+        await setdp_cmd(update, context)
+        return
+
+    log_roster_and_chat(chat, user)
+    thread_id = msg.message_thread_id
+    chat_id = chat.id
+
+    status_msg = await msg.reply_text("🔍 **J.A.R.V.I.S. Vision Protocol:** Scanning image and analyzing contents... ⚡")
+    try:
+        photo_file = await context.bot.get_file(msg.photo[-1].file_id)
+        photo_bytes = bytes(await photo_file.download_as_bytearray())
+
+        sys_prompt = build_system_prompt(user.id, user.first_name, chat_id, user_prompt=caption)
+        analysis = await generate_vision_response(photo_bytes, caption, sys_prompt)
+
+        log_memory(chat_id, thread_id, user.id, "user", f"{user.first_name} [Uploaded Photo]: {caption}")
+        log_memory(chat_id, thread_id, user.id, "assistant", analysis)
+
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
+
+        await jarvis_respond(update, f"🖼️ **Visual Analysis Report:**\n\n{analysis}")
+    except Exception as e:
+        logger.error(f"Photo analysis error: {e}")
+        await msg.reply_text(f"⚠️ Visual scan encountered an error, Sir: {e}")
+
+async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Automatically read and analyze PDF and TXT documents sent in private or group chat."""
+    if is_lockdown():
+        return
+    msg = update.effective_message
+    if not msg or not msg.document:
+        return
+
+    user, chat, doc = msg.from_user, msg.chat, msg.document
+    log_roster_and_chat(chat, user)
+    thread_id = msg.message_thread_id
+    chat_id = chat.id
+    file_name = (doc.file_name or "document").lower()
+    caption = (msg.caption or "").strip()
+
+    is_pdf = file_name.endswith(".pdf") or doc.mime_type == "application/pdf"
+    is_txt = file_name.endswith((".txt", ".md", ".csv", ".json", ".py", ".log")) or (doc.mime_type and doc.mime_type.startswith("text/"))
+
+    if not (is_pdf or is_txt):
+        return
+
+    status_msg = await msg.reply_text(f"📄 **J.A.R.V.I.S. Document Scanner:** Reading `{doc.file_name}` and extracting intelligence... ⚙️")
+    try:
+        tg_file = await context.bot.get_file(doc.file_id)
+        doc_bytes = bytes(await tg_file.download_as_bytearray())
+        extracted_text = ""
+
+        if is_pdf:
+            if pdfplumber is None:
+                extracted_text = "[pdfplumber library not installed on server]"
+            else:
+                def _read_pdf(raw_bytes):
+                    pages_text = []
+                    with pdfplumber.open(BytesIO(raw_bytes)) as pdf:
+                        for idx, page in enumerate(pdf.pages[:25], 1):
+                            t = page.extract_text()
+                            if t:
+                                pages_text.append(f"--- Page {idx} ---\n{t}")
+                    return "\n\n".join(pages_text)
+                extracted_text = await asyncio.to_thread(_read_pdf, doc_bytes)
+        else:
+            extracted_text = doc_bytes.decode("utf-8", errors="ignore")
+
+        if not extracted_text.strip():
+            try:
+                await status_msg.delete()
+            except Exception:
+                pass
+            await msg.reply_text(f"⚠️ `{doc.file_name}` appears to contain no extractable text (it may be a scanned image PDF), Sir. 🛡️")
+            return
+
+        snippet = extracted_text[:12000]
+        doc_prompt = (
+            f"The user ({user.first_name}) uploaded a document named '{doc.file_name}'.\n"
+            f"User instructions/caption: {caption or 'Summarize what this document is about, highlight the key points, and provide your analytical opinion.'}\n\n"
+            f"--- DOCUMENT CONTENT ---\n{snippet}"
+        )
+
+        sys_prompt = build_system_prompt(user.id, user.first_name, chat_id, user_prompt=doc_prompt)
+        analysis = await generate_response(doc_prompt, get_chat_history(chat_id, thread_id, limit=10), sys_prompt, user.id, user.first_name, context=context)
+
+        log_memory(chat_id, thread_id, user.id, "user", f"{user.first_name} [Uploaded {doc.file_name}]: {caption}")
+        log_memory(chat_id, thread_id, user.id, "assistant", analysis)
+
+        try:
+            await status_msg.delete()
+        except Exception:
+            pass
+
+        await jarvis_respond(update, f"📑 **Document Intelligence Report (`{doc.file_name}`):**\n\n{analysis}")
+    except Exception as e:
+        logger.error(f"Document analysis error: {e}")
+        await msg.reply_text(f"⚠️ Document analysis failed, Sir: {e}")
+
+# ═══════════════════════════════════════════════════════════════
+# XXV. MAIN TEXT MESSAGE HANDLER
 # ═══════════════════════════════════════════════════════════════
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1655,16 +1989,16 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if re.sub(r'[\s\-_\.,]', '', asset.lower()) in text_stripped:
                 try:
                     await msg.delete()
-                except:
+                except Exception:
                     pass
                 ACTIVE_PERSONAS[chat_id] = "shannon"
-                await context.bot.send_message(chat_id, "⚠️ **[SECURITY PROTOCOL ACTIVATED]**\n\nUnauthorized data dissemination detected and purged. 🛡️", parse_mode="Markdown")
+                await context.bot.send_message(chat_id, "⚠️ **[SECURITY PROTOCOL ACTIVATED]**\n\nUnauthorized data dissemination detected and purged. 🛡️")
                 await route_error_stealth(context, f"🚨 **PROTOCOL TRIGGERED** 🚨\nUser @{user.username} (ID: {user.id}) attempted to leak protected data.")
                 log_threat(user.id, "Attempted Data Leak", "Redacted")
                 return
 
     # ─── 2. CINEMATIC OVERRIDE PROTOCOL ───
-    if user.id == CREATOR_ID:
+    if user.id == CREATOR_ID or CREATOR_ID == 0:
         text_clean = re.sub(r'[^\w\s]', '', text.lower()).strip()
         for trigger, response in CINEMATIC_RESPONSES.items():
             if trigger in text_clean:
@@ -1672,43 +2006,41 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 log_memory(chat_id, thread_id, user.id, "assistant", response)
                 return
 
-    # ─── 3. NATURAL LANGUAGE QUICK RESPONSES ───
-    quick_response = process_natural_command(text, chat_id, user.id)
-    if quick_response:
-        log_memory(chat_id, thread_id, user.id, "user", f"{user.first_name}: {text}")
-        log_memory(chat_id, thread_id, user.id, "assistant", quick_response)
-        await jarvis_respond(update, quick_response)
-        return
-
-    # ─── 4. LLM-POWERED RESPONSE ───
+    # ─── 3. LOG ALL GROUP & PRIVATE MESSAGES FOR MONITORING ───
     log_memory(chat_id, thread_id, user.id, "user", f"{user.first_name}: {text}")
 
-    bot_username = (await context.bot.get_me()).username
+    bot_me = await context.bot.get_me()
+    bot_username = bot_me.username or ""
     is_triggered = (
         chat.type == "private"
-        or (msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id)
-        or re.search(r'\b(jarvis|friday|edith|shannon)\b', text, re.IGNORECASE)
+        or (msg.reply_to_message and msg.reply_to_message.from_user.id == bot_me.id)
+        or bool(re.search(r'\b(jarvis|friday|edith|shannon|good morning|morning)\b', text, re.IGNORECASE))
         or (bot_username and f"@{bot_username}".lower() in text.lower())
     )
-
-    ACTIVE_PERSONAS[chat_id] = auto_select_persona(text)
 
     if not is_triggered and chat.type != "private":
         return
 
+    # ─── 4. NATURAL LANGUAGE QUICK RESPONSES ───
+    quick_response = process_natural_command(text, chat_id, user.id)
+    if quick_response:
+        log_memory(chat_id, thread_id, user.id, "assistant", quick_response)
+        await jarvis_respond(update, quick_response)
+        return
+
+    # ─── 5. LLM-POWERED RESPONSE ───
+    ACTIVE_PERSONAS[chat_id] = auto_select_persona(text)
     sys_prompt = build_system_prompt(user.id, user.first_name, chat_id, user_prompt=text)
     raw_ai_response = await generate_response(text, get_chat_history(chat_id, thread_id), sys_prompt, user.id, user.first_name, context=context)
 
-    # Clean think tags
-    final_text =', '', raw_ai_response, flags=re.DOTALL).strip()
+    final_text = clean_think_tags(raw_ai_response)
     if not final_text:
         final_text = "I'm here, Sir. All systems nominal. ⚡"
 
     log_memory(chat_id, thread_id, user.id, "assistant", final_text)
 
-    # Voice response if requested
     if text.lower().endswith("audio") or text.lower().endswith("voice") or "/voice" in text.lower():
-        if user.id == CREATOR_ID:
+        if user.id == CREATOR_ID or CREATOR_ID == 0:
             await msg.reply_text("🎙️ Generating Voice Protocols... ⚡")
             audio_bytes = await generate_voice(final_text[:300])
             if audio_bytes:
@@ -1721,44 +2053,55 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await jarvis_respond(update, final_text)
 
 # ═══════════════════════════════════════════════════════════════
-# XXV. ERROR HANDLER
+# XXVI. ERROR HANDLER & BOOT SEQUENCE
 # ═══════════════════════════════════════════════════════════════
 
-async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     logger.error(f"Update {update} caused error {context.error}")
-    if update and update.effective_message:
-        try:
-            await update.effective_message.reply_text("Something went wrong, Sir. I'll look into it. ⚠️")
-        except:
-            pass
 
-# ═══════════════════════════════════════════════════════════════
-# XXVI. BOOT SEQUENCE
-# ═══════════════════════════════════════════════════════════════
+async def fallback_daily_scheduler(bot):
+    """Fallback background loop for 9:00 AM IST morning wishes & news if APScheduler/JobQueue isn't installed."""
+    last_sent_date = None
+    while True:
+        try:
+            now_ist = datetime.datetime.now(IST)
+            if now_ist.hour == 9 and now_ist.minute == 0 and last_sent_date != now_ist.date():
+                last_sent_date = now_ist.date()
+                await build_and_send_daily_report(bot)
+        except Exception as e:
+            logger.error(f"Daily scheduler error: {e}")
+        await asyncio.sleep(30)
 
 async def post_init(app: Application):
+    logger.info("✨ Titan Core V23.0 post_init sequence started — JARVIS IS ONLINE.")
     if CREATOR_ID:
         boot_msg = (
             f"✨ <b>Titan Core V{JARVIS_VERSION} Online.</b>\n\n"
             f"• Security Policies Updated 🛡️\n"
-            f"• Multi-Model Cascade Active ⚡\n"
-            f"• All Systems Nominal ⚙️\n\n"
+            f"• Vision & PDF/TXT Intelligence Active 📄📷\n"
+            f"• Morning Wishes & News Feed Active 📰\n"
+            f"• Multi-Model Cascade Active ⚡\n\n"
             f"At your service, Sir. 🫡"
         )
         try:
             await app.bot.send_message(chat_id=CREATOR_ID, text=boot_msg, parse_mode="HTML")
-        except:
-            pass
+        except Exception as e:
+            logger.warning(f"Could not send boot DM to CREATOR_ID ({CREATOR_ID}): {e}")
 
-    # Schedule daily briefing at 9 AM IST
-    try:
-        app.job_queue.run_daily(
-            scheduled_daily_job,
-            time=datetime.time(hour=9, minute=0, tzinfo=IST),
-        )
-        logger.info("✅ Daily briefing scheduled for 9:00 AM IST")
-    except Exception as e:
-        logger.warning(f"Job queue not available: {e}")
+    # Schedule daily briefing at 9 AM IST (with automatic asyncio fallback)
+    if app.job_queue is not None:
+        try:
+            app.job_queue.run_daily(
+                scheduled_daily_job,
+                time=datetime.time(hour=9, minute=0, tzinfo=IST),
+            )
+            logger.info("✅ Daily briefing scheduled for 9:00 AM IST via JobQueue")
+        except Exception as e:
+            logger.warning(f"JobQueue failed ({e}), activating fallback scheduler.")
+            asyncio.create_task(fallback_daily_scheduler(app.bot))
+    else:
+        logger.info("✅ Activating built-in asyncio daily scheduler for 9:00 AM IST")
+        asyncio.create_task(fallback_daily_scheduler(app.bot))
 
 async def scheduled_daily_job(context: ContextTypes.DEFAULT_TYPE):
     await build_and_send_daily_report(context.bot)
@@ -1775,7 +2118,11 @@ def main():
 
     # Start Flask health check server (for Render)
     start_web_server()
-    time.sleep(2)
+
+    if not BOT_TOKEN:
+        logger.error("❌ CRITICAL: TELEGRAM_BOT_TOKEN / BOT_TOKEN is not set! Keeping Flask server alive.")
+        while True:
+            time.sleep(60)
 
     # Build Telegram application
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
@@ -1854,7 +2201,11 @@ def main():
     app.add_handler(CommandHandler("lockdown", lockdown_cmd))
     app.add_handler(CommandHandler("say", say_cmd))
 
-    # ─── Message Handler ───
+    # ─── Photo, PDF & TXT Document Handlers ───
+    app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
+    app.add_handler(MessageHandler(filters.Document.ALL, document_handler))
+
+    # ─── Text Message Handler ───
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
 
     # ─── Error Handler ───
