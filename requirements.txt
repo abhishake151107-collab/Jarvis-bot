@@ -3,6 +3,7 @@ Flask
 Flask-Cors
 pytz
 pdfplumber
+Pillow
 beautifulsoup4
 cryptography
 APScheduler
