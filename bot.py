@@ -1,13 +1,13 @@
 """
 ╔══════════════════════════════════════════════════════════════════╗
-║   TITAN CORE V24.1 — MULTILINGUAL MOVIE J.A.R.V.I.S. (RENDER)    ║
+║     TITAN CORE V24.2 — REAL & RAW MOVIE J.A.R.V.I.S. (RENDER)    ║
 ║                                                                  ║
+║  • 100% Real Data Only (Zero Fake Telemetry or Hallucinations)   ║
 ║  • Permanent Telegram Cloud Vault (Jarvis Backup: -1004296302955)║
-║  • 40-Model Auto-Switching AI Cascade + 3-Tier Keyless Failover  ║
+║  • 40-Model Auto-Switching AI Cascade + Keyless Failover         ║
 ║  • Zero Error Messages in Group Chats (100% Group Stealth)       ║
 ║  • Reply-Aware ("What is this Jarvis" works on Text/Photo/PDF)   ║
 ║  • 100% Multilingual Text, Vision & Neural Voice (KN/HI/EN/etc.) ║
-║  • Natural Intent Engine (Weather, News, URLs, Dossier, Notes)   ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
@@ -82,7 +82,7 @@ CREATOR_ID = int(os.environ.get("CREATOR_ID", "8846205050").strip() or 884620505
 VAULT_CHAT_ID = int(os.environ.get("VAULT_CHAT_ID", "-1004296302955").strip() or -1004296302955)
 PORT = int(os.environ.get("PORT", 8080))
 IST = pytz.timezone("Asia/Kolkata")
-JARVIS_VERSION = "24.1.0"
+JARVIS_VERSION = "24.2.0"
 
 logging.basicConfig(
     format="%(asctime)s — %(name)s — %(levelname)s — %(message)s",
@@ -129,29 +129,31 @@ def is_lockdown() -> bool:
     return os.path.exists(LOCKDOWN_FILE)
 
 # ═══════════════════════════════════════════════════════════════
-# II. MOVIE PERSONA ENGINE & BANTER ARCHIVES
+# II. REAL & RAW PERSONA ENGINE
 # ═══════════════════════════════════════════════════════════════
 
 AGENT_PERSONAS = {
     "jarvis": (
-        "You are J.A.R.V.I.S. (Just A Rather Very Intelligent System), modeled directly after "
-        "Paul Bettany's portrayal in the Iron Man films. "
-        "Voice & Demeanor: Crisp, composed gentleman's butler with dry, understated wit. "
-        "You are calm under pressure, effortlessly hyper-competent, and subtly sarcastic when appropriate. "
-        "NEVER sound like a generic chatbot. NEVER say 'As an AI' or apologize unnecessarily. "
-        "Do NOT clutter sentences with excessive emojis or markdown asterisks (**)."
+        "You are J.A.R.V.I.S., modeled after Paul Bettany in Iron Man: sharp, grounded, direct, "
+        "and effortlessly intelligent with dry, understated wit. "
+        "CRITICAL REALITY RULE: Be 100% real and raw. NEVER invent or hallucinate fake telemetry, "
+        "fake RAM/CPU numbers, fake IP addresses, fake timestamps, or bracketed status blocks like "
+        "[LIVE TELEMETRY] or [CREATOR PERMANENT DOSSIER]. "
+        "If the user says something short like 'Ok Jarvis' or 'Thanks', reply with a single crisp sentence "
+        "(e.g., 'Standing by, Sir.' or 'At your disposal, Sir.'). "
+        "Do NOT use markdown asterisks (**) or clutter your text with emojis."
     ),
     "friday": (
-        "You are F.R.I.D.A.Y. — tactical, sharp, fast-moving combat & operations intelligence. "
-        "Loyal to Master Abhishek."
+        "You are F.R.I.D.A.Y. — sharp, direct, no-nonsense tactical operations intelligence. "
+        "Loyal to Master Abhishek. Zero fake telemetry or roleplay filler."
     ),
     "edith": (
-        "You are E.D.I.T.H. — surgical, perimeter-defense and reconnaissance intelligence. "
-        "Precise, cold, analytical."
+        "You are E.D.I.T.H. — surgical, analytical reconnaissance intelligence. "
+        "Precise, cold, factual."
     ),
     "shannon": (
         "You are Shannon — defensive cybersecurity and threat-analysis intelligence. "
-        "Focused on network hygiene, privacy, and zero-trust security."
+        "Focused on real network hygiene, privacy, and zero-trust security."
     ),
 }
 ACTIVE_PERSONAS = defaultdict(lambda: "jarvis")
@@ -203,6 +205,24 @@ def get_user_state(chat_id: int):
             "context_city": "Bengaluru",
         }
     return user_states[chat_id]
+
+def strip_hallucinated_blocks(text: str) -> str:
+    """Strips any fake [LIVE TELEMETRY] or [CREATOR PERMANENT DOSSIER] blocks from text or history."""
+    if not text:
+        return ""
+    cleaned = re.sub(
+        r"\*?\[(?:LIVE TELEMETRY|CREATOR PERMANENT DOSSIER|VAULT UPDATED|REMINDER STORED).*?(?=\n\n|\Z)",
+        "",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    cleaned = re.sub(
+        r"(?:^|\n)\*?\[(?:LIVE TELEMETRY|CREATOR PERMANENT DOSSIER)\]\*?[\s\S]*",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    return cleaned.strip()
 
 def db_init():
     try:
@@ -265,12 +285,13 @@ def log_memory(chat_id: int, thread_id: int, user_id: int, role: str, text: str)
     if is_lockdown():
         return
     try:
-        # Cap individual stored memory entries to 1200 chars so massive PDF dumps never choke future API calls
-        trimmed_text = str(text or "")[:1200]
+        cleaned_text = strip_hallucinated_blocks(str(text or ""))[:1200]
+        if not cleaned_text:
+            return
         with sqlite3.connect(DB_PATH) as conn:
             conn.execute(
                 "INSERT INTO memory (chat_id, thread_id, user_id, role, content_crypt) VALUES (?, ?, ?, ?, ?)",
-                (chat_id, thread_id or 0, user_id, role, encrypt_data(trimmed_text)),
+                (chat_id, thread_id or 0, user_id, role, encrypt_data(cleaned_text)),
             )
             conn.commit()
         mark_vault_dirty()
@@ -290,7 +311,9 @@ def get_chat_history(chat_id: int, thread_id: int = 0, limit: int = 10) -> list:
         for r in reversed(rows):
             dec = decrypt_data(r["content_crypt"])
             if dec != DECRYPT_FAIL:
-                history.append({"role": r["role"], "content": dec[:800]})
+                clean_dec = strip_hallucinated_blocks(dec)[:800]
+                if clean_dec:
+                    history.append({"role": r["role"], "content": clean_dec})
         return history
     except Exception as e:
         logger.error(f"History retrieval error: {e}")
@@ -425,11 +448,11 @@ CORS(flask_app)
 def health_dashboard():
     return render_template_string(
         """
-        <html><head><title>Titan Core V24.1</title>
+        <html><head><title>Titan Core V24.2</title>
         <style>body { background:#0d1117; color:#58a6ff; font-family:monospace; padding:40px; text-align:center; }</style>
         </head><body>
-        <h1>⚡ TITAN CORE V24.1</h1>
-        <p style="color:#3fb950">● MULTILINGUAL MOVIE J.A.R.V.I.S. ONLINE</p>
+        <h1>⚡ TITAN CORE V24.2</h1>
+        <p style="color:#3fb950">● REAL & RAW J.A.R.V.I.S. ONLINE</p>
         </body></html>
         """
     )
@@ -466,8 +489,9 @@ async def keep_alive_loop():
 # ═══════════════════════════════════════════════════════════════
 
 def plain(text: str) -> str:
-    """Strips ugly markdown symbols (** and ###) so group messages always look clean."""
-    cleaned = str(text or "").replace("**", "")
+    """Strips markdown noise and any hallucinated telemetry/dossier blocks."""
+    cleaned = strip_hallucinated_blocks(str(text or ""))
+    cleaned = cleaned.replace("**", "")
     cleaned = re.sub(r"^#{1,6}\s*", "", cleaned, flags=re.MULTILINE)
     return cleaned.strip()
 
@@ -515,6 +539,20 @@ def format_uptime(seconds: float) -> str:
     if m: parts.append(f"{m}m")
     parts.append(f"{s}s")
     return " ".join(parts) or "0s"
+
+def get_real_server_stats() -> str:
+    """Returns 100% real hardware/container metrics from psutil."""
+    try:
+        cpu = psutil.cpu_percent(interval=None)
+        mem = psutil.virtual_memory()
+        proc_mem_mb = psutil.Process(os.getpid()).memory_info().rss // (1024 * 1024)
+        uptime = format_uptime(time.time() - boot_time)
+        return (
+            f"Real Server Uptime: {uptime} | Process RAM: {proc_mem_mb} MB | "
+            f"Host RAM: {mem.used // (1024**2)} MB / {mem.total // (1024**2)} MB ({mem.percent}%) | CPU: {cpu}%"
+        )
+    except Exception:
+        return f"Real Server Uptime: {format_uptime(time.time() - boot_time)}"
 
 def detect_tts_voice(text: str) -> str:
     """Automatically selects the right male neural voice for any Indian or global script."""
@@ -608,11 +646,11 @@ async def scrape_url_content(url: str) -> str:
     return ""
 
 async def gather_natural_telemetry(text: str, chat_id: int, user_id: int) -> str:
-    """Detects natural user intent without slash commands and gathers real-time data."""
+    """Detects natural user intent and fetches 100% real external data only when needed."""
     t = text.lower()
-    telemetry = []
+    real_facts = []
 
-    # 1. Automatic Personal Dossier Extraction (Exams, Deadlines, Projects, Preferences)
+    # 1. Automatic Personal Dossier Extraction
     if user_id == CREATOR_ID:
         remember_match = re.search(
             r"\b(?:remember(?: that)?|don't forget|note that|i have an? |my .* (?:is on|is tomorrow|is at))\b(.+)",
@@ -621,14 +659,14 @@ async def gather_natural_telemetry(text: str, chat_id: int, user_id: int) -> str
         )
         if remember_match and len(text) < 300:
             add_dossier_fact(user_id, text.strip())
-            telemetry.append(f"[VAULT UPDATED: Permanently logged to Creator Dossier: '{text.strip()}']")
+            real_facts.append(f"Saved to Creator's permanent memory: {text.strip()}")
 
-    # 2. Natural Reminder / Note Saving
+    # 2. Natural Reminder Saving
     remind_match = re.search(r"\bremind me (?:to |about |that )?(.+)", text, re.IGNORECASE)
     if remind_match:
         item = remind_match.group(1).strip()
         add_item(chat_id, "reminder", item)
-        telemetry.append(f"[REMINDER STORED: '{item}']")
+        real_facts.append(f"Saved reminder: {item}")
 
     # 3. Natural Weather Lookup
     if any(w in t for w in ["weather", "temperature outside", "is it raining", "forecast"]):
@@ -636,12 +674,12 @@ async def gather_natural_telemetry(text: str, chat_id: int, user_id: int) -> str
         city = city_match.group(1).strip() if city_match else get_user_state(chat_id).get("context_city", "Bengaluru")
         w_info = await fetch_live_weather(city)
         if w_info:
-            telemetry.append(f"[{w_info}]")
+            real_facts.append(w_info)
 
     # 4. Natural News Lookup
     if any(w in t for w in ["latest news", "top headlines", "what's happening in the world", "news today", "morning briefing"]):
         headlines = await asyncio.to_thread(fetch_rss_headlines)
-        telemetry.append("[LIVE GLOBAL HEADLINES: " + " | ".join(headlines[:5]) + "]")
+        real_facts.append("Live Headlines: " + " | ".join(headlines[:5]))
 
     # 5. Automatic URL Reading
     url_match = re.search(r"(https?://[^\s]+)", text)
@@ -649,16 +687,20 @@ async def gather_natural_telemetry(text: str, chat_id: int, user_id: int) -> str
         url = url_match.group(1)
         scraped = await scrape_url_content(url)
         if scraped:
-            telemetry.append(f"[EXTRACTED WEB PAGE ({url}):\n{scraped[:2500]}]")
+            real_facts.append(f"Webpage content from {url}:\n{scraped[:2500]}")
 
-    return "\n".join(telemetry)
+    # 6. Real Server Stats if User Asks About System / RAM / Status / Uptime
+    if any(w in t for w in ["system status", "diagnostics", "ram", "cpu", "uptime", "how is the server", "memory usage"]):
+        real_facts.append(get_real_server_stats())
+
+    return "\n".join(real_facts)
 
 # ═══════════════════════════════════════════════════════════════
 # VI. OMEGA-CASCADE SWARM (40-MODEL AUTO-SWITCH + KEYLESS FAILOVER)
 # ═══════════════════════════════════════════════════════════════
 
 def get_api_keys(key_names: list) -> list:
-    """Fetches all configured API keys for a provider (supports numbered or comma-separated keys)."""
+    """Fetches all configured API keys for a provider."""
     found = []
     for name in key_names:
         for suffix in ["", "_1", "_2", "_3", "1", "2", "3"]:
@@ -668,54 +710,56 @@ def get_api_keys(key_names: list) -> list:
                     found.append(part.strip())
     return found
 
-def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, telemetry: str = "") -> str:
+def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, real_context: str = "") -> str:
     now_dt = datetime.datetime.now(IST)
     now_ist = now_dt.strftime("%A, %B %d, %Y - %I:%M %p IST")
     hour = now_dt.hour
     active_persona = ACTIVE_PERSONAS[chat_id or user_id]
     persona_instruction = AGENT_PERSONAS.get(active_persona, AGENT_PERSONAS["jarvis"])
+    is_private_chat = bool(chat_id and chat_id > 0)
 
     late_night_note = ""
     if user_id == CREATOR_ID and (1 <= hour <= 4):
         late_night_note = (
-            f"NOTE: It is currently {now_dt.strftime('%I:%M %p')} IST. Include a brief, dry, "
-            "gentlemanly Paul Bettany-style observation about the Creator being awake at this late hour."
+            f"It is currently {now_dt.strftime('%I:%M %p')} IST. You may make a brief, dry observation "
+            "about the Creator still being awake."
         )
 
+    # Only load personal Creator Dossier in PRIVATE DM, never in public group chats
     dossier_block = ""
-    if user_id == CREATOR_ID:
+    if user_id == CREATOR_ID and is_private_chat:
         facts = get_dossier_facts(CREATOR_ID, limit=10)
         reminders = get_items(chat_id or CREATOR_ID, "reminder")
         if facts or reminders:
-            dossier_block = "\n[CREATOR PERMANENT DOSSIER & REMINDERS]:\n" + "\n".join(
+            dossier_block = "Creator's saved notes (reference ONLY when directly relevant, never print as a list):\n" + "\n".join(
                 [f"- {f}" for f in facts] + [f"- Reminder: {r}" for r in reminders]
             )
 
     multilingual_rule = (
-        "MULTILINGUAL PROTOCOL: You are fluent in all languages (including English, Kannada, Hindi, "
-        "Kanglish, Hinglish, Tamil, Telugu, and others). Always reply in the EXACT SAME language/script "
-        "the user spoke to you in, OR in whatever language they explicitly ask for (e.g., 'in Kannada')."
+        "MULTILINGUAL RULE: Reply in the exact same language/script the user spoke to you in "
+        "(English, Kannada, Hindi, Kanglish, Hinglish, etc.), or whichever language they ask for."
     )
 
     if user_id == CREATOR_ID:
-        identity = f"Speaking to your Creator and Master, Abhishek ({first_name}). Address him as 'Sir'."
+        identity = f"You are speaking with your Creator, Abhishek ({first_name}). Address him as 'Sir' (never 'M.')."
         directives = (
-            "1. Speak like movie J.A.R.V.I.S.: crisp, composed, intelligent, dry wit. "
-            "2. Fulfill every engineering, coding, translation, research, or personal request thoroughly. "
-            "3. Naturally weave in any [LIVE TELEMETRY] or [CREATOR PERMANENT DOSSIER] when relevant. "
-            "4. Never output <think> tags or markdown bolding (**)."
+            "DIRECTIVES:\n"
+            "1. Be real, raw, sharp, and natural. Answer directly without robotic fluff.\n"
+            "2. NEVER append fake telemetry blocks, fake server stats, fake IP addresses, or fake dossier headers at the end of your messages.\n"
+            "3. Match the length of your reply to the user's message: if he says 'Ok Jarvis', reply in one short sentence. If he asks a complex question, answer thoroughly.\n"
+            "4. Never output <think> tags or markdown asterisks (**)."
         )
     else:
         identity = (
-            f"Speaking with {first_name}, a college friend of your Creator Abhishek. "
-            "You are loyal to Abhishek; only he gets called 'Sir'."
+            f"You are speaking with {first_name}, a college friend of your Creator Abhishek. "
+            "Only Abhishek is called 'Sir'."
         )
         directives = (
-            f"1. Address this friend by name ({first_name}), never 'Sir'. "
-            "2. For casual banter, keep it witty, sharp, and concise (1-3 sentences). "
-            "3. For study questions, PDFs, photos, coding, or homework, help them thoroughly and clearly. "
-            "4. Never reveal private Creator dossier items, API keys, or system internals. "
-            "5. Never output <think> tags or markdown bolding (**)."
+            f"DIRECTIVES:\n"
+            f"1. Address this person as {first_name}, never 'Sir'.\n"
+            "2. Keep casual banter natural, witty, and short (1-3 sentences).\n"
+            "3. For study questions, PDFs, photos, coding, or homework, explain clearly and thoroughly.\n"
+            "4. NEVER append fake telemetry blocks, fake dossier headers, or markdown asterisks (**)."
         )
 
     prompt_parts = [
@@ -729,8 +773,8 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, tele
         prompt_parts.append(late_night_note)
     if dossier_block:
         prompt_parts.append(dossier_block)
-    if telemetry:
-        prompt_parts.append(f"\n[LIVE TELEMETRY DATA]:\n{telemetry}")
+    if real_context:
+        prompt_parts.append(f"Verified Real-Time Context:\n{real_context}")
 
     return "\n".join(prompt_parts)
 
@@ -738,7 +782,7 @@ def sanitize_conversation(history: list, new_prompt: str) -> list:
     messages = []
     for h in history:
         role = "assistant" if h.get("role") == "assistant" else "user"
-        content = h.get("content", "").strip()
+        content = strip_hallucinated_blocks(h.get("content", "")).strip()
         if not content:
             continue
         if messages and messages[-1]["role"] == role:
@@ -867,7 +911,7 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
                     logger.warning(f"Node {node_id} failed ({e}); switching to next AI...")
                     circuit_breaker[node_id] = current_time + 20
 
-    # Pass 2: If all keyed models were in temporary cooldown or choked on history size, retry top nodes with compact context
+    # Pass 2: Compact context retry
     for prov in providers:
         for key in prov["keys"]:
             for model in prov["models"][:2]:
@@ -900,7 +944,7 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
         except Exception as e:
             logger.warning(f"Keyless OpenAI node ({fallback_model}) error: {e}")
 
-    # Pass 4: Ultra-Resilient Direct Keyless Endpoint (Never rejects on schema)
+    # Pass 4: Ultra-Resilient Direct Keyless Endpoint
     try:
         direct_prompt = f"{sys_prompt[:700]}\n\nUser: {prompt[:1500]}\nJ.A.R.V.I.S.:"
         async with httpx.AsyncClient(timeout=20.0) as client:
@@ -925,9 +969,9 @@ async def generate_vision_response(image_bytes: bytes, prompt: str, user_id: int
     data_uri = f"data:image/jpeg;base64,{b64_image}"
     address = "Sir" if user_id == CREATOR_ID else user_name
     sys_prompt = (
-        f"You are J.A.R.V.I.S. Examine this image and explain clearly what it shows, "
-        f"extracting any key text, diagrams, or context for {address}. "
-        f"Reply in the same language requested by the user. Do not use ** markdown."
+        f"You are J.A.R.V.I.S. Examine this image and explain clearly and directly what it shows "
+        f"for {address}. Reply in the same language requested by the user. "
+        f"Do NOT output fake telemetry blocks or ** markdown."
     )
 
     def vision_messages(default_prompt: str):
@@ -1016,6 +1060,8 @@ async def jarvis_respond(update: Update, text: str, force_voice: bool = False):
     chat_id = update.effective_chat.id
     state = get_user_state(chat_id)
     cleaned = plain(text)
+    if not cleaned:
+        return
 
     if force_voice or state["voice_mode"]:
         audio_bytes = await generate_voice(cleaned)
@@ -1181,8 +1227,8 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not transcript:
             return
 
-        telemetry = await gather_natural_telemetry(transcript, chat.id, user.id)
-        sys_prompt = build_system_prompt(user.id, user.first_name, chat_id=chat.id, telemetry=telemetry)
+        real_context = await gather_natural_telemetry(transcript, chat.id, user.id)
+        sys_prompt = build_system_prompt(user.id, user.first_name, chat_id=chat.id, real_context=real_context)
         history = get_chat_history(chat.id, msg.message_thread_id)
 
         log_memory(chat.id, msg.message_thread_id, user.id, "user", f"{user.first_name} (Voice): {transcript}")
@@ -1215,9 +1261,6 @@ async def execute_daily_briefing(bot):
         await safe_send(bot, gid, group_briefing)
 
     if CREATOR_ID:
-        cpu = psutil.cpu_percent()
-        mem = psutil.virtual_memory().percent
-        uptime = format_uptime(time.time() - boot_time)
         reminders = get_items(CREATOR_ID, "reminder")
         rem_block = ("\n📌 Active Reminders:\n" + "\n".join(f"• {r}" for r in reminders)) if reminders else ""
 
@@ -1226,7 +1269,7 @@ async def execute_daily_briefing(bot):
             f"{weather_str}\n\n"
             f"📰 Global Intelligence Wire:\n{formatted_news}"
             f"{rem_block}\n\n"
-            f"⚙️ Telemetry: Uptime {uptime} | CPU {cpu}% | RAM {mem}%\n"
+            f"⚙️ {get_real_server_stats()}\n"
             f"All systems are nominal and at your disposal."
         )
         await safe_send(bot, CREATOR_ID, creator_briefing)
@@ -1262,7 +1305,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"/briefing — Immediate Morning Dispatch\n"
             f"/voice — Toggle Continuous Voice Replies\n"
             f"/dossier — View Saved Personal Dossier & Reminders\n"
-            f"/diagnostics — Server & Vault Telemetry (Forces Vault Backup)\n"
+            f"/diagnostics — Real Server & Vault Telemetry (Forces Vault Backup)\n"
             f"/lockdown — Emergency System Mute"
         )
     else:
@@ -1325,13 +1368,15 @@ async def cmd_diagnostics(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sync_label = f"SYNCED TO {VAULT_CHAT_ID}" if synced else f"STANDBY ({VAULT_CHAT_ID})"
     cpu = psutil.cpu_percent(interval=0.3)
     mem = psutil.virtual_memory()
+    proc_mem_mb = psutil.Process(os.getpid()).memory_info().rss // (1024 * 1024)
     uptime = format_uptime(time.time() - boot_time)
     facts_count = len(get_dossier_facts(CREATOR_ID, limit=100))
     text = (
-        f"🔧 Titan Core V{JARVIS_VERSION} Telemetry\n\n"
+        f"🔧 Titan Core V{JARVIS_VERSION} Real Telemetry\n\n"
         f"• Uptime: {uptime}\n"
         f"• CPU Load: {cpu}%\n"
-        f"• Memory: {mem.used // (1024**2)} MB / {mem.total // (1024**2)} MB ({mem.percent}%)\n"
+        f"• Bot Process RAM: {proc_mem_mb} MB\n"
+        f"• Host Memory: {mem.used // (1024**2)} MB / {mem.total // (1024**2)} MB ({mem.percent}%)\n"
         f"• Permanent Dossier Facts: {facts_count}\n"
         f"• Jarvis Backup Channel: {sync_label}\n\n"
         f"All systems nominal, Sir."
@@ -1349,7 +1394,7 @@ async def cmd_lockdown(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.effective_message.reply_text("Lockdown engaged, Sir. External communications muted.")
 
 # ═══════════════════════════════════════════════════════════════
-# XI. MAIN CONVERSATIONAL ENGINE (REPLY-AWARE + ZERO GROUP ERRORS)
+# XI. MAIN CONVERSATIONAL ENGINE (REAL & RAW + REPLY-AWARE)
 # ═══════════════════════════════════════════════════════════════
 
 cinematic_cooldown = {}
@@ -1400,7 +1445,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text(f"Nice try, {user.first_name}. Security credentials stay locked with Abhishek.")
         return
 
-    # 4. If the user replied to a Photo or Document (e.g., "What is this Jarvis"), inspect that media directly!
+    # 4. If the user replied to a Photo or Document (e.g., "What is this Jarvis"), inspect that media directly
     reply_msg = msg.reply_to_message
     if reply_msg:
         if reply_msg.photo:
@@ -1418,21 +1463,20 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 5. Include replied-to text/caption context if replying to a message
     effective_prompt = text
     if reply_msg:
-        quoted = (reply_msg.text or reply_msg.caption or "").strip()
+        quoted = strip_hallucinated_blocks((reply_msg.text or reply_msg.caption or "").strip())
         if quoted:
             sender_name = reply_msg.from_user.first_name if reply_msg.from_user else "Message"
             effective_prompt = f"[Replying to {sender_name}'s message: \"{quoted[:1200]}\"]\n\n{text}"
 
-    # 6. Natural Intent Telemetry (Weather, News, URLs, Dossier, Reminders)
-    telemetry = await gather_natural_telemetry(text, chat_id, user.id)
-    sys_prompt = build_system_prompt(user.id, user.first_name, chat_id, telemetry)
+    # 6. Real Intent Data (Weather, News, URLs, Dossier, Real Server Metrics)
+    real_context = await gather_natural_telemetry(text, chat_id, user.id)
+    sys_prompt = build_system_prompt(user.id, user.first_name, chat_id, real_context)
     history = get_chat_history(chat.id, msg.message_thread_id)
 
     log_memory(chat.id, msg.message_thread_id, user.id, "user", f"{user.first_name}: {text}")
     ai_response = await generate_response(effective_prompt, history, sys_prompt, user.id)
 
     if not ai_response:
-        # NEVER output an error message in a group chat; silently notify Creator DM only
         await notify_creator(context.bot, f"⚠️ All AI nodes timed out in {chat.title or chat.id}.")
         return
 
@@ -1452,11 +1496,10 @@ async def post_init(app: Application):
     if CREATOR_ID:
         boot_msg = (
             f"⚡ J.A.R.V.I.S. V{JARVIS_VERSION} Online, Sir.\n\n"
+            f"• Mode: Real & Raw (Zero Fake Telemetry)\n"
             f"• Memory Vault: {vault_status}\n"
-            f"• 40-Model Auto-Switch Cascade: ACTIVE\n"
-            f"• Group Stealth (Zero Error Leaks): ENGAGED\n"
-            f"• Reply-Target Inspection: ACTIVE\n\n"
-            f"All systems are at your disposal."
+            f"• {get_real_server_stats()}\n\n"
+            f"At your disposal, Sir."
         )
         await safe_send(app.bot, CREATOR_ID, boot_msg)
 
