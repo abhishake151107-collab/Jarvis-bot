@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>J.A.R.V.I.S. HUD</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{--c:#2de2ff;--o:#ff8a1f;--bg:#030a12;--dim:#0f3a4a;--t:#bff6ff;--mute:#5fb6c9}
+*{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:var(--bg);color:var(--t);font:13px/1.45 ui-monospace,Menlo,Consolas,monospace;overflow:hidden}
+body{display:flex;flex-direction:column;padding:10px;background:radial-gradient(circle at 50% -10%,#06304a 0,transparent 55%),var(--bg)}
+.hud{border:1px solid var(--dim);position:relative;padding:8px;background:rgba(5,25,38,.55);margin-bottom:8px}
+header{display:flex;align-items:center;gap:12px}
+.reactor{width:46px;height:46px;flex:none;filter:drop-shadow(0 0 6px var(--c))}
+.r1,.r2{transform-origin:50% 50%}
+.r1{animation:spin 8s linear infinite}.r2{animation:spin 5s linear infinite reverse}
+@keyframes spin{to{transform:rotate(360deg)}}
+h1{font-size:15px;letter-spacing:.3em;color:var(--c);text-shadow:0 0 8px var(--c)}
+.sub{color:var(--mute);font-size:10px;letter-spacing:.15em}
+.ok{color:#4dffa0}.bad{color:var(--o)}
+.gauges{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px}
+.g{text-align:center}
+.ring{--p:0;width:48px;height:48px;border-radius:50%;margin:0 auto 3px;display:grid;place-items:center;background:conic-gradient(var(--c) calc(var(--p)*1%),#0b2b3a 0)}
+.ring i{width:38px;height:38px;border-radius:50%;background:#04141f;display:grid;place-items:center;font-style:normal;color:var(--c);font-size:10px}
+.lbl{font-size:8px;letter-spacing:.2em;color:var(--mute)}
+#log{flex:1;overflow-y:auto;margin-bottom:8px;display:flex;flex-direction:column;gap:8px;padding-right:4px}
+.m{padding:6px 8px;border-left:2px solid var(--c);background:rgba(45,226,255,.05);white-space:pre-wrap;word-break:break-word}
+.m.u{border-color:var(--o);background:rgba(255,138,31,.07);text-align:right}
+.m b{display:block;font-size:9px;letter-spacing:.2em;color:var(--mute);margin-bottom:2px}
+.chips{display:flex;gap:6px;overflow-x:auto;margin-bottom:6px;scrollbar-width:none}
+.chips button{flex:none;background:none;color:var(--c);border:1px solid var(--dim);padding:4px 8px;font:inherit;font-size:10px;letter-spacing:.08em}
+form{display:flex;gap:6px}
+input{flex:1;min-width:0;background:#04141f;border:1px solid var(--dim);color:var(--t);padding:9px;font:inherit;outline:none}
+input:focus{border-color:var(--c);box-shadow:0 0 8px rgba(45,226,255,.4)}
+form button{background:var(--c);color:#02212c;border:0;padding:0 12px;font:inherit;font-weight:700;letter-spacing:.1em}
+.dot{animation:blink 1s infinite}@keyframes blink{50%{opacity:.25}}
+</style>
+</head>
+<body>
+<header class="hud">
+<svg class="reactor" viewBox="0 0 100 100" fill="none" stroke="#2de2ff">
+<g class="r1"><circle cx="50" cy="50" r="46" stroke-width="2" stroke-dasharray="14 6"/></g>
+<g class="r2"><circle cx="50" cy="50" r="34" stroke="#ff8a1f" stroke-width="2" stroke-dasharray="4 8"/></g>
+<circle cx="50" cy="50" r="20" stroke-width="3"/>
+<circle cx="50" cy="50" r="9" fill="#2de2ff" stroke="none"/>
+</svg>
+<div>
+<h1>J.A.R.V.I.S.</h1>
+<div class="sub" id="who">LINKING…</div>
+<div class="sub">● <span id="net" class="bad">OFFLINE</span></div>
+</div>
+</header>
+​<div class="gauges hud" id="gauge-box" style="display:none">
+<div class="g"><div class="ring" id="gc"><i>--</i></div><div class="lbl">CPU</div></div>
+<div class="g"><div class="ring" id="gr"><i>--</i></div><div class="lbl">RAM</div></div>
+<div class="g"><div class="ring" id="gu"><i>--</i></div><div class="lbl">UPTIME</div></div>
+</div>
+​<div id="log"></div>
+<div class="chips" id="chips"></div>
+<form id="f" autocomplete="off">
+<input id="in" placeholder="Command, Sir…" enterkeyhint="send">
+<button>SEND</button>
+</form>
+​<script>
+const tg = window.Telegram?.WebApp || {};
+tg.ready?.(); tg.expand?.(); tg.setHeaderColor?.('#030a12'); tg.setBackgroundColor?.('#030a12');
+const = s => document.querySelector(s), log =('#log'), init = tg.initData || '';
+let busy = false;
+​function add(who, text, cls) {
+const d = document.createElement('div');
+d.className = 'm ' + (cls || '');
+d.innerHTML = '<b></b><span></span>';
+d.firstChild.textContent = who;
+d.lastChild.textContent = text || '';
+log.append(d); log.scrollTop = log.scrollHeight;
+return d.lastChild;
+}
+async function api(path, body) {
+const r = await fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json'},
+body: JSON.stringify({initData: init, ...body})});
+if (!r.ok) throw new Error(r.status);
+return r.json();
+}
+function gauge(id, p, txt) {
+const el = $(id); el.style.setProperty('--p', p); el.firstChild.textContent = txt;
+}
+async function status() {
+try {
+const d = await api('/api/status', {});
+$('#net').textContent = 'ONLINE'; $('#net').className = 'ok';
+$('#who').textContent = d.role === 'creator' ? 'WELCOME BACK, SIR' : 'HELLO, ' + d.name.toUpperCase();
+if (d.role === 'creator') {
+$('#gauge-box').style.display = 'grid';
+gauge('#gc', d.cpu, Math.round(d.cpu) + '%');
+gauge('#gr', d.ram, Math.round(d.ram) + '%');
+gauge('#gu', 100, d.uptime.split(' ')[0]);
+}
+} catch (e) {
+$('#net').textContent = 'OFFLINE'; $('#net').className = 'bad';
+}
+}
+async function send(t) {
+t = t.trim(); if (!t || busy) return;
+busy = true;
+add('YOU', t, 'u');
+const el = add('JARVIS', '…processing'); el.parentNode.classList.add('dot');
+try {
+const d = await api('/api/chat', {message: t});
+el.parentNode.classList.remove('dot'); el.textContent = d.reply;
+log.scrollTop = log.scrollHeight;
+} catch (e) {
+el.parentNode.classList.remove('dot'); el.textContent = 'Link unstable. Try again, Sir. ⚡';
+}
+busy = false;
+}
+$('#f').onsubmit = e => { e.preventDefault(); const v = $('#in').value; $('#in').value = ''; send(v); };
+['Status report', 'Latest news', 'Diagnostics', 'Help'].forEach(c => {
+const b = document.createElement('button'); b.textContent = c.toUpperCase(); b.type = 'button';
+b.onclick = () => send(c); $('#chips').append(b);
+});
+​if (!init) {
+add('JARVIS', 'Open this HUD from inside Telegram to link up, Sir. ⚡');
+$('#in').disabled = true;
+} else {
+add('JARVIS', 'HUD online. All systems nominal. ⚡');
+status(); setInterval(status, 15000);
+}
+</script>
+</body>
+</html>
