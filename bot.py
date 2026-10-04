@@ -668,12 +668,15 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, real
     persona_instruction = AGENT_PERSONAS.get(active_persona, AGENT_PERSONAS["jarvis"])
     is_private_chat = bool(chat_id and chat_id > 0)
 
+    # Check if user has permanent creator rights OR active temporary elevation
+    active_elevated = (user_id == CREATOR_ID) or (time.time() < temporary_elevations.get(user_id, 0.0))
+
     late_night_note = ""
-    if user_id == CREATOR_ID and (1 <= hour <= 4):
+    if active_elevated and (1 <= hour <= 4):
         late_night_note = f"It is currently {now_dt.strftime('%I:%M %p')} IST. You may make a brief, dry observation about the Creator still being awake."
 
     dossier_block = ""
-    if user_id == CREATOR_ID and is_private_chat:
+    if active_elevated and is_private_chat:
         facts = get_dossier_facts(CREATOR_ID, limit=10)
         reminders = get_items(chat_id or CREATOR_ID, "reminder")
         if facts or reminders:
@@ -681,7 +684,7 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, real
 
     multilingual_rule = "MULTILINGUAL RULE: Reply in the exact same language/script the user spoke to you in."
 
-    if user_id == CREATOR_ID:
+    if active_elevated:
         identity = f"You are speaking with your Creator, Abhishek (@Abhishek0_07). Address him as 'Sir'."
         directives = "DIRECTIVES:\n1. Be real, raw, sharp, and natural.\n2. NEVER append fake telemetry or dossier headers.\n3. Match message length."
     else:
@@ -780,7 +783,10 @@ async def generate_vision_response(image_bytes: bytes, prompt: str, user_id: int
     compressed = await asyncio.to_thread(compress_image_for_vision, image_bytes)
     b64_image = base64.b64encode(compressed).decode("utf-8")
     data_uri = f"data:image/jpeg;base64,{b64_image}"
-    address = "Sir" if user_id == CREATOR_ID else user_name
+    
+    active_elevated = (user_id == CREATOR_ID) or (time.time() < temporary_elevations.get(user_id, 0.0))
+    address = "Sir" if active_elevated else user_name
+    
     user_task = prompt or f"Examine this image for {address}."
     combined_instruction = f"You are J.A.R.V.I.S. {user_task} Address user as {address}."
 
@@ -868,10 +874,12 @@ async def cmd_auth(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text("⚠️ **Access Denied:** Invalid security passcode.", parse_mode="Markdown")
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if is_creator(update):
-        text = f"⚡ J.A.R.V.I.S. Titan Core v{JARVIS_VERSION} Online, Sir. Abhishek0_07 recognized."
+    user = update.effective_user
+    if user and is_creator(update):
+        text = f"⚡ J.A.R.V.I.S. Titan Core v{JARVIS_VERSION} Online, Sir. Abhishek0_07 permanent access active."
     else:
-        text = f"⚡ J.A.R.V.I.S. v{JARVIS_VERSION} Online. Type normally to chat."
+        name = user.first_name if user else "friend"
+        text = f"⚡ J.A.R.V.I.S. v{JARVIS_VERSION} Online. Hello {name}! Type normally to chat."
     await update.effective_message.reply_text(plain(text))
 
 async def cmd_dossier(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -932,7 +940,10 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not msg or not msg.photo or not msg.from_user: return
     user, chat = msg.from_user, msg.chat
     log_roster_and_chat(chat, user)
-    caption = msg.caption or ("Analyze this image, Sir." if is_creator(update) else f"Explain this image for {user.first_name}.")
+    
+    active_elevated = (user.id == CREATOR_ID) or (time.time() < temporary_elevations.get(user.id, 0.0))
+    caption = msg.caption or ("Analyze this image, Sir." if active_elevated else f"Explain this image for {user.first_name}.")
+    
     status_msg = await msg.reply_text("⚡ Scanning optical feed...")
     try:
         file_obj = await context.bot.get_file(msg.photo[-1].file_id)
@@ -1003,7 +1014,9 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_roster_and_chat(chat, user)
     chat_id = chat.id
 
-    if not is_creator(update) and SENSITIVE_ASSETS:
+    active_elevated = (user.id == CREATOR_ID) or (time.time() < temporary_elevations.get(user.id, 0.0))
+
+    if not active_elevated and SENSITIVE_ASSETS:
         clean_check = re.sub(r"[\s\-_\.,]", "", text.lower())
         for asset in SENSITIVE_ASSETS:
             if re.sub(r"[\s\-_\.,]", "", asset.lower()) in clean_check:
@@ -1012,7 +1025,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
 
     clean_text = re.sub(r"[^\w\s]", "", text.lower()).strip()
-    table = CINEMATIC_RESPONSES if is_creator(update) else FRIEND_RESPONSES
+    table = CINEMATIC_RESPONSES if active_elevated else FRIEND_RESPONSES
     for trigger, reply in table.items():
         if re.search(rf"\b{re.escape(trigger)}\b", clean_text):
             r_text = random.choice(reply) if isinstance(reply, list) else reply
@@ -1024,7 +1037,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chat.type != "private" and not is_addressed(msg, context.bot, text):
         return
 
-    if not is_creator(update) and RESTRICTED_FOR_FRIENDS.search(text):
+    if not active_elevated and RESTRICTED_FOR_FRIENDS.search(text):
         return await msg.reply_text(f"Nice try, {user.first_name}. Security credentials remain locked.")
 
     reply_msg = msg.reply_to_message
