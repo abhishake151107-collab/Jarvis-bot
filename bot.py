@@ -1,4 +1,3 @@
-```python
 """
 ╔══════════════════════════════════════════════════════════════════╗
 ║     TITAN CORE V24.3.5 — HUD MINI APP & MYTHOLOGICAL SWARM       ║
@@ -29,7 +28,6 @@ import urllib.parse
 from io import BytesIO
 from collections import defaultdict
 
-# ─── Core Libraries ───
 import pytz
 import httpx
 import feedparser
@@ -40,7 +38,6 @@ from flask import Flask, jsonify, request, render_template_string
 from flask_cors import CORS
 from openai import AsyncOpenAI
 
-# ─── Optional Integrations ───
 try:
     from PIL import Image
 except ImportError:
@@ -61,13 +58,6 @@ try:
 except ImportError:
     pdfplumber = None
 
-try:
-    from markitdown import MarkItDown
-    markitdown_client = MarkItDown()
-except Exception:
-    markitdown_client = None
-
-# ─── Telegram Framework ───
 from telegram import Update, MenuButtonWebApp, WebAppInfo
 from telegram.ext import (
     ApplicationBuilder,
@@ -126,9 +116,7 @@ circuit_breaker = {}
 boot_time = time.time()
 vault_dirty = False
 last_vault_sync = 0.0
-active_docs = 0
 
-# Temporary 30-Second Elevation Store: {user_id: expiration_timestamp}
 temporary_elevations = {}
 
 def is_lockdown() -> bool:
@@ -287,7 +275,7 @@ def log_memory(chat_id: int, thread_id: int, user_id: int, role: str, text: str)
         with sqlite3.connect(DB_PATH) as conn:
             conn.execute(
                 "INSERT INTO memory (chat_id, thread_id, user_id, role, content_crypt) VALUES (?, ?, ?, ?, ?)",
-                (chat.id, thread_id or 0, user_id, role, encrypt_data(cleaned_text)),
+                (chat_id, thread_id or 0, user_id, role, encrypt_data(cleaned_text)),
             )
             conn.commit()
         mark_vault_dirty()
@@ -365,14 +353,6 @@ def get_items(chat_id: int, kind: str) -> list:
             if dec != DECRYPT_FAIL:
                 out.append(f"[{r[1]}] {dec}")
         return out
-    except Exception:
-        return []
-
-def get_registered_group_chat_ids() -> list:
-    try:
-        with sqlite3.connect(DB_PATH) as conn:
-            rows = conn.execute("SELECT chat_id FROM chats WHERE chat_id < 0 AND chat_id != ?", (VAULT_CHAT_ID,)).fetchall()
-            return [r[0] for r in rows]
     except Exception:
         return []
 
@@ -1204,4 +1184,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-```
