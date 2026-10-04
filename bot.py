@@ -1,9 +1,10 @@
 """
 ╔══════════════════════════════════════════════════════════════════╗
-║     TITAN CORE V24.3.2 — SECURE TEMPORARY ELEVATION (RENDER)     ║
+║     TITAN CORE V24.3.3 — SECURE TEMPORARY ELEVATION (RENDER)     ║
 ║                                                                  ║
 ║  • Permanent Creator Auth for @Abhishek0_07 (ID: 8846205050)     ║
 ║  • 30-Second Temporary Elevation (`/auth stark777`) for Others   ║
+║  • Instant Passcode Message Auto-Deletion (Zero Trace)           ║
 ║  • Automatic Normal AI Conversation in Private DMs & Groups      ║
 ║  • Permanent Telegram Cloud Vault (Jarvis Backup: -1004296302955)║
 ║  • 7-Stage Vision Cascade + Auto Image Compression + OCR Backup  ║
@@ -89,7 +90,7 @@ VAULT_CHAT_ID = int(os.environ.get("VAULT_CHAT_ID", "-1004296302955").strip() or
 MASTER_PASSCODE = os.environ.get("MASTER_PASSCODE", "stark777").strip()
 PORT = int(os.environ.get("PORT", 8080))
 IST = pytz.timezone("Asia/Kolkata")
-JARVIS_VERSION = "24.3.2"
+JARVIS_VERSION = "24.3.3"
 
 logging.basicConfig(
     format="%(asctime)s — %(name)s — %(levelname)s — %(message)s",
@@ -448,11 +449,11 @@ CORS(flask_app)
 def health_dashboard():
     return render_template_string(
         """
-        <html><head><title>Titan Core V24.3.2</title>
+        <html><head><title>Titan Core V24.3.3</title>
         <style>body { background:#0d1117; color:#58a6ff; font-family:monospace; padding:40px; text-align:center; }</style>
         </head><body>
-        <h1>⚡ TITAN CORE V24.3.2</h1>
-        <p style="color:#3fb950">● SECURE ELEVATION ACTIVE</p>
+        <h1>⚡ TITAN CORE V24.3.3</h1>
+        <p style="color:#3fb950">● SECURE ELEVATION & AUTO-DELETE ACTIVE</p>
         </body></html>
         """
     )
@@ -856,22 +857,38 @@ async def jarvis_respond(update: Update, text: str, force_voice: bool = False):
 # ═══════════════════════════════════════════════════════════════
 
 async def cmd_auth(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Temporary 30-Second Elevation Command: /auth [passcode]"""
+    """Temporary 30-Second Elevation Command with Instant Passcode Deletion: /auth [passcode]"""
     msg = update.effective_message
     user = update.effective_user
     if not msg or not user: return
 
+    # ⚡ INSTANT PASSCODE DELETION: Delete user's message immediately so no one sees the password
+    try:
+        await msg.delete()
+    except Exception:
+        pass
+
     args = context.args
     if not args:
-        return await msg.reply_text("Usage: `/auth [passcode]`", parse_mode="Markdown")
+        warning_msg = await context.bot.send_message(chat_id=update.effective_chat.id, text="Usage: `/auth [passcode]`", parse_mode="Markdown")
+        await asyncio.sleep(5)
+        try: await warning_msg.delete()
+        except Exception: pass
+        return
 
     provided_code = " ".join(args).strip()
     if provided_code == MASTER_PASSCODE:
         expiry = time.time() + 30.0
         temporary_elevations[user.id] = expiry
-        await msg.reply_text("⚡ **Elevation Authorized, Sir.** Creator privileges granted for **30 seconds**.", parse_mode="Markdown")
+        success_msg = await context.bot.send_message(chat_id=update.effective_chat.id, text="⚡ **Elevation Authorized, Sir.** Creator privileges granted for **30 seconds**.", parse_mode="Markdown")
+        await asyncio.sleep(4)
+        try: await success_msg.delete()
+        except Exception: pass
     else:
-        await msg.reply_text("⚠️ **Access Denied:** Invalid security passcode.", parse_mode="Markdown")
+        denied_msg = await context.bot.send_message(chat_id=update.effective_chat.id, text="⚠️ **Access Denied:** Invalid security passcode.", parse_mode="Markdown")
+        await asyncio.sleep(4)
+        try: await denied_msg.delete()
+        except Exception: pass
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -942,7 +959,8 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_roster_and_chat(chat, user)
     
     active_elevated = (user.id == CREATOR_ID) or (time.time() < temporary_elevations.get(user.id, 0.0))
-    caption = msg.caption or ("Analyze this image, Sir." if active_elevated else f"Explain this image for {user.first_name}.")
+    address = "Sir" if active_elevated else user.first_name
+    caption = msg.caption or (f"Analyze this image, Sir." if active_elevated else f"Explain this image for {address}.")
     
     status_msg = await msg.reply_text("⚡ Scanning optical feed...")
     try:
