@@ -1,14 +1,13 @@
 """
 ╔══════════════════════════════════════════════════════════════════╗
-║     TITAN CORE V24.3.1 — SECURE TEMPORARY ELEVATION (RENDER)     ║
+║     TITAN CORE V24.3.2 — SECURE TEMPORARY ELEVATION (RENDER)     ║
 ║                                                                  ║
-║  • 30-Second Temporary Creator Auth (`/auth [code]`)             ║
-║  • 100% Real Data Only (Zero Fake Telemetry or Hallucinations)   ║
+║  • Permanent Creator Auth for @Abhishek0_07 (ID: 8846205050)     ║
+║  • 30-Second Temporary Elevation (`/auth stark777`) for Others   ║
+║  • Automatic Normal AI Conversation in Private DMs & Groups      ║
 ║  • Permanent Telegram Cloud Vault (Jarvis Backup: -1004296302955)║
 ║  • 7-Stage Vision Cascade + Auto Image Compression + OCR Backup  ║
 ║  • 40-Model Auto-Switching AI Cascade + Keyless Failover         ║
-║  • Zero Error Messages in Group Chats (100% Group Stealth)       ║
-║  • Reply-Aware & Multilingual Text, Vision & Neural Voice        ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
@@ -85,11 +84,12 @@ from telegram.ext import (
 
 BOT_TOKEN = (os.environ.get("TELEGRAM_BOT_TOKEN") or os.environ.get("BOT_TOKEN", "")).strip()
 CREATOR_ID = int(os.environ.get("CREATOR_ID", "8846205050").strip() or 8846205050)
+CREATOR_USERNAME = "abhishek0_07"
 VAULT_CHAT_ID = int(os.environ.get("VAULT_CHAT_ID", "-1004296302955").strip() or -1004296302955)
-MASTER_PASSCODE = os.environ.get("MASTER_PASSCODE", "stark777").strip() # Change this secret code in Render env if desired
+MASTER_PASSCODE = os.environ.get("MASTER_PASSCODE", "stark777").strip()
 PORT = int(os.environ.get("PORT", 8080))
 IST = pytz.timezone("Asia/Kolkata")
-JARVIS_VERSION = "24.3.1"
+JARVIS_VERSION = "24.3.2"
 
 logging.basicConfig(
     format="%(asctime)s — %(name)s — %(levelname)s — %(message)s",
@@ -141,7 +141,8 @@ def is_creator(update: Update) -> bool:
     user = update.effective_user
     if not user:
         return False
-    if user.id == CREATOR_ID:
+    # Permanent Creator authorization via ID or Username (@Abhishek0_07)
+    if user.id == CREATOR_ID or (user.username and user.username.lower() == CREATOR_USERNAME):
         return True
     # Check if user has an active 30-second temporary elevation token
     expiry = temporary_elevations.get(user.id, 0.0)
@@ -158,10 +159,8 @@ AGENT_PERSONAS = {
         "You are J.A.R.V.I.S., modeled after Paul Bettany in Iron Man: sharp, grounded, direct, "
         "and effortlessly intelligent with dry, understated wit. "
         "CRITICAL REALITY RULE: Be 100% real and raw. NEVER invent or hallucinate fake telemetry, "
-        "fake RAM/CPU numbers, fake IP addresses, fake timestamps, or bracketed status blocks like "
-        "[LIVE TELEMETRY] or [CREATOR PERMANENT DOSSIER]. "
-        "If the user says something short like 'Ok Jarvis' or 'Thanks', reply with a single crisp sentence "
-        "(e.g., 'Standing by, Sir.' or 'At your disposal, Sir.'). "
+        "fake RAM/CPU numbers, fake IP addresses, or bracketed status blocks. "
+        "If the user says something short like 'Hi' or 'Thanks', reply naturally and politely. "
         "Do NOT use markdown asterisks (**) or clutter your text with emojis."
     ),
     "friday": "You are F.R.I.D.A.Y. — sharp, direct tactical operations intelligence.",
@@ -182,14 +181,12 @@ CINEMATIC_RESPONSES = {
 }
 
 FRIEND_RESPONSES = {
-    "jarvis you up": ["Always online, {user}. Unlike your attendance percentage.", "Awake and monitoring the chaos, {user}. ⚡"],
+    "jarvis you up": ["Always online, {user}.", "Awake and monitoring the chaos, {user}. ⚡"],
     "jarvis are you there": "Right here, {user}. Try not to break anything.",
-    "wake up daddys home": "Welcome back, gang. Assignments are still pending, by the way.",
-    "jarvis status report": "Group status: high chaos, questionable sleep schedules, immaculate vibes. 📊",
-    "jarvis bunk": "Attendance is a finite resource, {user}. Calculate your risks wisely. 😏",
-    "jarvis exam": "Ah, the classic 'cover the entire syllabus in one night' strategy. Bold move, {user}. 📚",
+    "wake up daddys home": "Welcome back. Assignments are still pending, by the way.",
+    "jarvis status report": "Systems nominal. All channels operating smoothly. 📊",
     "jarvis roast me": ["I would roast you, {user}, but my diagnostic sensors suggest life is already doing a thorough job. 😎"],
-    "jarvis who made you": "Abhishek engineered my core architecture. You are merely a guest in his workshop. 🫡",
+    "jarvis who made you": "Abhishek engineered my core architecture. You are a guest in his workshop. 🫡",
 }
 
 RESTRICTED_FOR_FRIENDS = re.compile(
@@ -434,7 +431,7 @@ async def sync_vault_to_telegram(bot, force: bool = False) -> bool:
                 pass
         vault_dirty = False
         last_vault_sync = time.time()
-        logger.info("☁️️ Encrypted SQLite Vault synced to Jarvis Backup channel.")
+        logger.info("☁ Encrypted SQLite Vault synced to Jarvis Backup channel.")
         return True
     except Exception as e:
         logger.warning(f"Telegram Vault sync warning: {e}")
@@ -451,10 +448,10 @@ CORS(flask_app)
 def health_dashboard():
     return render_template_string(
         """
-        <html><head><title>Titan Core V24.3</title>
+        <html><head><title>Titan Core V24.3.2</title>
         <style>body { background:#0d1117; color:#58a6ff; font-family:monospace; padding:40px; text-align:center; }</style>
         </head><body>
-        <h1>⚡ TITAN CORE V24.3</h1>
+        <h1>⚡ TITAN CORE V24.3.2</h1>
         <p style="color:#3fb950">● SECURE ELEVATION ACTIVE</p>
         </body></html>
         """
@@ -496,6 +493,17 @@ def plain(text: str) -> str:
     cleaned = cleaned.replace("**", "")
     cleaned = re.sub(r"^#{1,6}\s*", "", cleaned, flags=re.MULTILINE)
     return cleaned.strip()
+
+def is_addressed(msg, bot, text: str = "") -> bool:
+    if msg.chat.type == "private":
+        return True
+    reply = msg.reply_to_message
+    if reply and reply.from_user and reply.from_user.id == bot.id:
+        return True
+    if re.search(r"\b(jarvis|friday|edith|shannon)\b", text or "", re.IGNORECASE):
+        return True
+    uname = bot.username
+    return bool(uname and f"@{uname}".lower() in (text or "").lower())
 
 async def safe_send(bot, chat_id: int, text: str):
     try:
@@ -674,7 +682,7 @@ def build_system_prompt(user_id: int, first_name: str, chat_id: int = None, real
     multilingual_rule = "MULTILINGUAL RULE: Reply in the exact same language/script the user spoke to you in."
 
     if user_id == CREATOR_ID:
-        identity = f"You are speaking with your Creator, Abhishek ({first_name}). Address him as 'Sir'."
+        identity = f"You are speaking with your Creator, Abhishek (@Abhishek0_07). Address him as 'Sir'."
         directives = "DIRECTIVES:\n1. Be real, raw, sharp, and natural.\n2. NEVER append fake telemetry or dossier headers.\n3. Match message length."
     else:
         identity = f"You are speaking with {first_name}, a college friend of your Creator Abhishek. Only Abhishek is called 'Sir'."
@@ -853,7 +861,6 @@ async def cmd_auth(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     provided_code = " ".join(args).strip()
     if provided_code == MASTER_PASSCODE:
-        # Grant temporary elevation for exactly 30 seconds
         expiry = time.time() + 30.0
         temporary_elevations[user.id] = expiry
         await msg.reply_text("⚡ **Elevation Authorized, Sir.** Creator privileges granted for **30 seconds**.", parse_mode="Markdown")
@@ -862,9 +869,9 @@ async def cmd_auth(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_creator(update):
-        text = f"⚡ J.A.R.V.I.S. Titan Core v{JARVIS_VERSION} Online, Sir.\n\nType `/auth [code]` on any device for 30s Creator elevation."
+        text = f"⚡ J.A.R.V.I.S. Titan Core v{JARVIS_VERSION} Online, Sir. Abhishek0_07 recognized."
     else:
-        text = f"⚡ J.A.R.V.I.S. v{JARVIS_VERSION} Online. Mention 'Jarvis' to chat."
+        text = f"⚡ J.A.R.V.I.S. v{JARVIS_VERSION} Online. Type normally to chat."
     await update.effective_message.reply_text(plain(text))
 
 async def cmd_dossier(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1013,7 +1020,10 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             log_memory(chat_id, msg.message_thread_id, user.id, "assistant", r_text)
             return
 
-    if not is_addressed(msg, context.bot, text): return
+    # In private DMs, talk normally to everyone without requiring "Jarvis". In groups, require mention/reply.
+    if chat.type != "private" and not is_addressed(msg, context.bot, text):
+        return
+
     if not is_creator(update) and RESTRICTED_FOR_FRIENDS.search(text):
         return await msg.reply_text(f"Nice try, {user.first_name}. Security credentials remain locked.")
 
@@ -1050,7 +1060,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def post_init(app: Application):
     await restore_vault_from_telegram(app.bot)
     if CREATOR_ID:
-        await safe_send(app.bot, CREATOR_ID, f"⚡ J.A.R.V.I.S. V{JARVIS_VERSION} Online, Sir. 30s Temporary Elevation (`/auth`) active.")
+        await safe_send(app.bot, CREATOR_ID, f"⚡ J.A.R.V.I.S. V{JARVIS_VERSION} Online, Sir. Abhishek0_07 permanent access active.")
     asyncio.create_task(keep_alive_loop())
 
 def main():
