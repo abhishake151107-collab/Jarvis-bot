@@ -1,15 +1,15 @@
-```python
 """
-╔══════════════════════════════════════════════════════════════════╗
-║     TITAN CORE V24.3.7 — SWARM & SELF-AWARENESS REPAIR           ║
-║                                                                  ║
-║  • Permanent Creator Auth for @Abhishek0_07 (ID: 8846205050)     ║
-║  • 30-Second Temporary Elevation (`/auth stark777`)             ║
-║  • Instant Passcode Message Auto-Deletion (Zero Trace)           ║
-║  • Full Swarm Awareness: Jarvis, Friday, Edith, Shannon,         ║
-║    Odysseus (Strategy) & Ajax (Uncensored Heavy Core)            ║
-║  • Perfect Memory Persistence & Natural Conversational Flow      ║
-╚══════════════════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════════════════════╗
+║     TITAN CORE V24.3.7 — OSINT SUITE & MOVIE PROTOCOLS INTEGRATED          ║
+║                                                                          ║
+║  • Permanent Creator Auth for @Abhishek0_07 (ID: 8846205050)             ║
+║  • 30-Second Temporary Elevation (`/auth stark777`)                     ║
+║  • Instant Passcode Message Auto-Deletion (Zero Trace)                   ║
+║  • Full Swarm Awareness: Jarvis, Friday, Edith, Shannon,                 ║
+║    Odysseus (Strategy) & Ajax (Uncensored Heavy Core)                    ║
+║  • Titan OSINT Suite: 50+ Platform Recon, IP, WHOIS, DNS, Breach Scans   ║
+║  • Movie Protocols: /boot, /suitup, /status & Vault Auto-Sync            ║
+╚══════════════════════════════════════════════════════════════════════════╝
 """
 
 import os
@@ -345,7 +345,7 @@ async def restore_vault_from_telegram(bot) -> bool:
                 with open(DB_PATH, "wb") as f:
                     f.write(db_bytes)
                 db_init()
-                logger.info("🛡️️ Restored permanent SQLite Vault from Jarvis Backup channel.")
+                logger.info("🛡 Restored permanent SQLite Vault from Jarvis Backup channel.")
                 return True
     except Exception as e:
         logger.warning(f"Vault restore skipped or unavailable: {e}")
@@ -801,7 +801,7 @@ async def cmd_auth(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try: await success_msg.delete()
         except Exception: pass
     else:
-        denied_msg = await context.bot.send_message(chat_id=update.effective_chat.id, text="⚠️ **Access Denied:** Invalid security passcode.", parse_mode="Markdown")
+        denied_msg = await context.bot.send_message(chat_id=update.effective_chat.id, text="⚠️️ **Access Denied:** Invalid security passcode.", parse_mode="Markdown")
         await asyncio.sleep(4)
         try: await denied_msg.delete()
         except Exception: pass
@@ -888,6 +888,371 @@ async def cmd_lockdown(update: Update, context: ContextTypes.DEFAULT_TYPE):
         open(LOCKDOWN_FILE, "w").close()
         await update.effective_message.reply_text("Lockdown engaged, Sir.")
 
+# ════════════════════════════════════════════════════════════════
+# ⚔ TITAN OSINT SUITE — FREE RECON ARRAY (NO API KEYS REQUIRED)
+# ════════════════════════════════════════════════════════════════
+
+OSINT_SITES = [
+    ("GitHub", "https://github.com/{}"),
+    ("GitLab", "https://gitlab.com/{}"),
+    ("Reddit", "https://www.reddit.com/user/{}"),
+    ("X / Twitter", "https://x.com/{}"),
+    ("Instagram", "https://www.instagram.com/{}"),
+    ("Telegram", "https://t.me/{}"),
+    ("YouTube", "https://www.youtube.com/@{}"),
+    ("TikTok", "https://www.tiktok.com/@{}"),
+    ("Facebook", "https://www.facebook.com/{}"),
+    ("Threads", "https://www.threads.net/@{}"),
+    ("Bluesky", "https://bsky.app/profile/{}.bsky.social"),
+    ("LinkedIn", "https://www.linkedin.com/in/{}"),
+    ("Snapchat", "https://www.snapchat.com/add/{}"),
+    ("Medium", "https://medium.com/@{}"),
+    ("DeviantArt", "https://www.deviantart.com/{}"),
+    ("SoundCloud", "https://soundcloud.com/{}"),
+    ("Spotify", "https://open.spotify.com/user/{}"),
+    ("Pinterest", "https://www.pinterest.com/{}"),
+    ("Steam", "https://steamcommunity.com/id/{}"),
+    ("Twitch", "https://www.twitch.tv/{}"),
+    ("Behance", "https://www.behance.net/{}"),
+    ("Dribbble", "https://dribbble.com/{}"),
+    ("Flickr", "https://www.flickr.com/people/{}"),
+    ("Vimeo", "https://vimeo.com/{}"),
+    ("Quora", "https://www.quora.com/profile/{}"),
+    ("Roblox", "https://www.roblox.com/users/profile?username={}"),
+    ("Chess.com", "https://www.chess.com/member/{}"),
+    ("Patreon", "https://www.patreon.com/{}"),
+    ("About.me", "https://about.me/{}"),
+    ("Keybase", "https://keybase.io/{}"),
+    ("Ask.fm", "https://ask.fm/{}"),
+    ("Letterboxd", "https://letterboxd.com/{}"),
+    ("Wattpad", "https://www.wattpad.com/user/{}"),
+    ("Gravatar", "https://gravatar.com/{}"),
+    ("WordPress", "https://{}.wordpress.com"),
+    ("Blogspot", "https://{}.blogspot.com"),
+    ("Vero", "https://vero.co/{}"),
+    ("Pastebin", "https://pastebin.com/u/{}"),
+    ("AllMyLinks", "https://allmylinks.com/{}"),
+    ("Linktree", "https://linktr.ee/{}"),
+    ("Beacons", "https://beacons.ai/{}"),
+    ("Trello", "https://trello.com/{}"),
+    ("Unsplash", "https://unsplash.com/@{}"),
+    ("Imgur", "https://imgur.com/user/{}"),
+    ("9GAG", "https://9gag.com/u/{}"),
+    ("Buzzfeed", "https://www.buzzfeed.com/{}"),
+    ("Slideshare", "https://www.slideshare.net/{}"),
+    ("Cargo", "https://{}.cargo.site"),
+    ("Kik", "https://kik.me/{}"),
+    ("Xbox Gamertag", "https://xboxgamertag.com/search/{}"),
+]
+
+def _clean_domain(target: str) -> str:
+    return target.strip().lower().replace("https://", "").replace("http://", "").split("/")[0]
+
+async def osint_username_search(username: str) -> str:
+    username = re.sub(r"[^a-zA-Z0-9._-]", "", username.strip().lstrip("@"))
+    if not username:
+        return "Invalid username, Sir."
+    results = []
+    sem = asyncio.Semaphore(10)
+
+    async def probe(client, name, template):
+        url = template.format(username)
+        async with sem:
+            try:
+                r = await client.head(url)
+                if r.status_code in (405, 403, 501):
+                    r = await client.get(url)
+                if r.status_code == 200:
+                    results.append(f"✅ {name} — {url}")
+                elif r.status_code in (301, 302):
+                    results.append(f"➖ {name} — {url} (redirect, verify manually)")
+            except Exception:
+                pass
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=8.0, follow_redirects=False,
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+        ) as client:
+            await asyncio.gather(*(probe(client, n, t) for n, t in OSINT_SITES))
+    except Exception:
+        pass
+
+    if not results:
+        return f"No accounts found for '{username}' across {len(OSINT_SITES)} platforms, Sir."
+    header = (
+        f"🎯 OSINT Sweep: @{username}\n"
+        f"{len(results)} hit(s) across {len(OSINT_SITES)} platforms:\n\n"
+    )
+    return header + "\n".join(results) + "\n\nNote: some platforms return soft 200s — verify hits manually."
+
+async def osint_ip_lookup(ip: str) -> str:
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get(f"http://ip-api.com/json/{ip}?fields=66846719")
+            if r.status_code == 200:
+                d = r.json()
+                if d.get("status") == "success":
+                    return "\n".join([
+                        f"🎯 IP Intelligence: {d.get('query')}",
+                        f"• Country: {d.get('country')} ({d.get('countryCode')})",
+                        f"• Region: {d.get('regionName')} / {d.get('city')}",
+                        f"• Coordinates: {d.get('lat')}, {d.get('lon')}",
+                        f"• Timezone: {d.get('timezone')}",
+                        f"• ISP: {d.get('isp')}",
+                        f"• Org: {d.get('org')}",
+                        f"• AS: {d.get('as')}",
+                        f"• Reverse DNS: {d.get('reverse') or 'N/A'}",
+                        f"• Proxy/VPN: {d.get('proxy')} | Tor: {d.get('tor')} | Hosting: {d.get('hosting')}",
+                    ])
+        return "IP lookup failed, Sir."
+    except Exception:
+        return "IP lookup failed, Sir."
+
+async def osint_whois(domain: str) -> str:
+    domain = _clean_domain(domain)
+    try:
+        async with httpx.AsyncClient(timeout=12.0, follow_redirects=True) as client:
+            r = await client.get(f"https://rdap.org/domain/{domain}")
+            if r.status_code == 200:
+                d = r.json()
+                events = {e.get("eventAction"): (e.get("eventDate") or "")[:10] for e in d.get("events", [])}
+                registrar = "Unknown"
+                for ent in d.get("entities", []):
+                    if "registrar" in ent.get("roles", []):
+                        try:
+                            vcard = ent.get("vcardArray", [None, []])[1] or []
+                            registrar = next((v[3] for v in vcard if v and v[0] == "fn"), "Unknown")
+                        except Exception:
+                            pass
+                        break
+                nameservers = ", ".join(n.get("ldhName", "") for n in d.get("nameservers", [])[:6])
+                return "\n".join([
+                    f"🌐 WHOIS — {domain}",
+                    f"• Registrar: {registrar}",
+                    f"• Created: {events.get('registration', 'N/A')}",
+                    f"• Updated: {events.get('last changed', 'N/A')}",
+                    f"• Expires: {events.get('expiration', 'N/A')}",
+                    f"• Status: {', '.join(d.get('status', [])[:4]) or 'N/A'}",
+                    f"• Nameservers: {nameservers or 'N/A'}",
+                ])
+            return f"RDAP returned no record for {domain}, Sir."
+    except Exception:
+        return "WHOIS lookup failed, Sir."
+
+async def osint_dns(domain: str) -> str:
+    domain = _clean_domain(domain)
+    out = [f"🧭 DNS Records — {domain}"]
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            for rtype in ["A", "AAAA", "MX", "NS", "TXT", "CNAME", "SOA"]:
+                r = await client.get(
+                    f"https://dns.google/resolve?name={urllib.parse.quote(domain)}&type={rtype}"
+                )
+                if r.status_code != 200:
+                    continue
+                answers = r.json().get("Answer", [])
+                if answers:
+                    vals = " | ".join(str(a.get("data", "")) for a in answers[:5])
+                    out.append(f"• {rtype}: {vals}")
+        return "\n".join(out) if len(out) > 1 else f"No DNS records found for {domain}, Sir."
+    except Exception:
+        return "DNS lookup failed, Sir."
+
+async def osint_subdomains(domain: str) -> str:
+    domain = _clean_domain(domain)
+    try:
+        async with httpx.AsyncClient(timeout=25.0, follow_redirects=True) as client:
+            r = await client.get(
+                f"https://crt.sh/?q={urllib.parse.quote('%.' + domain)}&output=json"
+            )
+            if r.status_code == 200:
+                subs = sorted({c.get("name_value", "") for c in r.json() if c.get("name_value")})
+                subs = [s for s in subs if "*" not in s][:40]
+                if subs:
+                    return (
+                        f"🛰 Subdomain Recon — {domain}\n"
+                        f"{len(subs)} discovered:\n\n" + "\n".join(f"• {s}" for s in subs)
+                    )
+        return f"No subdomains discovered for {domain}, Sir."
+    except Exception:
+        return "Subdomain recon failed (crt.sh can be slow), Sir."
+
+async def osint_email_check(email: str) -> str:
+    email = email.strip().lower()
+    if not re.match(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        return "Invalid email format, Sir."
+    try:
+        async with httpx.AsyncClient(timeout=12.0) as client:
+            r = await client.get(
+                f"https://api.xposedornot.com/v1/breach-analytics?email={urllib.parse.quote(email)}"
+            )
+            if r.status_code == 200:
+                d = r.json()
+                breaches = d.get("ExposedBreaches", {}).get("breaches", [])
+                if not breaches:
+                    return f"🛡 Breach Scan — {email}\nNo known breaches. Clean record, Sir."
+                lines = [f"⚠️ Breach Scan — {email}", f"Found in {len(breaches)} known breach(es):\n"]
+                for b in breaches[:10]:
+                    lines.append(
+                        f"• {b.get('breach', '?')} ({b.get('xposed_date', 'unknown')}) — "
+                        f"{b.get('xposed_records', '?')} records"
+                    )
+                return "\n".join(lines)
+        return "Breach database returned no data, Sir."
+    except Exception:
+        return "Email breach scan failed, Sir."
+
+async def osint_phone_lookup(number: str) -> str:
+    try:
+        import phonenumbers
+        from phonenumbers import carrier, geocoder, timezone as ph_timezone
+        parsed = phonenumbers.parse(number, "IN")
+        return "\n".join([
+            f"📞 Phone Intelligence — {number}",
+            f"• Valid: {phonenumbers.is_valid_number(parsed)} | Possible: {phonenumbers.is_possible_number(parsed)}",
+            f"• Country: {phonenumbers.region_code_for_number(parsed) or 'N/A'}",
+            f"• Region: {geocoder.description_for_number(parsed, 'en') or 'N/A'}",
+            f"• Carrier: {carrier.name_for_number(parsed, 'en') or 'N/A'}",
+            f"• Timezone: {', '.join(ph_timezone.time_zones_for_number(parsed)) or 'N/A'}",
+            f"• E.164: {phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)}",
+        ])
+    except Exception:
+        return "Could not parse that number, Sir. Try with country code, e.g. +919876543210."
+
+async def osint_github(username: str) -> str:
+    username = username.strip().lstrip("@")
+    headers = {"User-Agent": "TitanCore-OSINT", "Accept": "application/vnd.github+json"}
+    try:
+        async with httpx.AsyncClient(timeout=10.0, headers=headers) as client:
+            r = await client.get(f"https://api.github.com/users/{username}")
+            if r.status_code != 200:
+                return f"No GitHub account found for '{username}', Sir."
+            d = r.json()
+            lines = [
+                f"🐙 GitHub Recon — {d.get('login')}",
+                f"• Name: {d.get('name') or 'N/A'}",
+                f"• Bio: {d.get('bio') or 'N/A'}",
+                f"• Company: {d.get('company') or 'N/A'}",
+                f"• Location: {d.get('location') or 'N/A'}",
+                f"• Repos: {d.get('public_repos')} | Followers: {d.get('followers')} | Following: {d.get('following')}",
+                f"• Created: {(d.get('created_at') or '')[:10]}",
+                f"• Profile: {d.get('html_url')}",
+            ]
+            repos_r = await client.get(
+                f"https://api.github.com/users/{username}/repos?sort=updated&per_page=5"
+            )
+            if repos_r.status_code == 200:
+                repos = repos_r.json()
+                if repos:
+                    lines.append("• Recent repos: " + " | ".join(x.get("name", "") for x in repos))
+            return "\n".join(lines)
+    except Exception:
+        return "GitHub recon failed, Sir."
+
+def osint_dork(query: str) -> str:
+    def g(q): return f"https://www.google.com/search?q={urllib.parse.quote(q)}"
+    dorks = [
+        ("General", g(query)),
+        ("Documents", g(query + " filetype:pdf OR filetype:docx OR filetype:xlsx")),
+        ("Open directories", g("intitle:index.of " + query)),
+        ("Exposed configs", g(query + " ext:env OR ext:ini OR ext:cfg")),
+        ("Login pages", g("inurl:login " + query)),
+        ("Social mentions", g(query + " site:twitter.com OR site:instagram.com OR site:linkedin.com")),
+    ]
+    return "🔍 Dork Kit ready, Sir:\n\n" + "\n".join(f"• {label}: {url}" for label, url in dorks)
+
+async def cmd_osint(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if not user:
+        return
+    args = context.args or []
+    if len(args) < 2:
+        await jarvis_respond(update, (
+            "⚔️ Titan OSINT Suite, Sir. Usage:\n"
+            "/osint user <username> — sweep 50 platforms\n"
+            "/osint ip <ip> — geolocation & ISP intel\n"
+            "/osint whois <domain> — registration intel\n"
+            "/osint dns <domain> — full DNS dump\n"
+            "/osint sub <domain> — subdomain discovery\n"
+            "/osint email <email> — breach database scan\n"
+            "/osint phone <number> — carrier & region intel\n"
+            "/osint github <username> — profile recon\n"
+            "/osint dork <query> — build a dork kit"
+        ))
+        return
+    module, target = args[0].lower(), " ".join(args[1:]).strip()
+    try:
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    except Exception:
+        pass
+    if module in ("user", "username", "u"):
+        result = await osint_username_search(target)
+    elif module == "ip":
+        result = await osint_ip_lookup(target)
+    elif module in ("whois", "domain"):
+        result = await osint_whois(target)
+    elif module == "dns":
+        result = await osint_dns(target)
+    elif module in ("sub", "subdomain", "subdomains"):
+        result = await osint_subdomains(target)
+    elif module in ("email", "breach"):
+        result = await osint_email_check(target)
+    elif module in ("phone", "number"):
+        result = await osint_phone_lookup(target)
+    elif module in ("github", "gh"):
+        result = await osint_github(target)
+    elif module in ("dork", "dorks"):
+        result = osint_dork(target)
+    else:
+        result = f"Unknown module '{module}', Sir. Send /osint for the menu."
+    await jarvis_respond(update, result)
+
+# ════════════════════════════════════════════════════════════════
+# 🎬 MOVIE-JARVIS PROTOCOLS
+# ════════════════════════════════════════════════════════════════
+
+JARVIS_BOOT_LINES = [
+    "⚡ Initializing Titan Core neural lattice...",
+    "🛡 Decrypting encrypted memory vault...",
+    "🛰 Calibrating OSINT reconnaissance array...",
+    "🧠 Syncing swarm: F.R.I.D.A.Y. | E.D.I.T.H. | Shannon | Odysseus | Ajax...",
+    "✅ All systems online, Sir.",
+]
+
+async def cmd_boot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_creator_user(update.effective_user.id, update.effective_user.username):
+        await jarvis_respond(update, "Boot sequence is restricted to the Creator.")
+        return
+    for line in JARVIS_BOOT_LINES:
+        await jarvis_respond(update, line)
+        await asyncio.sleep(1.2)
+
+async def cmd_suitup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_creator_user(update.effective_user.id, update.effective_user.username):
+        await jarvis_respond(update, "The suit answers only to the Creator.")
+        return
+    await jarvis_respond(update, "🦾 Right with you, Sir. Mark LXXXV standing by on the platform. Deployment sequence armed.")
+
+async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    now_ist = datetime.datetime.now(IST).strftime("%I:%M %p")
+    persona = ACTIVE_PERSONAS[update.effective_chat.id]
+    await jarvis_respond(update, (
+        f"🛡 Titan Core Status Report, Sir.\n\n"
+        f"• Time: {now_ist} IST\n"
+        f"• Active Persona: {persona.upper()}\n"
+        f"• {get_real_server_stats()}\n"
+        f"• Vault: SECURED | OSINT Array: ONLINE"
+    ))
+
+async def vault_sync_loop(app):
+    while True:
+        await asyncio.sleep(300)
+        try:
+            await sync_vault_to_telegram(app.bot)
+        except Exception:
+            pass
+
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_lockdown(): return
     msg = update.effective_message
@@ -937,6 +1302,7 @@ async def post_init(app: Application):
             logger.warning(f"Menu button setup warning: {e}")
 
     asyncio.create_task(keep_alive_loop())
+    asyncio.create_task(vault_sync_loop(app))
 
 def main():
     if not BOT_TOKEN: sys.exit(1)
@@ -949,7 +1315,7 @@ def main():
     app.add_handler(CommandHandler("auth", cmd_auth))
     app.add_handler(CommandHandler("hud", cmd_hud))
     app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(persona := CommandHandler("persona", cmd_persona))
+    app.add_handler(CommandHandler("persona", cmd_persona))
     app.add_handler(CommandHandler("dossier", cmd_dossier))
     app.add_handler(CommandHandler("news", cmd_news))
     app.add_handler(CommandHandler("weather", cmd_weather))
@@ -958,6 +1324,10 @@ def main():
     app.add_handler(CommandHandler("voice", cmd_voice))
     app.add_handler(CommandHandler("diagnostics", cmd_diagnostics))
     app.add_handler(CommandHandler("lockdown", cmd_lockdown))
+    app.add_handler(CommandHandler("osint", cmd_osint))
+    app.add_handler(CommandHandler("boot", cmd_boot))
+    app.add_handler(CommandHandler("suitup", cmd_suitup))
+    app.add_handler(CommandHandler("status", cmd_status))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
 
@@ -965,4 +1335,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-```
