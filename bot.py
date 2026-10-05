@@ -10,6 +10,7 @@
 ║  • Titan OSINT Suite: 50+ Platform Recon, IP, WHOIS, DNS, Breach Scans   ║
 ║  • Live Telemetry Injection: Real-time RSS News, Weather & Web Scraper   ║
 ║  • Zero-Drop Message Reliability: Guaranteed response fallback loop      ║
+║  • Automated Telegram Vault Cloud Backup & Restoration                   ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 """
 
