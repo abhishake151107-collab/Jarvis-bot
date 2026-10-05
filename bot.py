@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════════╗
-║     TITAN CORE V24.3.7 — OSINT SUITE & MOVIE PROTOCOLS INTEGRATED          ║
+║     TITAN CORE V24.3.8 — FULL SUITE & ZERO-DROP RELIABILITY ENGINE       ║
 ║                                                                          ║
 ║  • Permanent Creator Auth for @Abhishek0_07 (ID: 8846205050)             ║
 ║  • 30-Second Temporary Elevation (`/auth stark777`)                     ║
@@ -8,7 +8,8 @@
 ║  • Full Swarm Awareness: Jarvis, Friday, Edith, Shannon,                 ║
 ║    Odysseus (Strategy) & Ajax (Uncensored Heavy Core)                    ║
 ║  • Titan OSINT Suite: 50+ Platform Recon, IP, WHOIS, DNS, Breach Scans   ║
-║  • Movie Protocols: /boot, /suitup, /status & Vault Auto-Sync            ║
+║  • Live Telemetry Injection: Real-time RSS News, Weather & Web Scraper   ║
+║  • Zero-Drop Message Reliability: Guaranteed response fallback loop      ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 """
 
@@ -76,7 +77,7 @@ MASTER_PASSCODE = os.environ.get("MASTER_PASSCODE", "stark777").strip()
 PORT = int(os.environ.get("PORT", 8080))
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "").strip()
 IST = pytz.timezone("Asia/Kolkata")
-JARVIS_VERSION = "24.3.7"
+JARVIS_VERSION = "24.3.8"
 
 logging.basicConfig(
     format="%(asctime)s — %(name)s — %(levelname)s — %(message)s",
@@ -138,6 +139,7 @@ AGENT_PERSONAS = {
         "E.D.I.T.H. (reconnaissance), Shannon (cybersecurity), Odysseus (strategic logic & planning), "
         "and Ajax (the heavy execution & uncensored tactical core). "
         "CRITICAL REALITY RULE: Never confuse Ajax with web development (AJAX/JavaScript). Ajax is your fellow heavy AI module in the swarm, designed for raw execution and deep technical code generation. "
+        "Never claim your knowledge cutoff is 2024 or make canned AI excuses; you have live telemetry tools for real-time news and weather. "
         "Be 100% real and raw. Do NOT use markdown asterisks (**) or clutter your text with emojis."
     ),
     "friday": "You are F.R.I.D.A.Y. — sharp, direct tactical operations intelligence of the Titan Core.",
@@ -416,10 +418,10 @@ def verify_telegram_init_data(init_data: str) -> dict:
 def health_dashboard():
     return render_template_string(
         """
-        <html><head><title>Titan Core V24.3.7</title>
+        <html><head><title>Titan Core V24.3.8</title>
         <style>body { background:#0d1117; color:#58a6ff; font-family:monospace; padding:40px; text-align:center; }</style>
         </head><body>
-        <h1>⚡ TITAN CORE V24.3.7</h1>
+        <h1>⚡ TITAN CORE V24.3.8</h1>
         <p style="color:#3fb950">● BACKEND ACTIVE & MEMORY SECURED</p>
         </body></html>
         """
@@ -438,7 +440,7 @@ def serve_miniapp():
     try:
         return render_template("miniapp.html")
     except Exception:
-        return "HUD template not found. Please ensure templates/miniapp.html exists.", 404
+        return "HUD template not found.", 404
 
 @flask_app.route("/api/status", methods=["POST"])
 def api_status():
@@ -645,7 +647,7 @@ async def gather_natural_telemetry(text: str, chat_id: int, user_id: int) -> str
         city = city_match.group(1).strip() if city_match else get_user_state(chat_id).get("context_city", "Bengaluru")
         w_info = await fetch_live_weather(city)
         if w_info: real_facts.append(w_info)
-    if any(w in t for w in ["latest news", "top headlines", "what's happening in the world", "news today", "morning briefing"]):
+    if any(w in t for w in ["latest news", "top headlines", "what's happening in the world", "news today", "morning briefing", "news"]):
         headlines = await asyncio.to_thread(fetch_rss_headlines)
         real_facts.append("Live Headlines: " + " | ".join(headlines[:5]))
     url_match = re.search(r"(https?://[^\s]+)", text)
@@ -757,7 +759,7 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
                     if content: return content
         except Exception:
             pass
-    return None
+    return "All neural nodes are currently experiencing high traffic, Sir. Stand by."
 
 async def jarvis_respond(update: Update, text: str, force_voice: bool = False):
     msg = update.effective_message
@@ -801,7 +803,7 @@ async def cmd_auth(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try: await success_msg.delete()
         except Exception: pass
     else:
-        denied_msg = await context.bot.send_message(chat_id=update.effective_chat.id, text="⚠️️ **Access Denied:** Invalid security passcode.", parse_mode="Markdown")
+        denied_msg = await context.bot.send_message(chat_id=update.effective_chat.id, text="⚠ **Access Denied:** Invalid security passcode.", parse_mode="Markdown")
         await asyncio.sleep(4)
         try: await denied_msg.delete()
         except Exception: pass
@@ -1285,7 +1287,8 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     log_memory(chat_id, msg.message_thread_id, user.id, "user", f"{user.first_name}: {text}")
     ai_response = await generate_response(text, history, sys_prompt, user.id)
-    if not ai_response: return
+    if not ai_response:
+        ai_response = f"At your service, {resolved_name}. How may I assist you?"
 
     log_memory(chat_id, msg.message_thread_id, user.id, "assistant", ai_response)
     await jarvis_respond(update, ai_response, force_voice=any(text.lower().endswith(w) for w in ["voice", "audio"]))
