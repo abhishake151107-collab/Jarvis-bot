@@ -1,6 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════════════╗
-║     TITAN CORE V24.4.1 — OPENJARVIS INTEGRATED MULTI-AI ENGINE           ║
+║     TITAN CORE V24.4.2 — OPENJARVIS INTEGRATED MULTI-AI ENGINE           ║
 ║                                                                          ║
 ║  • Permanent Creator Auth for @Abhishek0_07 (ID: 8846205050)             ║
 ║  • OpenJarvis Modular Architecture & Resilient Multi-AI Fallback Cascade ║
@@ -73,7 +73,7 @@ MASTER_PASSCODE = os.environ.get("MASTER_PASSCODE", "stark777").strip()
 PORT = int(os.environ.get("PORT", 8080))
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "").strip()
 IST = pytz.timezone("Asia/Kolkata")
-JARVIS_VERSION = "24.4.1-OpenJarvis"
+JARVIS_VERSION = "24.4.2-OpenJarvis"
 
 logging.basicConfig(
     format="%(asctime)s — %(name)s — %(levelname)s — %(message)s",
@@ -417,7 +417,7 @@ def health_dashboard():
         <html><head><title>OpenJarvis Titan Core</title>
         <style>body { background:#0d1117; color:#58a6ff; font-family:monospace; padding:40px; text-align:center; }</style>
         </head><body>
-        <h1>⚡ OPENJARVIS TITAN CORE V24.4.1</h1>
+        <h1>⚡ OPENJARVIS TITAN CORE V24.4.2</h1>
         <p style="color:#3fb950">● BACKEND ACTIVE & 50+ MULTI-AI FALLBACK CASCADE SECURED</p>
         </body></html>
         """
@@ -726,7 +726,6 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
     full_messages = [{"role": "system", "content": sys_prompt}] + clean_history
     compact_messages = [{"role": "system", "content": sys_prompt[:1200]}, {"role": "user", "content": prompt[:3500]}]
 
-    # 50+ Multi-AI Provider Cascade (OpenJarvis Integrated Routing)
     providers = [
         {"name": "Groq", "base": "https://api.groq.com/openai/v1", "keys": get_api_keys(["GROQ_API_KEY", "GROQ_KEY"]), "models": ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]},
         {"name": "Gemini", "base": "https://generativelanguage.googleapis.com/v1beta/openai/", "keys": get_api_keys(["GEMINI_API_KEY", "GOOGLE_API_KEY"]), "models": ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]},
@@ -741,7 +740,6 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
         {"name": "Fireworks", "base": "https://api.fireworks.ai/inference/v1", "keys": get_api_keys(["FIREWORKS_API_KEY"]), "models": ["accounts/fireworks/models/llama-v3p3-70b-instruct"]}
     ]
 
-    # Try all authenticated API nodes first
     for prov in providers:
         for key in prov["keys"]:
             for model in prov["models"]:
@@ -755,7 +753,6 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
                 except Exception:
                     circuit_breaker[node_id] = current_time + 30
 
-    # Fallback to zero-auth universal free endpoints (Pollinations & public mirrors)
     for fallback_model in ["openai", "llama", "mistral", "deepseek"]:
         try:
             async with httpx.AsyncClient(timeout=20.0) as client:
@@ -766,7 +763,7 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
         except Exception:
             pass
 
-    return "At your service, Sir. Rotating neural nodes successfully; standing by for your next query."
+    return f"At your service, Sir. Regarding '{prompt[:45]}...', my systems are analyzing the data. Stand by."
 
 async def jarvis_respond(update: Update, text: str, force_voice: bool = False):
     msg = update.effective_message
