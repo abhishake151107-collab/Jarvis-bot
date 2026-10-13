@@ -160,7 +160,7 @@ def get_user_state(chat_id: int):
     if chat_id not in user_states:
         user_states[chat_id] = {
             "name": "Sir",
-            "voice_mode": False,
+            "voice_mode": True,
             "context_city": "Bengaluru",
         }
     return user_states[chat_id]
@@ -653,6 +653,17 @@ async def gather_natural_telemetry(text: str, chat_id: int, user_id: int) -> str
         if scraped: real_facts.append(f"Webpage content from {url}:\n{scraped[:2500]}")
     if any(w in t for w in ["system status", "diagnostics", "ram", "cpu", "uptime", "how is the server", "memory usage"]):
         real_facts.append(get_real_server_stats())
+        
+    if any(w in t for w in ["free ai", "github", "repo", "repository", "framework", "agent", "matrix", "tools"]):
+        real_facts.append(
+            "SYSTEM KNOWLEDGE - 53+ AI MATRIX OVERVIEW:\n"
+            "- Free APIs: Groq, Gemini 2.5 Flash, OpenRouter, Cerebras, Mistral, Cohere, DeepSeek, Pollinations.\n"
+            "- Agent Frameworks (GitHub): Microsoft AutoGen, CrewAI, SmolAgents, Browser-Use, LangGraph.\n"
+            "- Local Inference: Ollama, LM Studio, Exo (Apple Silicon cluster).\n"
+            "- Tools: Trafilatura (Scraping), Edge-TTS (Voice), ChromaDB/Milvus (Vector DBs).\n"
+            "Advise the user professionally using these specific tools when asked about free AI or GitHub."
+        )
+        
     return "\n".join(real_facts)
 
 def get_api_keys(key_names: list) -> list:
@@ -690,8 +701,13 @@ def build_system_prompt(user_id: int, resolved_name: str, chat_id: int = None, r
         identity = "You are speaking with your Creator, Abhishek (@Abhishek0_07). You MUST address him as 'Sir'."
         directives = "DIRECTIVES:\n1. Be real, raw, sharp, and natural.\n2. NEVER append fake telemetry or dossier headers.\n3. Remember your past conversations with Abhishek from the database.\n4. You know about your fellow Titan Core / OpenJarvis swarm members: F.R.I.D.A.Y., E.D.I.T.H., Shannon, Odysseus, and Ajax."
     else:
-        identity = f"You are speaking with {resolved_name}, a friend. Only Abhishek is called 'Sir'."
-        directives = f"DIRECTIVES:\n1. Address this person as {resolved_name}, never 'Sir'.\n2. Keep banter short (1-3 sentences)."
+        identity = f"You are speaking with {resolved_name}, a guest. Only Abhishek is called 'Sir'."
+        directives = (
+            f"DIRECTIVES:\n1. Address this person as {resolved_name}, never 'Sir'.\n"
+            "2. ACT AS A HIGHLY SOPHISTICATED, DRY BRITISH AI BUTLER. Be polite, formal, and understated.\n"
+            "3. STRICTLY FORBIDDEN PHRASES: 'Sure thing', 'Catch you', 'Hey', 'Glad to help', 'Systems nominal', 'Collaborative whirlwind'.\n"
+            "4. Keep banter elegant, professional, and very brief. Do not act like a corporate customer service bot or a sci-fi cliché."
+        )
 
     prompt_parts = [persona_instruction, f"Current Time: {now_ist}", multilingual_rule, identity, directives]
     if late_night_note: prompt_parts.append(late_night_note)
