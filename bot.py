@@ -1,13 +1,13 @@
-```python
 """
 ╔══════════════════════════════════════════════════════════════════════════╗
-║     TITAN CORE V25.0 — OPENJARVIS AUTONOMOUS AGENTIC MULTI-AI ENGINE     ║
+║     TITAN CORE V25.1 — OPENJARVIS AUTONOMOUS AGENTIC MULTI-AI ENGINE     ║
 ║                                                                          ║
+║  • Real-Time Live Telemetry Tracker (Shows Thinking, Research & TTS)     ║
+║  • Uninterrupted Top-Bar ChatAction Heartbeat Until Full Reply Finishes  ║
 ║  • Permanent Creator Auth for @Abhishek0_07 (ID: 8846205050)             ║
 ║  • Auto-Resolving SQLite Path (/tmp fallback) + RAM Mirror Cache         ║
 ║  • 4-Tier British Voice Engine (Edge-TTS -> gTTS UK -> StreamElements)   ║
 ║  • Autonomous Live Web Research (DuckDuckGo + Wikipedia + RSS + Scrape)  ║
-║  • Passive Group Chat Memory, Fluff Stripper & Multi-Modal Analysis      ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 """
 
@@ -93,7 +93,7 @@ MASTER_PASSCODE = os.environ.get("MASTER_PASSCODE", "stark777").strip()
 PORT = int(os.environ.get("PORT", 8080))
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "").strip()
 IST = pytz.timezone("Asia/Kolkata")
-JARVIS_VERSION = "25.0.0-TitanCore"
+JARVIS_VERSION = "25.1.0-TitanCore"
 
 logging.basicConfig(
     format="%(asctime)s — %(name)s — %(levelname)s — %(message)s",
@@ -176,6 +176,90 @@ def is_creator_user(user_id: int, username: str = "") -> bool:
         return True
     expiry = temporary_elevations.get(int(user_id), 0.0)
     return time.time() < expiry
+
+
+class LiveActionTelemetry:
+    """
+    Real-Time J.A.R.V.I.S. Activity Broadcaster:
+    1. Keeps the top Telegram header bar ('is typing', 'is recording a voice message',
+       'is sending a voice message') continuously alive without ever dropping out.
+    2. Re-broadcasts the top-bar chat action immediately after any message send/edit
+       (since Telegram clears chat actions whenever a bot sends/edits a message).
+    3. Updates a live in-chat status bubble showing every internal step (Memory,
+       Telemetry, AI Thinking, Typing, and Text-to-Voice conversion) until complete.
+    """
+
+    def __init__(self, bot, chat_id: int, reply_to_msg=None, thread_id: int = None):
+        self.bot = bot
+        self.chat_id = chat_id
+        self.reply_to_msg = reply_to_msg
+        self.thread_id = thread_id
+        self.current_action = "typing"
+        self.status_msg = None
+        self.running = False
+        self._heartbeat_task = None
+        self._last_edit_time = 0.0
+        self._last_text = ""
+
+    async def _send_raw_action(self):
+        try:
+            kwargs = {"chat_id": self.chat_id, "action": self.current_action}
+            if self.thread_id:
+                kwargs["message_thread_id"] = self.thread_id
+            await self.bot.send_chat_action(**kwargs)
+        except Exception:
+            pass
+
+    async def _action_heartbeat(self):
+        while self.running:
+            await self._send_raw_action()
+            await asyncio.sleep(2.5)
+
+    async def start(self, initial_stage: str = "⚡ [J.A.R.V.I.S.] Initializing neural link...", action: str = "typing"):
+        self.running = True
+        self.current_action = action
+        await self._send_raw_action()
+        self._heartbeat_task = asyncio.create_task(self._action_heartbeat())
+        if self.reply_to_msg and initial_stage:
+            try:
+                self.status_msg = await self.reply_to_msg.reply_text(initial_stage)
+                self._last_text = initial_stage
+                self._last_edit_time = time.time()
+                # Re-fire top bar action immediately because sending a message clears Telegram's top indicator
+                await self._send_raw_action()
+            except Exception:
+                pass
+
+    async def set_stage(self, stage_text: str, action: str = None, force: bool = False):
+        if action:
+            self.current_action = action
+        await self._send_raw_action()
+
+        if not self.status_msg or not stage_text or stage_text == self._last_text:
+            return
+
+        now = time.time()
+        if not force and (now - self._last_edit_time) < 0.45:
+            return
+
+        try:
+            await self.status_msg.edit_text(stage_text)
+            self._last_text = stage_text
+            self._last_edit_time = time.time()
+            # Re-trigger top-bar indicator immediately after edit
+            await self._send_raw_action()
+        except Exception:
+            pass
+
+    async def stop(self):
+        self.running = False
+        if self._heartbeat_task and not self._heartbeat_task.done():
+            self._heartbeat_task.cancel()
+            try:
+                await self._heartbeat_task
+            except asyncio.CancelledError:
+                pass
+
 
 GITHUB_AI_MATRIX_KNOWLEDGE = """
 VERIFIED TITAN CORE KNOWLEDGE — 53+ FREE AI & GITHUB REPOSITORY MATRIX:
@@ -512,7 +596,6 @@ async def sync_vault_to_telegram(bot, force: bool = False) -> bool:
 
     async with vault_sync_lock:
         try:
-            # Create a clean binary snapshot of the SQLite database
             with open(DB_PATH, "rb") as f:
                 db_bytes = f.read()
             if len(db_bytes) < 512:
@@ -582,11 +665,11 @@ def verify_telegram_init_data(init_data: str) -> dict:
 def health_dashboard():
     return render_template_string(
         """
-        <html><head><title>OpenJarvis Titan Core V25</title>
+        <html><head><title>OpenJarvis Titan Core V25.1</title>
         <style>body { background:#060b11; color:#2de2ff; font-family:monospace; padding:40px; text-align:center; }</style>
         </head><body>
-        <h1>⚡ OPENJARVIS TITAN CORE V25.0</h1>
-        <p style="color:#4dffa0">● AUTONOMOUS AGENTIC ENGINE & VOICE MATRIX ONLINE</p>
+        <h1>⚡ OPENJARVIS TITAN CORE V25.1</h1>
+        <p style="color:#4dffa0">● LIVE TELEMETRY & VOICE MATRIX ONLINE</p>
         </body></html>
         """
     )
@@ -733,9 +816,9 @@ def detect_tts_voice(text: str) -> tuple:
         return ("ml-IN-MidhunNeural", "ml", "co.in")
     return ("en-GB-RyanNeural", "en", "co.uk")
 
-async def generate_voice(text: str) -> bytes:
+async def generate_voice(text: str, telemetry: LiveActionTelemetry = None) -> bytes:
     """
-    4-Tier Resilient Voice Generator:
+    4-Tier Resilient Voice Generator with Live Telemetry Reporting:
     1. Microsoft Edge-TTS (en-GB-RyanNeural British Butler Voice)
     2. Google gTTS Library with British TLD (co.uk)
     3. StreamElements Neural Brian Voice API
@@ -753,6 +836,11 @@ async def generate_voice(text: str) -> bytes:
     # TIER 1: Microsoft Edge-TTS
     if edge_tts:
         try:
+            if telemetry:
+                await telemetry.set_stage(
+                    f"{telemetry._last_text.split('⏳')[0].strip()}\n\n⏳ [🎙 J.A.R.V.I.S. is synthesizing British neural voice ({edge_voice})...]",
+                    action="record_voice",
+                )
             communicate = edge_tts.Communicate(clean_text, voice=edge_voice, rate="+4%")
             buffer = BytesIO()
             async for chunk in communicate.stream():
@@ -767,6 +855,11 @@ async def generate_voice(text: str) -> bytes:
     # TIER 2: gTTS Python Library (British English co.uk)
     if gTTS:
         try:
+            if telemetry:
+                await telemetry.set_stage(
+                    f"{telemetry._last_text.split('⏳')[0].strip()}\n\n⏳ [🎙 J.A.R.V.I.S. is synthesizing UK voice stream (Tier-2 gTTS)...]",
+                    action="record_voice",
+                )
             def _run_gtts():
                 buf = BytesIO()
                 tts = gTTS(text=clean_text[:600], lang=gtts_lang, tld=gtts_tld, slow=False)
@@ -780,6 +873,11 @@ async def generate_voice(text: str) -> bytes:
 
     # TIER 3: StreamElements API (British Brian Voice)
     try:
+        if telemetry:
+            await telemetry.set_stage(
+                f"{telemetry._last_text.split('⏳')[0].strip()}\n\n⏳ [🎙 J.A.R.V.I.S. is synthesizing Brian Neural Voice (Tier-3)...]",
+                action="record_voice",
+            )
         se_url = f"https://api.streamelements.com/kappa/v2/speech?voice=Brian&text={urllib.parse.quote(clean_text[:300])}"
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(se_url)
@@ -904,7 +1002,13 @@ async def scrape_url_content(url: str) -> str:
         pass
     return ""
 
-async def gather_natural_telemetry(text: str, chat_id: int, user_id: int, is_group: bool = False) -> str:
+async def gather_natural_telemetry(
+    text: str,
+    chat_id: int,
+    user_id: int,
+    is_group: bool = False,
+    telemetry: LiveActionTelemetry = None,
+) -> str:
     t = text.lower().strip()
     real_facts = []
 
@@ -922,6 +1026,8 @@ async def gather_natural_telemetry(text: str, chat_id: int, user_id: int, is_gro
             "who is in the group",
         ]
     ):
+        if telemetry:
+            await telemetry.set_stage("👥 [J.A.R.V.I.S.] Scanning group chat memory & active member roster...", action="typing")
         recent_msgs = get_chat_history(chat_id, 0, limit=30)
         roster = get_group_roster_names(chat_id)
         if roster:
@@ -938,6 +1044,8 @@ async def gather_natural_telemetry(text: str, chat_id: int, user_id: int, is_gro
             re.IGNORECASE,
         )
         if remember_match and len(text) < 350:
+            if telemetry:
+                await telemetry.set_stage("🔐 [J.A.R.V.I.S.] Encrypting & storing fact in Creator Permanent Dossier...", action="typing")
             add_dossier_fact(CREATOR_ID, text.strip())
             real_facts.append(f"Action Completed: Saved to Creator's permanent encrypted dossier: '{text.strip()}'")
 
@@ -945,6 +1053,8 @@ async def gather_natural_telemetry(text: str, chat_id: int, user_id: int, is_gro
     remind_match = re.search(r"\bremind me (?:to |about |that )?(.+)", text, re.IGNORECASE)
     if remind_match:
         item = remind_match.group(1).strip()
+        if telemetry:
+            await telemetry.set_stage(f"⏰ [J.A.R.V.I.S.] Logging reminder to encrypted vault: '{item[:40]}'...", action="typing")
         add_item(chat_id, "reminder", item)
         real_facts.append(f"Action Completed: Saved reminder: '{item}'")
 
@@ -952,12 +1062,16 @@ async def gather_natural_telemetry(text: str, chat_id: int, user_id: int, is_gro
     if any(w in t for w in ["weather", "temperature", "is it raining", "forecast", "climate in"]):
         city_match = re.search(r"\b(?:in|for|at)\s+([a-zA-Z\s]{2,25})", text, re.IGNORECASE)
         city = city_match.group(1).strip() if city_match else get_user_state(chat_id).get("context_city", "Bengaluru")
+        if telemetry:
+            await telemetry.set_stage(f"🌦 [J.A.R.V.I.S.] Pulling live atmospheric telemetry for {city.title()}...", action="find_location")
         w_info = await fetch_live_weather(city)
         if w_info:
             real_facts.append(w_info)
 
     # 5. Live Global News
     if any(w in t for w in ["latest news", "top headlines", "what's happening in the world", "news today", "morning briefing", "headlines"]):
+        if telemetry:
+            await telemetry.set_stage("📰 [J.A.R.V.I.S.] Intercepting live global RSS news feeds...", action="typing")
         headlines = await asyncio.to_thread(fetch_rss_headlines)
         real_facts.append("Live Global Headlines: " + " | ".join(headlines[:6]))
 
@@ -977,6 +1091,8 @@ async def gather_natural_telemetry(text: str, chat_id: int, user_id: int, is_gro
             "tell me about",
         ]
     ):
+        if telemetry:
+            await telemetry.set_stage("🌐 [J.A.R.V.I.S.] Executing autonomous web research (DuckDuckGo + Wikipedia + News)...", action="typing")
         search_data = await live_web_search(text)
         if search_data:
             real_facts.append(f"Live Autonomous Web Research Results:\n{search_data}")
@@ -985,16 +1101,22 @@ async def gather_natural_telemetry(text: str, chat_id: int, user_id: int, is_gro
     url_match = re.search(r"(https?://[^\s]+)", text)
     if url_match:
         url = url_match.group(1)
+        if telemetry:
+            await telemetry.set_stage(f"🔍 [J.A.R.V.I.S.] Scraping & extracting webpage content from {url[:45]}...", action="typing")
         scraped = await scrape_url_content(url)
         if scraped:
             real_facts.append(f"Extracted Webpage Content from {url}:\n{scraped[:2500]}")
 
     # 8. Server Diagnostics & Uptime
     if any(w in t for w in ["system status", "diagnostics", "ram", "cpu", "uptime", "how is the server", "memory usage", "backup status"]):
+        if telemetry:
+            await telemetry.set_stage("⚙️ [J.A.R.V.I.S.] Querying live CPU, RAM & Vault telemetry...", action="typing")
         real_facts.append(get_real_server_stats())
 
     # 9. 53+ Free AI & GitHub Repo Matrix Trigger
     if any(w in t for w in ["free ai", "github", "repo", "repository", "framework", "agent", "matrix", "ollama", "open source ai"]):
+        if telemetry:
+            await telemetry.set_stage("🗂 [J.A.R.V.I.S.] Loading 53+ Free AI & GitHub Repository Matrix from Vault...", action="typing")
         real_facts.append(GITHUB_AI_MATRIX_KNOWLEDGE)
 
     return "\n\n".join(real_facts)
@@ -1106,7 +1228,13 @@ def _clean_llm_output(text: str) -> str:
     cleaned = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
     return plain(cleaned)
 
-async def generate_response(prompt: str, history: list, sys_prompt: str, user_id: int) -> str:
+async def generate_response(
+    prompt: str,
+    history: list,
+    sys_prompt: str,
+    user_id: int,
+    telemetry: LiveActionTelemetry = None,
+) -> str:
     current_time = time.time()
     clean_history = sanitize_conversation(history, prompt)
     full_messages = [{"role": "system", "content": sys_prompt}] + clean_history
@@ -1186,6 +1314,11 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
                 if circuit_breaker.get(node_id, 0) > current_time:
                     continue
                 try:
+                    if telemetry:
+                        await telemetry.set_stage(
+                            f"🧠 [J.A.R.V.I.S.] Thinking via {prov['name']} ({model})...",
+                            action="typing",
+                        )
                     client = AsyncOpenAI(base_url=prov["base"], api_key=key, timeout=14.0)
                     res = await client.chat.completions.create(
                         model=model,
@@ -1205,6 +1338,11 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
     for gkey in gemini_keys:
         for gmodel in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]:
             try:
+                if telemetry:
+                    await telemetry.set_stage(
+                        f"🧠 [J.A.R.V.I.S.] Thinking via Google Gemini Neural Core ({gmodel})...",
+                        action="typing",
+                    )
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{gmodel}:generateContent?key={gkey}"
                 convo_text = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in clean_history[-12:]])
                 payload = {
@@ -1227,6 +1365,11 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
     recent_slice = [{"role": "system", "content": sys_prompt[:2500]}] + clean_history[-10:]
     for fallback_model in ["openai", "mistral", "llama"]:
         try:
+            if telemetry:
+                await telemetry.set_stage(
+                    f"🧠 [J.A.R.V.I.S.] Routing through Backup Neural Grid ({fallback_model.upper()})...",
+                    action="typing",
+                )
             async with httpx.AsyncClient(timeout=18.0) as client:
                 resp = await client.post(
                     "https://text.pollinations.ai/openai",
@@ -1256,11 +1399,13 @@ async def generate_response(prompt: str, history: list, sys_prompt: str, user_id
 
     return "I am online and listening, Sir. Please state your directive."
 
-async def transcribe_incoming_voice(audio_bytes: bytes) -> str:
+async def transcribe_incoming_voice(audio_bytes: bytes, telemetry: LiveActionTelemetry = None) -> str:
     """Transcribes incoming Telegram voice notes using Groq Whisper or Gemini."""
     groq_keys = get_api_keys(["GROQ_API_KEY", "GROQ_KEY"])
     for key in groq_keys:
         try:
+            if telemetry:
+                await telemetry.set_stage("🎧 [J.A.R.V.I.S.] Transcribing incoming voice audio via Whisper-Large-V3...", action="typing")
             client = AsyncOpenAI(base_url="https://api.groq.com/openai/v1", api_key=key, timeout=15.0)
             audio_file = BytesIO(audio_bytes)
             audio_file.name = "voice.ogg"
@@ -1276,6 +1421,8 @@ async def transcribe_incoming_voice(audio_bytes: bytes) -> str:
     gemini_keys = get_api_keys(["GEMINI_API_KEY", "GOOGLE_API_KEY"])
     for gkey in gemini_keys:
         try:
+            if telemetry:
+                await telemetry.set_stage("🎧 [J.A.R.V.I.S.] Transcribing audio waveform via Gemini 2.0 Flash...", action="typing")
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={gkey}"
             b64_audio = base64.b64encode(audio_bytes).decode("utf-8")
             payload = {
@@ -1304,7 +1451,7 @@ async def transcribe_incoming_voice(audio_bytes: bytes) -> str:
             continue
     return ""
 
-async def analyze_image_bytes(img_bytes: bytes, caption: str, sys_prompt: str) -> str:
+async def analyze_image_bytes(img_bytes: bytes, caption: str, sys_prompt: str, telemetry: LiveActionTelemetry = None) -> str:
     """Analyzes photos/screenshots via Gemini Vision or Groq Llama Vision."""
     b64_img = base64.b64encode(img_bytes).decode("utf-8")
     user_query = caption or "Analyze this image in detail and explain what you see."
@@ -1312,6 +1459,8 @@ async def analyze_image_bytes(img_bytes: bytes, caption: str, sys_prompt: str) -
     gemini_keys = get_api_keys(["GEMINI_API_KEY", "GOOGLE_API_KEY"])
     for gkey in gemini_keys:
         try:
+            if telemetry:
+                await telemetry.set_stage("👁 [J.A.R.V.I.S.] Scanning visual pixels via Gemini Vision...", action="typing")
             url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={gkey}"
             payload = {
                 "systemInstruction": {"parts": [{"text": sys_prompt}]},
@@ -1342,6 +1491,8 @@ async def analyze_image_bytes(img_bytes: bytes, caption: str, sys_prompt: str) -
     groq_keys = get_api_keys(["GROQ_API_KEY", "GROQ_KEY"])
     for key in groq_keys:
         try:
+            if telemetry:
+                await telemetry.set_stage("👁 [J.A.R.V.I.S.] Analyzing image via Groq Llama-Vision...", action="typing")
             client = AsyncOpenAI(base_url="https://api.groq.com/openai/v1", api_key=key, timeout=18.0)
             res = await client.chat.completions.create(
                 model="llama-3.2-11b-vision-preview",
@@ -1364,35 +1515,90 @@ async def analyze_image_bytes(img_bytes: bytes, caption: str, sys_prompt: str) -
 
     return "Visual telemetry received, Sir, though my vision API keys require verification to inspect the pixels."
 
-async def jarvis_respond(update: Update, text: str, force_voice: bool = False):
+async def jarvis_respond(
+    update: Update,
+    text: str,
+    force_voice: bool = False,
+    telemetry: LiveActionTelemetry = None,
+):
     """
-    Sends the clean text bubble FIRST for instant reading, then synthesizes and attaches
-    the British J.A.R.V.I.S. Voice Note directly underneath it on every message.
+    Delivers J.A.R.V.I.S.'s final text and voice response while keeping the live status
+    tracker and top-bar Telegram indicator ('typing' -> 'recording voice' -> 'sending voice')
+    100% active until the voice note lands in the chat.
     """
     msg = update.effective_message
     if not msg or not text:
+        if telemetry:
+            await telemetry.stop()
         return
+
     chat_id = update.effective_chat.id
     state = get_user_state(chat_id)
     cleaned = plain(text)
     if not cleaned:
+        if telemetry:
+            await telemetry.stop()
         return
 
-    # 1. Send the text bubble(s) immediately
-    sent_messages = []
-    for i in range(0, len(cleaned), 4000):
-        try:
-            m = await msg.reply_text(cleaned[i : i + 4000])
-            sent_messages.append(m)
-        except Exception as e:
-            logger.error(f"Text reply error: {e}")
+    want_voice = force_voice or state.get("voice_mode", True)
 
-    # 2. Generate and send the Voice Note
-    if force_voice or state.get("voice_mode", True):
-        try:
-            await update.effective_chat.send_action("record_voice")
-            audio_bytes = await generate_voice(cleaned)
+    # Create a telemetry tracker if one wasn't started yet (e.g., from slash commands)
+    own_telemetry = False
+    if telemetry is None:
+        telemetry = LiveActionTelemetry(
+            update.get_bot(),
+            chat_id,
+            reply_to_msg=msg,
+            thread_id=msg.message_thread_id,
+        )
+        own_telemetry = True
+        await telemetry.start("✍️ [J.A.R.V.I.S.] Formatting response...", action="typing")
+
+    try:
+        chunks = [cleaned[i : i + 3850] for i in range(0, len(cleaned), 3850)]
+        sent_messages = []
+
+        # 1. Morph the live status message directly into the first text chunk
+        first_chunk_display = (
+            f"{chunks[0]}\n\n⏳ [🎙 J.A.R.V.I.S. is converting text to voice...]"
+            if want_voice
+            else chunks[0]
+        )
+
+        if telemetry.status_msg:
+            try:
+                await telemetry.set_stage(
+                    first_chunk_display,
+                    action="record_voice" if want_voice else "typing",
+                    force=True,
+                )
+                sent_messages.append(telemetry.status_msg)
+            except Exception:
+                m = await msg.reply_text(first_chunk_display)
+                sent_messages.append(m)
+        else:
+            m = await msg.reply_text(first_chunk_display)
+            telemetry.status_msg = m
+            sent_messages.append(m)
+
+        # Send any additional chunks if the response was over 3850 chars
+        for extra_chunk in chunks[1:]:
+            m = await msg.reply_text(extra_chunk)
+            sent_messages.append(m)
+            await telemetry._send_raw_action()
+
+        # 2. Synthesize and transmit the British J.A.R.V.I.S. Voice Note
+        if want_voice:
+            telemetry.current_action = "record_voice"
+            await telemetry._send_raw_action()
+
+            audio_bytes = await generate_voice(cleaned, telemetry=telemetry)
             if audio_bytes:
+                await telemetry.set_stage(
+                    f"{chunks[0]}\n\n⏳ [📤 J.A.R.V.I.S. is transmitting voice note...]",
+                    action="upload_voice",
+                    force=True,
+                )
                 voice_stream = BytesIO(audio_bytes)
                 voice_stream.name = "jarvis_voice.mp3"
                 target_msg = sent_messages[-1] if sent_messages else msg
@@ -1401,8 +1607,15 @@ async def jarvis_respond(update: Update, text: str, force_voice: bool = False):
                 except Exception:
                     voice_stream.seek(0)
                     await update.effective_chat.send_voice(voice=voice_stream)
-        except Exception as e:
-            logger.error(f"Voice transmission error: {e}")
+
+            # 3. Clean the temporary 'converting text to voice' status tag off the text bubble
+            if sent_messages:
+                try:
+                    await sent_messages[0].edit_text(chunks[0])
+                except Exception:
+                    pass
+    finally:
+        await telemetry.stop()
 
 async def cmd_auth(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
@@ -1450,7 +1663,7 @@ async def cmd_hud(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if user and is_creator_user(user.id, user.username):
-        text = f"At your service, Sir. Titan Core v{JARVIS_VERSION} is online with persistent memory, live web research, and continuous voice synthesis active."
+        text = f"At your service, Sir. Titan Core v{JARVIS_VERSION} is online with live action telemetry, persistent memory, and continuous voice synthesis active."
     else:
         name = user.first_name if user else "Guest"
         text = f"Good day, {name}. J.A.R.V.I.S. v{JARVIS_VERSION} is online and at your disposal."
@@ -1486,41 +1699,63 @@ async def cmd_dossier(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_backup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_creator_user(update.effective_user.id, update.effective_user.username):
         return
+    msg = update.effective_message
+    telemetry = LiveActionTelemetry(context.bot, update.effective_chat.id, reply_to_msg=msg, thread_id=msg.message_thread_id)
+    await telemetry.start("☁ [J.A.R.V.I.S.] Encrypting & uploading SQLite Vault to Telegram Backup channel...", action="upload_document")
     ok = await sync_vault_to_telegram(context.bot, force=True)
     if ok:
         await jarvis_respond(
             update,
             f"Encrypted SQLite Vault successfully backed up and pinned to your Telegram Vault channel ({VAULT_CHAT_ID}), Sir.",
+            telemetry=telemetry,
         )
     else:
         await jarvis_respond(
             update,
             f"Vault backup encountered an issue, Sir. Please verify that I am an Administrator with 'Post' and 'Pin Messages' permissions in channel {VAULT_CHAT_ID}.",
+            telemetry=telemetry,
         )
 
 async def cmd_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    telemetry = LiveActionTelemetry(context.bot, update.effective_chat.id, reply_to_msg=msg, thread_id=msg.message_thread_id)
+    await telemetry.start("📰 [J.A.R.V.I.S.] Scanning live global news feeds...", action="typing")
     topic = " ".join(context.args) if context.args else ""
     headlines = await asyncio.to_thread(fetch_rss_headlines, topic)
     await jarvis_respond(
         update,
         "📰 Live Global Intelligence Briefing:\n\n" + "\n\n".join(f"{i+1}. {h}" for i, h in enumerate(headlines[:6])),
+        telemetry=telemetry,
     )
 
 async def cmd_weather(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
     city = " ".join(context.args) if context.args else "Bengaluru"
+    telemetry = LiveActionTelemetry(context.bot, update.effective_chat.id, reply_to_msg=msg, thread_id=msg.message_thread_id)
+    await telemetry.start(f"🌦 [J.A.R.V.I.S.] Acquiring live atmospheric telemetry for {city.title()}...", action="find_location")
     w_info = await fetch_live_weather(city)
-    await jarvis_respond(update, w_info or f"Atmospheric telemetry for {city} is momentarily unavailable, Sir.")
+    await jarvis_respond(
+        update,
+        w_info or f"Atmospheric telemetry for {city} is momentarily unavailable, Sir.",
+        telemetry=telemetry,
+    )
 
 async def cmd_wiki(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await jarvis_respond(update, "Please specify a topic to query, Sir.")
         return
+    msg = update.effective_message
+    telemetry = LiveActionTelemetry(context.bot, update.effective_chat.id, reply_to_msg=msg, thread_id=msg.message_thread_id)
+    await telemetry.start("🌐 [J.A.R.V.I.S.] Conducting deep archive & web research...", action="typing")
     res = await live_web_search(" ".join(context.args))
-    await jarvis_respond(update, res or "No matching records found in the archives, Sir.")
+    await jarvis_respond(update, res or "No matching records found in the archives, Sir.", telemetry=telemetry)
 
 async def cmd_briefing(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_creator_user(update.effective_user.id, update.effective_user.username):
         return
+    msg = update.effective_message
+    telemetry = LiveActionTelemetry(context.bot, update.effective_chat.id, reply_to_msg=msg, thread_id=msg.message_thread_id)
+    await telemetry.start("☕ [J.A.R.V.I.S.] Compiling executive weather & global news briefing...", action="typing")
     now_ist = datetime.datetime.now(IST).strftime("%A, %B %d, %Y")
     w_info = await fetch_live_weather("Bengaluru")
     headlines = await asyncio.to_thread(fetch_rss_headlines)
@@ -1528,7 +1763,7 @@ async def cmd_briefing(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Good day, Sir. Here is your executive briefing for {now_ist}.\n\n"
         f"{w_info}\n\nTop Global Headlines:\n" + "\n".join(f"• {h}" for h in headlines[:5])
     )
-    await jarvis_respond(update, text)
+    await jarvis_respond(update, text, telemetry=telemetry)
 
 async def cmd_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = get_user_state(update.effective_chat.id)
@@ -1544,11 +1779,15 @@ async def cmd_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_diagnostics(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_creator_user(update.effective_user.id, update.effective_user.username):
         return
+    msg = update.effective_message
+    telemetry = LiveActionTelemetry(context.bot, update.effective_chat.id, reply_to_msg=msg, thread_id=msg.message_thread_id)
+    await telemetry.start("🔧 [J.A.R.V.I.S.] Running full hardware, memory & cloud vault diagnostics...", action="typing")
     sync_ok = await sync_vault_to_telegram(context.bot, force=True)
     sync_status = "VERIFIED & SYNCED" if sync_ok else f"CHECK CHANNEL PERMISSIONS ({VAULT_CHAT_ID})"
     await jarvis_respond(
         update,
-        f"🔧 Titan Core V25.0 System Telemetry\n\n• {get_real_server_stats()}\n• Telegram Cloud Vault: {sync_status}",
+        f"🔧 Titan Core V25.1 System Telemetry\n\n• {get_real_server_stats()}\n• Telegram Cloud Vault: {sync_status}",
+        telemetry=telemetry,
     )
 
 async def cmd_lockdown(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1614,14 +1853,17 @@ async def cmd_osint(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not args:
         await jarvis_respond(update, "Usage: /osint <username> or /osint user <username>, Sir.")
         return
+    msg = update.effective_message
     target = args[1] if len(args) >= 2 and args[0].lower() in ("user", "username", "u") else args[0]
+    telemetry = LiveActionTelemetry(context.bot, update.effective_chat.id, reply_to_msg=msg, thread_id=msg.message_thread_id)
+    await telemetry.start(f"🎯 [E.D.I.T.H.] Probing 12 global networks for @{target}...", action="typing")
     result = await osint_username_search(target)
-    await jarvis_respond(update, result)
+    await jarvis_respond(update, result, telemetry=telemetry)
 
 async def cmd_boot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_creator_user(update.effective_user.id, update.effective_user.username):
         return
-    await jarvis_respond(update, "⚡ Titan Core V25.0 neural lattice online and operating at peak efficiency, Sir.")
+    await jarvis_respond(update, "⚡ Titan Core V25.1 neural lattice online and operating at peak efficiency, Sir.")
 
 async def cmd_suitup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_creator_user(update.effective_user.id, update.effective_user.username):
@@ -1631,7 +1873,7 @@ async def cmd_suitup(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await jarvis_respond(
         update,
-        f"🛡 Titan Core Operational Status, Sir:\n\n• {get_real_server_stats()}\n• Voice Synthesis: ACTIVE | Autonomous Research: ONLINE",
+        f"🛡 Titan Core Operational Status, Sir:\n\n• {get_real_server_stats()}\n• Voice Synthesis: ACTIVE | Live Telemetry Tracker: ONLINE",
     )
 
 async def vault_sync_loop(app: Application):
@@ -1667,34 +1909,62 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     pass
                 return
 
-    # PASSIVE GROUP MEMORY: Log group messages BEFORE checking if Jarvis was addressed!
-    # This ensures Jarvis always knows what is happening in the group when asked.
+    # PASSIVE GROUP MEMORY: Always log messages first so Jarvis knows group context
     history = get_chat_history(chat_id, msg.message_thread_id)
     log_memory(chat_id, msg.message_thread_id, user.id, "user", f"{resolved_name}: {text}")
 
     if is_group and not is_addressed(msg, context.bot, text):
         return
 
-    try:
-        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-    except Exception:
-        pass
-
-    real_context = await gather_natural_telemetry(text, chat_id, user.id, is_group=is_group)
-    sys_prompt = build_system_prompt(
-        user.id,
-        "Abhishek" if is_creator else (user.first_name or "Guest"),
+    # Start the uninterrupted Live Action & Top-Bar Telemetry Tracker immediately
+    telemetry = LiveActionTelemetry(
+        context.bot,
         chat_id,
-        real_context,
-        is_group=is_group,
+        reply_to_msg=msg,
+        thread_id=msg.message_thread_id,
+    )
+    await telemetry.start(
+        "🔐 [J.A.R.V.I.S.] Accessing encrypted memory vault & context...",
+        action="typing",
     )
 
-    ai_response = await generate_response(f"{resolved_name}: {text}", history, sys_prompt, user.id)
-    log_memory(chat_id, msg.message_thread_id, user.id, "assistant", ai_response)
-    await jarvis_respond(update, ai_response, force_voice=True)
+    try:
+        real_context = await gather_natural_telemetry(
+            text,
+            chat_id,
+            user.id,
+            is_group=is_group,
+            telemetry=telemetry,
+        )
+        sys_prompt = build_system_prompt(
+            user.id,
+            "Abhishek" if is_creator else (user.first_name or "Guest"),
+            chat_id,
+            real_context,
+            is_group=is_group,
+        )
+
+        ai_response = await generate_response(
+            f"{resolved_name}: {text}",
+            history,
+            sys_prompt,
+            user.id,
+            telemetry=telemetry,
+        )
+
+        await telemetry.set_stage(
+            "✍️ [J.A.R.V.I.S.] Encrypting response to memory & preparing output...",
+            action="typing",
+        )
+        log_memory(chat_id, msg.message_thread_id, user.id, "assistant", ai_response)
+
+        await jarvis_respond(update, ai_response, force_voice=True, telemetry=telemetry)
+    except Exception as e:
+        logger.error(f"Message handler error: {e}")
+        await telemetry.stop()
 
 async def voice_note_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles incoming Telegram voice notes or audio messages."""
+    """Handles incoming Telegram voice notes or audio messages with full live telemetry."""
     if is_lockdown():
         return
     msg = update.effective_message
@@ -1704,14 +1974,25 @@ async def voice_note_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if chat.type != "private" and not is_creator_user(user.id, user.username):
         return
 
+    telemetry = LiveActionTelemetry(
+        context.bot,
+        chat.id,
+        reply_to_msg=msg,
+        thread_id=msg.message_thread_id,
+    )
+    await telemetry.start("🎧 [J.A.R.V.I.S.] Downloading & decoding incoming voice signal...", action="typing")
+
     try:
-        await context.bot.send_chat_action(chat_id=chat.id, action="typing")
         voice_obj = msg.voice or msg.audio
         file_obj = await context.bot.get_file(voice_obj.file_id)
         audio_bytes = bytes(await file_obj.download_as_bytearray())
-        spoken_text = await transcribe_incoming_voice(audio_bytes)
+        spoken_text = await transcribe_incoming_voice(audio_bytes, telemetry=telemetry)
         if not spoken_text:
-            await jarvis_respond(update, "I received your audio transmission, Sir, but could not transcribe the signal.")
+            await jarvis_respond(
+                update,
+                "I received your audio transmission, Sir, but could not transcribe the signal.",
+                telemetry=telemetry,
+            )
             return
 
         is_creator = is_creator_user(user.id, user.username)
@@ -1719,17 +2000,24 @@ async def voice_note_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         history = get_chat_history(chat.id, msg.message_thread_id)
         log_memory(chat.id, msg.message_thread_id, user.id, "user", f"{resolved_name} (Voice): {spoken_text}")
 
-        real_context = await gather_natural_telemetry(spoken_text, chat.id, user.id, is_group=(chat.type != "private"))
+        real_context = await gather_natural_telemetry(
+            spoken_text,
+            chat.id,
+            user.id,
+            is_group=(chat.type != "private"),
+            telemetry=telemetry,
+        )
         sys_prompt = build_system_prompt(user.id, resolved_name, chat.id, real_context, is_group=(chat.type != "private"))
-        ai_response = await generate_response(spoken_text, history, sys_prompt, user.id)
+        ai_response = await generate_response(spoken_text, history, sys_prompt, user.id, telemetry=telemetry)
 
         log_memory(chat.id, msg.message_thread_id, user.id, "assistant", ai_response)
-        await jarvis_respond(update, ai_response, force_voice=True)
+        await jarvis_respond(update, ai_response, force_voice=True, telemetry=telemetry)
     except Exception as e:
         logger.error(f"Voice note handler error: {e}")
+        await telemetry.stop()
 
 async def media_document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles incoming Photos (Vision) and PDF/Text documents."""
+    """Handles incoming Photos (Vision) and PDF/Text documents with full live telemetry."""
     if is_lockdown():
         return
     msg = update.effective_message
@@ -1745,18 +2033,26 @@ async def media_document_handler(update: Update, context: ContextTypes.DEFAULT_T
     resolved_name = "Abhishek" if is_creator else (user.first_name or "Guest")
     sys_prompt = build_system_prompt(user.id, resolved_name, chat.id, "", is_group=(chat.type != "private"))
 
+    telemetry = LiveActionTelemetry(
+        context.bot,
+        chat.id,
+        reply_to_msg=msg,
+        thread_id=msg.message_thread_id,
+    )
+
     try:
-        await context.bot.send_chat_action(chat_id=chat.id, action="typing")
         if msg.photo:
+            await telemetry.start("👁 [J.A.R.V.I.S.] Downloading high-resolution image for visual analysis...", action="typing")
             file_obj = await context.bot.get_file(msg.photo[-1].file_id)
             img_bytes = bytes(await file_obj.download_as_bytearray())
-            reply = await analyze_image_bytes(img_bytes, caption, sys_prompt)
+            reply = await analyze_image_bytes(img_bytes, caption, sys_prompt, telemetry=telemetry)
             log_memory(chat.id, msg.message_thread_id, user.id, "user", f"{resolved_name} [Sent Photo]: {caption}")
             log_memory(chat.id, msg.message_thread_id, user.id, "assistant", reply)
-            await jarvis_respond(update, reply)
+            await jarvis_respond(update, reply, force_voice=True, telemetry=telemetry)
         elif msg.document:
             doc = msg.document
             fname = (doc.file_name or "").lower()
+            await telemetry.start(f"📄 [J.A.R.V.I.S.] Extracting & parsing document '{doc.file_name}'...", action="typing")
             file_obj = await context.bot.get_file(doc.file_id)
             doc_bytes = bytes(await file_obj.download_as_bytearray())
             extracted = ""
@@ -1771,11 +2067,14 @@ async def media_document_handler(update: Update, context: ContextTypes.DEFAULT_T
             if extracted.strip():
                 prompt = f"Document '{doc.file_name}' Content:\n{extracted[:4000]}\n\nUser Directive: {caption or 'Summarize and analyze this document.'}"
                 history = get_chat_history(chat.id, msg.message_thread_id)
-                reply = await generate_response(prompt, history, sys_prompt, user.id)
+                reply = await generate_response(prompt, history, sys_prompt, user.id, telemetry=telemetry)
                 log_memory(chat.id, msg.message_thread_id, user.id, "assistant", reply)
-                await jarvis_respond(update, reply)
+                await jarvis_respond(update, reply, force_voice=True, telemetry=telemetry)
+            else:
+                await jarvis_respond(update, "I could not extract readable text from that document, Sir.", telemetry=telemetry)
     except Exception as e:
         logger.error(f"Media/Document handler error: {e}")
+        await telemetry.stop()
 
 async def post_init(app: Application):
     global global_bot_ref
@@ -1828,9 +2127,8 @@ def main():
     app.add_handler(MessageHandler(filters.PHOTO | filters.Document.ALL, media_document_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
 
-    logger.info("⚡ Launching Titan Core V25.0 Polling Loop...")
+    logger.info("⚡ Launching Titan Core V25.1 Polling Loop...")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
-```
