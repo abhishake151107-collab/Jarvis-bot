@@ -1,3 +1,4 @@
+```python
 """
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║     TITAN CORE V25.1 — OPENJARVIS AUTONOMOUS AGENTIC MULTI-AI ENGINE     ║
@@ -2132,3 +2133,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+```
